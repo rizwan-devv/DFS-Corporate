@@ -20,6 +20,7 @@ Standalone **entity / corporate** digital onboarding (not Paybridge).
 6. **Admin approve** → DFS `corporateonboarding` → agent app login  
 
 Portal = business docs. App = one submit with KYC media.  
+CNIC is stored/sent to DFS **without dashes** (13 digits). Wallet PIN + partner passwords on Account API are **plain text** (never bcrypt).  
 Postman: `postman/DFS-Corporate-KYC-App-Slim.postman_collection.json`  
 Optional: `GET /lovs` refreshes DFS getAllLovs without re-OTP.
 

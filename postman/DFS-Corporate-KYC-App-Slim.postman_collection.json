@@ -171,7 +171,7 @@
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "cnicNumber", "type": "text", "value": "35202-1234567-1" },
+                { "key": "cnicNumber", "type": "text", "value": "3520212345671" },
                 { "key": "cnicFullName", "type": "text", "value": "Ali Khan" },
                 { "key": "dateOfBirth", "type": "text", "value": "1990-01-15" },
                 { "key": "fatherName", "type": "text", "value": "Ahmed" },

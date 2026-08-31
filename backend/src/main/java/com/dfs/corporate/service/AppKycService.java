@@ -5,6 +5,7 @@ import com.dfs.corporate.integration.dfs.CorporateOnboardingHttpClient;
 import com.dfs.corporate.repository.PartnerAppUserRepository;
 import com.dfs.corporate.repository.PartyDocumentRepository;
 import com.dfs.corporate.repository.PartyRepository;
+import com.dfs.corporate.util.IdentityFormats;
 import com.dfs.corporate.web.dto.*;
 import com.dfs.corporate.web.error.ApiException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -122,7 +123,7 @@ public class AppKycService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Current password / PIN is incorrect");
         }
         user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
-        user.setPasswordPlain(req.getNewPassword()); // for DFS Account API on admin approve
+        user.setPasswordPlain(IdentityFormats.passwordPlain(req.getNewPassword())); // plain for DFS Account API
         user.setMustChangePassword(false);
         user.setPasswordChangedAt(Instant.now());
         // Keep temp pin for invite retries; password is primary after change
@@ -189,7 +190,7 @@ public class AppKycService {
     public AppKycSessionResponse updateProfile(String sessionToken, AppKycProfileRequest req) {
         PartnerAppUser user = requireEditable(sessionToken);
         requireMobileGate(user);
-        if (req.getCnicNumber() != null) user.setCnicNumber(trim(req.getCnicNumber()));
+        if (req.getCnicNumber() != null) user.setCnicNumber(normalizeRequiredCnic(req.getCnicNumber()));
         if (req.getCnicFullName() != null) user.setCnicFullName(trim(req.getCnicFullName()));
         if (req.getDateOfBirth() != null) user.setDateOfBirth(req.getDateOfBirth());
         if (req.getVideoKycRef() != null) user.setVideoKycRef(trim(req.getVideoKycRef()));
@@ -199,7 +200,7 @@ public class AppKycService {
         if (req.getPermanentAddress() != null) user.setPermanentAddress(trim(req.getPermanentAddress()));
         if (req.getPresentAddress() != null) user.setPresentAddress(trim(req.getPresentAddress()));
         if (req.getNidIssuanceDate() != null) user.setNidIssuanceDate(req.getNidIssuanceDate());
-        if (req.getWalletPin() != null) user.setWalletPin(trim(req.getWalletPin()));
+        if (req.getWalletPin() != null) user.setWalletPin(IdentityFormats.pinPlain(req.getWalletPin()));
         if (req.getImeiNo() != null) user.setImeiNo(trim(req.getImeiNo()));
         if (req.getDeviceModel() != null) user.setDeviceModel(trim(req.getDeviceModel()));
         if (req.getAppVersion() != null) user.setAppVersion(trim(req.getAppVersion()));
@@ -283,7 +284,7 @@ public class AppKycService {
                             + " (need cnicFront, cnicBack, selfie, fingerL1..L4, fingerR1..R4)");
         }
 
-        user.setCnicNumber(trim(cnicNumber));
+        user.setCnicNumber(normalizeRequiredCnic(cnicNumber));
         user.setCnicFullName(trim(cnicFullName));
         try {
             user.setDateOfBirth(java.time.LocalDate.parse(dateOfBirth.trim()));
@@ -303,7 +304,7 @@ public class AppKycService {
         }
         if (!isBlank(cityId)) user.setCityId(trim(cityId));
         if (!isBlank(provinceId)) user.setProvinceId(trim(provinceId));
-        if (!isBlank(walletPin)) user.setWalletPin(trim(walletPin));
+        if (!isBlank(walletPin)) user.setWalletPin(IdentityFormats.pinPlain(walletPin));
         if (!isBlank(imeiNo)) user.setImeiNo(trim(imeiNo));
         if (!isBlank(deviceModel)) user.setDeviceModel(trim(deviceModel));
         if (!isBlank(appVersion)) user.setAppVersion(trim(appVersion));
@@ -608,8 +609,17 @@ public class AppKycService {
         return "APP_" + appUserId + "_" + kind.toUpperCase();
     }
 
+    private String normalizeRequiredCnic(String cnic) {
+        String digits = IdentityFormats.cnicDigits(cnic);
+        if (digits == null || digits.length() != 13) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "cnicNumber must be 13 digits (dashes optional; stored/sent without dashes)");
+        }
+        return digits;
+    }
+
     private String normalizePhone(String phone) {
-        return phone == null ? "" : phone.replaceAll("[^0-9+]", "");
+        return phone == null ? "" : IdentityFormats.phoneDigits(phone);
     }
 
     private boolean isBlank(String s) { return s == null || s.isBlank(); }

@@ -2,6 +2,7 @@ package com.dfs.corporate.integration.dfs;
 
 import com.dfs.corporate.domain.PartnerAppUser;
 import com.dfs.corporate.domain.Party;
+import com.dfs.corporate.util.IdentityFormats;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -9,6 +10,10 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * Builds DFS corporateonboarding payload.
+ * CNIC = digits only; pin / partner passwords = plain text (never bcrypt hash).
+ */
 @Component
 public class CorporateOnboardingMapper {
 
@@ -37,9 +42,10 @@ public class CorporateOnboardingMapper {
         String imei = firstNonBlank(
                 primary != null ? primary.getImeiNo() : null,
                 "000000000000000");
+        // Wallet / mPIN — plain digits only (never hashed)
         String pin = firstNonBlank(
-                primary != null ? primary.getWalletPin() : null,
-                party.getWalletPin(),
+                IdentityFormats.pinPlain(primary != null ? primary.getWalletPin() : null),
+                IdentityFormats.pinPlain(party.getWalletPin()),
                 "1234");
 
         CorporateOnboardingRequest req = new CorporateOnboardingRequest();
@@ -60,8 +66,8 @@ public class CorporateOnboardingMapper {
                 party.getFatherOrSpouseName(),
                 "N/A"));
         p.setMobileNumber(firstNonBlank(
-                primary != null ? primary.getPhone() : null,
-                party.getPhone()));
+                IdentityFormats.phoneDigits(primary != null ? primary.getPhone() : null),
+                IdentityFormats.phoneDigits(party.getPhone())));
         p.setPermanentAddress(firstNonBlank(
                 primary != null ? primary.getPermanentAddress() : null,
                 party.getPermanentAddress(),
@@ -78,9 +84,10 @@ public class CorporateOnboardingMapper {
                 primary != null ? primary.getGender() : null,
                 party.getGender(),
                 "M")));
+        // nidNo — always without dashes
         p.setNidNo(firstNonBlank(
-                primary != null ? primary.getCnicNumber() : null,
-                party.getCnicNumber(),
+                IdentityFormats.cnicDigits(primary != null ? primary.getCnicNumber() : null),
+                IdentityFormats.cnicDigits(party.getCnicNumber()),
                 "0000000000000"));
         p.setDob(formatDate(firstDate(
                 primary != null ? primary.getDateOfBirth() : null,
@@ -110,8 +117,12 @@ public class CorporateOnboardingMapper {
             for (PartnerAppUser u : appUsers) {
                 String email = firstNonBlank(u.getEmail(), party.getEmail());
                 if (email == null) continue;
-                // Plain password from force-change (Account API); fallback temp PIN / wallet pin
-                String plain = firstNonBlank(u.getPasswordPlain(), u.getTempPin(), pin, "1234");
+                // Plain password only — never passwordHash / bcrypt
+                String plain = firstNonBlank(
+                        IdentityFormats.passwordPlain(u.getPasswordPlain()),
+                        IdentityFormats.passwordPlain(u.getTempPin()),
+                        pin,
+                        "1234");
                 p.getPartners().add(new CorporateOnboardingRequest.PartnerCredential(email, plain));
             }
         }
@@ -163,6 +174,7 @@ public class CorporateOnboardingMapper {
     }
 
     private static String normalizePhone(String phone) {
-        return phone == null ? "" : phone.replaceAll("[^0-9+]", "");
+        String n = IdentityFormats.phoneDigits(phone);
+        return n == null ? "" : n;
     }
 }
