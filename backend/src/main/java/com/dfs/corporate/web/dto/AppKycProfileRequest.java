@@ -17,6 +17,8 @@ public class AppKycProfileRequest {
     private String imeiNo;
     private String deviceModel;
     private String appVersion;
+    private String provinceId;
+    private String cityId;
 
     public String getCnicNumber() { return cnicNumber; }
     public void setCnicNumber(String cnicNumber) { this.cnicNumber = cnicNumber; }
@@ -46,4 +48,8 @@ public class AppKycProfileRequest {
     public void setDeviceModel(String deviceModel) { this.deviceModel = deviceModel; }
     public String getAppVersion() { return appVersion; }
     public void setAppVersion(String appVersion) { this.appVersion = appVersion; }
+    public String getProvinceId() { return provinceId; }
+    public void setProvinceId(String provinceId) { this.provinceId = provinceId; }
+    public String getCityId() { return cityId; }
+    public void setCityId(String cityId) { this.cityId = cityId; }
 }

@@ -13,12 +13,15 @@ Standalone **entity / corporate** digital onboarding (not Paybridge).
 
 ## KYC app API sequence (`/api/public/app-kyc`)
 1. `POST /login` — phone+PIN **or** email+password  
-2. `POST /change-password` — force change (Bearer session)  
-3. `POST /otp/send` → `POST /otp/verify` — mobile OTP  
-4. KYC profile/docs/video/biometric  
-5. `POST /submit` or `POST /complete` — marks KYC done; if **all** partners done → calls DFS backend account API  
+2. `POST /change-password` — force change (Bearer session); password kept for DFS Account API (plain) until admin approve  
+3. `POST /otp/send` → `POST /otp/verify` — on success calls DFS `getAllLovs` and returns it as `lovs`  
+4. **`POST /submit` (multipart)** — single call with profile fields + CNIC front/back + selfie + 8 fingers → `KYC_COMPLETED`  
+5. When **all** partners done → party `PENDING_APPROVAL`  
+6. **Admin approve** → DFS `corporateonboarding` → agent app login  
 
-Also: `GET /segments` proxies DFS backend `getAllSegments`.
+Portal = business docs. App = one submit with KYC media.  
+Postman: `postman/DFS-Corporate-KYC-App-Slim.postman_collection.json`  
+Optional: `GET /lovs` refreshes DFS getAllLovs without re-OTP.
 
 ## Enable DFS backend account API
 ```powershell

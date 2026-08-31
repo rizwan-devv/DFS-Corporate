@@ -20,6 +20,7 @@ import java.util.List;
  * Calls DFS backend corporate account API:
  * POST {baseUrl}/agentapp/v1/corporateonboarding
  * GET  {baseUrl}/agentapp/v1/getAllSegments
+ * GET  {baseUrl}/agentapp/v1/getAllLovs
  */
 @Primary
 @Component
@@ -31,6 +32,7 @@ public class CorporateOnboardingHttpClient implements DfsAccountClient {
     private final String baseUrl;
     private final String onboardingPath;
     private final String segmentsPath;
+    private final String lovsPath;
     private final CorporateOnboardingMapper mapper;
     private final PartnerAppUserRepository appUserRepository;
     private final ObjectMapper objectMapper;
@@ -41,6 +43,7 @@ public class CorporateOnboardingHttpClient implements DfsAccountClient {
             @Value("${dfs.account-api.base-url:http://46.225.160.93:18001}") String baseUrl,
             @Value("${dfs.account-api.path:/agentapp/v1/corporateonboarding}") String onboardingPath,
             @Value("${dfs.account-api.segments-path:/agentapp/v1/getAllSegments}") String segmentsPath,
+            @Value("${dfs.account-api.lovs-path:/agentapp/v1/getAllLovs}") String lovsPath,
             CorporateOnboardingMapper mapper,
             PartnerAppUserRepository appUserRepository,
             ObjectMapper objectMapper) {
@@ -48,6 +51,7 @@ public class CorporateOnboardingHttpClient implements DfsAccountClient {
         this.baseUrl = trimSlash(baseUrl);
         this.onboardingPath = onboardingPath.startsWith("/") ? onboardingPath : "/" + onboardingPath;
         this.segmentsPath = segmentsPath.startsWith("/") ? segmentsPath : "/" + segmentsPath;
+        this.lovsPath = lovsPath.startsWith("/") ? lovsPath : "/" + lovsPath;
         this.mapper = mapper;
         this.appUserRepository = appUserRepository;
         this.objectMapper = objectMapper;
@@ -98,6 +102,23 @@ public class CorporateOnboardingHttpClient implements DfsAccountClient {
             return objectMapper.readTree(raw != null ? raw : "{}");
         } catch (Exception e) {
             throw new IllegalStateException("Invalid segments response: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * GET /agentapp/v1/getAllLovs — returns DFS payload as-is (responsecode + data + messages).
+     * Used after OTP verify for KYC app dropdowns (city, occupation, businessType, …).
+     */
+    public JsonNode getAllLovs() {
+        log.info("Calling DFS getAllLovs → {}{}", baseUrl, lovsPath);
+        String raw = restClient.get()
+                .uri(lovsPath)
+                .retrieve()
+                .body(String.class);
+        try {
+            return objectMapper.readTree(raw != null ? raw : "{}");
+        } catch (Exception e) {
+            throw new IllegalStateException("Invalid getAllLovs response: " + e.getMessage(), e);
         }
     }
 

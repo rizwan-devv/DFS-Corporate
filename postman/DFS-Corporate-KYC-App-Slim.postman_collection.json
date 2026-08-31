@@ -1,0 +1,204 @@
+{
+  "info": {
+    "name": "DFS Corporate — KYC App (Latest)",
+    "description": "Mobile KYC app APIs.\n\n**Base URL**\n- Local: http://localhost:8090\n- Server: http://46.224.146.158:8050\n\n**Required flow**\n1. POST login (phone+PIN) OR GET invite/{token}\n2. POST change-password\n3. POST otp/send → POST otp/verify (returns session + DFS getAllLovs in lovs)\n4. Capture CNIC/selfie/8 fingers on device\n5. **ONE** POST /submit (multipart) = profile fields + all 11 files → KYC_COMPLETED\n\nNo separate profile or documents APIs needed.\n\nAuth: Authorization: Bearer {{sessionToken}}",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://46.224.146.158:8050" },
+    { "key": "sessionToken", "value": "" },
+    { "key": "inviteToken", "value": "INVITE_TOKEN" },
+    { "key": "phone", "value": "03001234567" },
+    { "key": "tempPin", "value": "TEMP_PIN" },
+    { "key": "newPassword", "value": "NewPass@123" },
+    { "key": "otpCode", "value": "123456" },
+    { "key": "cityId", "value": "302" },
+    { "key": "walletPin", "value": "1234" }
+  ],
+  "item": [
+    {
+      "name": "1 — Auth",
+      "item": [
+        {
+          "name": "GET invite by token",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "try { var j = pm.response.json(); if (j.sessionToken) pm.collectionVariables.set('sessionToken', j.sessionToken); } catch(e){}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/public/app-kyc/invite/{{inviteToken}}"
+          }
+        },
+        {
+          "name": "POST login (phone + PIN)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Status 200', () => pm.response.code === 200);",
+                "try { var j = pm.response.json(); if (j.sessionToken) pm.collectionVariables.set('sessionToken', j.sessionToken); } catch(e){}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"pin\": \"{{tempPin}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/public/app-kyc/login"
+          }
+        },
+        {
+          "name": "GET me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": "{{baseUrl}}/api/public/app-kyc/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 — Password & OTP",
+      "item": [
+        {
+          "name": "POST change-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{tempPin}}\",\n  \"newPassword\": \"{{newPassword}}\",\n  \"confirmPassword\": \"{{newPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/public/app-kyc/change-password"
+          }
+        },
+        {
+          "name": "POST otp/send",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "try { var j = pm.response.json(); if (j.devOtpHint) pm.collectionVariables.set('otpCode', j.devOtpHint); } catch(e){}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": "{{baseUrl}}/api/public/app-kyc/otp/send"
+          }
+        },
+        {
+          "name": "POST otp/verify (+ DFS getAllLovs)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('OTP verified', () => pm.response.code === 200);",
+                "try {",
+                "  var j = pm.response.json();",
+                "  if (j.session && j.session.sessionToken) pm.collectionVariables.set('sessionToken', j.session.sessionToken);",
+                "  if (j.lovs && j.lovs.data && j.lovs.data.city && j.lovs.data.city.length) {",
+                "    pm.collectionVariables.set('cityId', String(j.lovs.data.city[0].id));",
+                "  }",
+                "  pm.test('LOVs from DFS', () => j.lovs && j.lovs.responsecode === '000');",
+                "} catch(e){}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{otpCode}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/public/app-kyc/otp/verify"
+          }
+        },
+        {
+          "name": "GET lovs (optional refresh)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/public/app-kyc/lovs"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 — Submit KYC (all-in-one)",
+      "item": [
+        {
+          "name": "POST submit (profile + CNIC + selfie + 8 fingers)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Submit OK', () => pm.response.code === 200);",
+                "try {",
+                "  var j = pm.response.json();",
+                "  pm.test('KYC_COMPLETED', () => j.status === 'KYC_COMPLETED');",
+                "} catch(e){}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{sessionToken}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "cnicNumber", "type": "text", "value": "35202-1234567-1" },
+                { "key": "cnicFullName", "type": "text", "value": "Ali Khan" },
+                { "key": "dateOfBirth", "type": "text", "value": "1990-01-15" },
+                { "key": "fatherName", "type": "text", "value": "Ahmed" },
+                { "key": "gender", "type": "text", "value": "MALE" },
+                { "key": "cityId", "type": "text", "value": "{{cityId}}" },
+                { "key": "walletPin", "type": "text", "value": "{{walletPin}}" },
+                { "key": "imeiNo", "type": "text", "value": "356938035643809" },
+                { "key": "deviceModel", "type": "text", "value": "Pixel 7" },
+                { "key": "appVersion", "type": "text", "value": "1.0.0" },
+                { "key": "cnicFront", "type": "file", "src": [], "description": "CNIC front image" },
+                { "key": "cnicBack", "type": "file", "src": [], "description": "CNIC back image" },
+                { "key": "selfie", "type": "file", "src": [], "description": "Live selfie" },
+                { "key": "fingerL1", "type": "file", "src": [] },
+                { "key": "fingerL2", "type": "file", "src": [] },
+                { "key": "fingerL3", "type": "file", "src": [] },
+                { "key": "fingerL4", "type": "file", "src": [] },
+                { "key": "fingerR1", "type": "file", "src": [] },
+                { "key": "fingerR2", "type": "file", "src": [] },
+                { "key": "fingerR3", "type": "file", "src": [] },
+                { "key": "fingerR4", "type": "file", "src": [] }
+              ]
+            },
+            "url": "{{baseUrl}}/api/public/app-kyc/submit",
+            "description": "multipart/form-data — attach all 11 files before Send.\n\nRequired text: cnicNumber, cnicFullName, dateOfBirth\nRequired files: cnicFront, cnicBack, selfie, fingerL1..L4, fingerR1..R4\nOptional: fatherName, gender, cityId, walletPin, imeiNo, deviceModel, appVersion, provinceId, permanentAddress, presentAddress, nidIssuanceDate"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -5,9 +5,7 @@ import com.dfs.corporate.domain.Party;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 
@@ -92,7 +90,10 @@ public class CorporateOnboardingMapper {
                 primary != null ? primary.getNidIssuanceDate() : null,
                 party.getNidIssuanceDate(),
                 LocalDate.of(2020, 1, 1))));
-        p.setCityId(firstNonBlank(party.getCityId(), defaultCityId));
+        p.setCityId(firstNonBlank(
+                primary != null ? primary.getCityId() : null,
+                party.getCityId(),
+                defaultCityId));
         p.setPin(pin);
         p.setConfirmMpin(pin);
         p.setParentAgentId(party.getParentAgentId() != null ? party.getParentAgentId() : "");
@@ -109,14 +110,13 @@ public class CorporateOnboardingMapper {
             for (PartnerAppUser u : appUsers) {
                 String email = firstNonBlank(u.getEmail(), party.getEmail());
                 if (email == null) continue;
-                String rawSecret = firstNonBlank(u.getTempPin(), pin, "1234");
-                String encoded = Base64.getEncoder().encodeToString(rawSecret.getBytes(StandardCharsets.UTF_8));
-                p.getPartners().add(new CorporateOnboardingRequest.PartnerCredential(email, encoded));
+                // Plain password from force-change (Account API); fallback temp PIN / wallet pin
+                String plain = firstNonBlank(u.getPasswordPlain(), u.getTempPin(), pin, "1234");
+                p.getPartners().add(new CorporateOnboardingRequest.PartnerCredential(email, plain));
             }
         }
         if (p.getPartners().isEmpty() && party.getEmail() != null) {
-            String encoded = Base64.getEncoder().encodeToString(pin.getBytes(StandardCharsets.UTF_8));
-            p.getPartners().add(new CorporateOnboardingRequest.PartnerCredential(party.getEmail(), encoded));
+            p.getPartners().add(new CorporateOnboardingRequest.PartnerCredential(party.getEmail(), pin));
         }
 
         req.setPayload(p);

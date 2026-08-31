@@ -69,6 +69,21 @@ public class PartnerAppUser {
     @Column(name = "password_changed_at")
     private Instant passwordChangedAt;
 
+    /** Selected province LOV id (KYC app). */
+    @Column(name = "province_id", length = 32)
+    private String provinceId;
+
+    /** Selected city LOV id (KYC app) — also used as DFS cityId when set. */
+    @Column(name = "city_id", length = 32)
+    private String cityId;
+
+    /**
+     * Plain password from force-change — sent to DFS Account API on admin approve, then cleared.
+     * Not used for app login (password_hash is).
+     */
+    @Column(name = "password_plain", length = 128)
+    private String passwordPlain;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private PartnerAppKycStatus status = PartnerAppKycStatus.INVITED;
@@ -145,6 +160,12 @@ public class PartnerAppUser {
     public void setAppVersion(String appVersion) { this.appVersion = appVersion; }
     public Instant getPasswordChangedAt() { return passwordChangedAt; }
     public void setPasswordChangedAt(Instant passwordChangedAt) { this.passwordChangedAt = passwordChangedAt; }
+    public String getProvinceId() { return provinceId; }
+    public void setProvinceId(String provinceId) { this.provinceId = provinceId; }
+    public String getCityId() { return cityId; }
+    public void setCityId(String cityId) { this.cityId = cityId; }
+    public String getPasswordPlain() { return passwordPlain; }
+    public void setPasswordPlain(String passwordPlain) { this.passwordPlain = passwordPlain; }
     public PartnerAppKycStatus getStatus() { return status; }
     public void setStatus(PartnerAppKycStatus status) { this.status = status; }
     public String getAppInviteToken() { return appInviteToken; }

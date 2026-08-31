@@ -46,7 +46,8 @@ public class AccountProvisioningService {
     }
 
     /**
-     * Last partner KYC complete → call DFS backend corporateonboarding.
+     * Last partner KYC complete → move party to PENDING_APPROVAL for portal admin.
+     * DFS Account API is NOT called here — only on admin approve.
      */
     @Transactional
     public Party provisionAfterKycComplete(Long partyId) {
@@ -55,19 +56,11 @@ public class AccountProvisioningService {
         if (!allKycCompleted(partyId)) {
             return party;
         }
-        if (party.getAccountProvisionStatus() == AccountProvisionStatus.SUCCESS) {
-            return party;
-        }
-        if (party.getStatus() != PartyStatus.PENDING_APPROVAL
-                && party.getStatus() != PartyStatus.ACTIVE
-                && party.getStatus() != PartyStatus.SUBMITTED) {
-            return party;
-        }
         if (party.getStatus() == PartyStatus.SUBMITTED) {
             party.setStatus(PartyStatus.PENDING_APPROVAL);
-            partyRepository.save(party);
+            return partyRepository.save(party);
         }
-        return runAttempt(party);
+        return party;
     }
 
     @Transactional
@@ -109,6 +102,7 @@ public class AccountProvisioningService {
             party.setDfsAccountId(result.dfsAccountId());
             party.setAccountProvisionedAt(Instant.now());
             party.setAccountProvisionError(null);
+            clearPartnerPlainPasswords(party.getId());
         } else if (result.deferred()) {
             party.setAccountProvisionStatus(AccountProvisionStatus.PENDING);
             party.setAccountProvisionError(result.errorMessage());
@@ -117,5 +111,15 @@ public class AccountProvisioningService {
             party.setAccountProvisionError(result.errorMessage());
         }
         return partyRepository.save(party);
+    }
+
+    private void clearPartnerPlainPasswords(Long partyId) {
+        List<PartnerAppUser> users = appUserRepository.findByPartyIdOrderByIdAsc(partyId);
+        for (PartnerAppUser u : users) {
+            if (u.getPasswordPlain() != null) {
+                u.setPasswordPlain(null);
+                appUserRepository.save(u);
+            }
+        }
     }
 }

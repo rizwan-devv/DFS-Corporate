@@ -101,7 +101,10 @@ public class PartnerAppUserService {
         return toResponse(user);
     }
 
-    /** Stub until mobile app exists — mark partner KYC complete and maybe advance party. */
+    /**
+     * Stub until mobile app exists — mark partner KYC complete and maybe advance party.
+     * Does not call DFS Account API (that runs on admin approve).
+     */
     @Transactional
     public PartnerAppUserResponse markKycCompleted(Long appUserId) {
         PartnerAppUser user = appUserRepository.findById(appUserId)

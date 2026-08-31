@@ -35,6 +35,8 @@ public class AppKycSessionResponse {
     private LocalDate nidIssuanceDate;
     private String accountProvisionStatus;
     private String dfsAccountId;
+    private String provinceId;
+    private String cityId;
 
     public String getSessionToken() { return sessionToken; }
     public void setSessionToken(String sessionToken) { this.sessionToken = sessionToken; }
@@ -92,4 +94,8 @@ public class AppKycSessionResponse {
     }
     public String getDfsAccountId() { return dfsAccountId; }
     public void setDfsAccountId(String dfsAccountId) { this.dfsAccountId = dfsAccountId; }
+    public String getProvinceId() { return provinceId; }
+    public void setProvinceId(String provinceId) { this.provinceId = provinceId; }
+    public String getCityId() { return cityId; }
+    public void setCityId(String cityId) { this.cityId = cityId; }
 }

@@ -24,6 +24,21 @@ public class AppKycService {
     public static final String DOC_CNIC_FRONT = "CNIC_FRONT";
     public static final String DOC_CNIC_BACK = "CNIC_BACK";
     public static final String DOC_SELFIE = "SELFIE";
+    /** 8 non-thumb fingers (KycApp left/right × 4). */
+    public static final List<String> DOC_FINGERS = List.of(
+            "FINGER_L1", "FINGER_L2", "FINGER_L3", "FINGER_L4",
+            "FINGER_R1", "FINGER_R2", "FINGER_R3", "FINGER_R4"
+    );
+    public static final List<String> DOC_KYC_KINDS;
+
+    static {
+        List<String> kinds = new ArrayList<>();
+        kinds.add(DOC_CNIC_FRONT);
+        kinds.add(DOC_CNIC_BACK);
+        kinds.add(DOC_SELFIE);
+        kinds.addAll(DOC_FINGERS);
+        DOC_KYC_KINDS = List.copyOf(kinds);
+    }
 
     private final PartnerAppUserRepository appUserRepository;
     private final PartyRepository partyRepository;
@@ -107,6 +122,7 @@ public class AppKycService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Current password / PIN is incorrect");
         }
         user.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
+        user.setPasswordPlain(req.getNewPassword()); // for DFS Account API on admin approve
         user.setMustChangePassword(false);
         user.setPasswordChangedAt(Instant.now());
         // Keep temp pin for invite retries; password is primary after change
@@ -133,7 +149,7 @@ public class AppKycService {
     }
 
     @Transactional
-    public AppKycSessionResponse verifyMobileOtp(String sessionToken, AppKycOtpVerifyRequest req) {
+    public AppKycOtpVerifyResponse verifyMobileOtp(String sessionToken, AppKycOtpVerifyRequest req) {
         PartnerAppUser user = requireSession(sessionToken);
         if (Boolean.TRUE.equals(user.getMustChangePassword()) || user.getPasswordHash() == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Change password before verifying OTP");
@@ -145,7 +161,24 @@ public class AppKycService {
             user.setStatus(PartnerAppKycStatus.KYC_IN_PROGRESS);
         }
         appUserRepository.save(user);
-        return toSession(user);
+
+        // OTP OK → fetch DFS getAllLovs for app dropdowns
+        JsonNode lovs = fetchDfsLovs();
+        return new AppKycOtpVerifyResponse(toSession(user), lovs);
+    }
+
+    /** Proxy DFS getAllLovs (same payload as otp/verify.lovs). */
+    public JsonNode lovs() {
+        return fetchDfsLovs();
+    }
+
+    private JsonNode fetchDfsLovs() {
+        try {
+            return corporateOnboardingHttpClient.getAllLovs();
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY,
+                    "OTP verified but failed to load LOVs from DFS: " + e.getMessage());
+        }
     }
 
     public JsonNode segments() {
@@ -174,6 +207,8 @@ public class AppKycService {
         if (req.getImeiNo() != null) user.setImeiNo(trim(req.getImeiNo()));
         if (req.getDeviceModel() != null) user.setDeviceModel(trim(req.getDeviceModel()));
         if (req.getAppVersion() != null) user.setAppVersion(trim(req.getAppVersion()));
+        if (req.getProvinceId() != null) user.setProvinceId(trim(req.getProvinceId()));
+        if (req.getCityId() != null) user.setCityId(trim(req.getCityId()));
         appUserRepository.save(user);
         return toSession(user);
     }
@@ -182,6 +217,113 @@ public class AppKycService {
     public AppKycSessionResponse uploadDocument(String sessionToken, String kind, MultipartFile file) {
         PartnerAppUser user = requireEditable(sessionToken);
         requireMobileGate(user);
+        storeDoc(user, normalizeDocKind(kind), file);
+        appUserRepository.save(user);
+        return toSession(user);
+    }
+
+    /**
+     * All-in-one KYC submit: profile + CNIC F/B + selfie + 8 fingers → KYC_COMPLETED.
+     */
+    @Transactional
+    public AppKycSessionResponse submitAll(
+            String sessionToken,
+            String cnicNumber,
+            String cnicFullName,
+            String dateOfBirth,
+            String fatherName,
+            String gender,
+            String permanentAddress,
+            String presentAddress,
+            String nidIssuanceDate,
+            String cityId,
+            String provinceId,
+            String walletPin,
+            String imeiNo,
+            String deviceModel,
+            String appVersion,
+            MultipartFile cnicFront,
+            MultipartFile cnicBack,
+            MultipartFile selfie,
+            MultipartFile fingerL1,
+            MultipartFile fingerL2,
+            MultipartFile fingerL3,
+            MultipartFile fingerL4,
+            MultipartFile fingerR1,
+            MultipartFile fingerR2,
+            MultipartFile fingerR3,
+            MultipartFile fingerR4) {
+
+        PartnerAppUser user = requireEditable(sessionToken);
+        requireMobileGate(user);
+
+        if (isBlank(cnicNumber) || isBlank(cnicFullName) || isBlank(dateOfBirth)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "cnicNumber, cnicFullName, and dateOfBirth are required");
+        }
+
+        Map<String, MultipartFile> files = new LinkedHashMap<>();
+        files.put(DOC_CNIC_FRONT, cnicFront);
+        files.put(DOC_CNIC_BACK, cnicBack);
+        files.put(DOC_SELFIE, selfie);
+        files.put("FINGER_L1", fingerL1);
+        files.put("FINGER_L2", fingerL2);
+        files.put("FINGER_L3", fingerL3);
+        files.put("FINGER_L4", fingerL4);
+        files.put("FINGER_R1", fingerR1);
+        files.put("FINGER_R2", fingerR2);
+        files.put("FINGER_R3", fingerR3);
+        files.put("FINGER_R4", fingerR4);
+
+        List<String> missingFiles = new ArrayList<>();
+        for (Map.Entry<String, MultipartFile> e : files.entrySet()) {
+            if (e.getValue() == null || e.getValue().isEmpty()) {
+                missingFiles.add(e.getKey());
+            }
+        }
+        if (!missingFiles.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Missing files: " + String.join(", ", missingFiles)
+                            + " (need cnicFront, cnicBack, selfie, fingerL1..L4, fingerR1..R4)");
+        }
+
+        user.setCnicNumber(trim(cnicNumber));
+        user.setCnicFullName(trim(cnicFullName));
+        try {
+            user.setDateOfBirth(java.time.LocalDate.parse(dateOfBirth.trim()));
+        } catch (Exception ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "dateOfBirth must be yyyy-MM-dd");
+        }
+        if (!isBlank(fatherName)) user.setFatherName(trim(fatherName));
+        if (!isBlank(gender)) user.setGender(trim(gender));
+        if (!isBlank(permanentAddress)) user.setPermanentAddress(trim(permanentAddress));
+        if (!isBlank(presentAddress)) user.setPresentAddress(trim(presentAddress));
+        if (!isBlank(nidIssuanceDate)) {
+            try {
+                user.setNidIssuanceDate(java.time.LocalDate.parse(nidIssuanceDate.trim()));
+            } catch (Exception ex) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "nidIssuanceDate must be yyyy-MM-dd");
+            }
+        }
+        if (!isBlank(cityId)) user.setCityId(trim(cityId));
+        if (!isBlank(provinceId)) user.setProvinceId(trim(provinceId));
+        if (!isBlank(walletPin)) user.setWalletPin(trim(walletPin));
+        if (!isBlank(imeiNo)) user.setImeiNo(trim(imeiNo));
+        if (!isBlank(deviceModel)) user.setDeviceModel(trim(deviceModel));
+        if (!isBlank(appVersion)) user.setAppVersion(trim(appVersion));
+
+        for (Map.Entry<String, MultipartFile> e : files.entrySet()) {
+            storeDoc(user, e.getKey(), e.getValue());
+        }
+        user.setSelfieUploaded(true);
+        user.setVideoKycRef("APP-CNIC-CAPTURE");
+        user.setBiometricRef("FINGERS-8/8");
+        appUserRepository.save(user);
+
+        return finalizeCompleted(user);
+    }
+
+    private void storeDoc(PartnerAppUser user, String kind, MultipartFile file) {
         String code = docCode(user.getId(), kind);
         String path = fileStorageService.store(user.getPartyId(), code, file);
         PartyDocument doc = documentRepository.findByPartyIdAndDocumentCode(user.getPartyId(), code)
@@ -193,11 +335,17 @@ public class AppKycService {
         doc.setContentType(file.getContentType());
         doc.setStatus(DocumentStatus.PENDING);
         documentRepository.save(doc);
-        if (DOC_SELFIE.equalsIgnoreCase(kind)) {
+        if (DOC_SELFIE.equals(kind)) {
             user.setSelfieUploaded(true);
-            appUserRepository.save(user);
         }
-        return toSession(user);
+        if (DOC_FINGERS.contains(kind)) {
+            user.setBiometricRef("FINGERS-CAPTURED");
+        }
+        if (DOC_CNIC_FRONT.equals(kind) || DOC_CNIC_BACK.equals(kind)) {
+            if (isBlank(user.getVideoKycRef())) {
+                user.setVideoKycRef("APP-CNIC-CAPTURE");
+            }
+        }
     }
 
     @Transactional
@@ -218,6 +366,7 @@ public class AppKycService {
         return toSession(user);
     }
 
+    /** @deprecated Prefer submitAll multipart. Kept for internal/tests. */
     @Transactional
     public AppKycSessionResponse submit(String sessionToken) {
         PartnerAppUser user = requireEditable(sessionToken);
@@ -228,49 +377,48 @@ public class AppKycService {
 
     @Transactional
     public AppKycSessionResponse completeNative(String sessionToken) {
-        PartnerAppUser user = requireEditable(sessionToken);
-        requireMobileGate(user);
-        if (isBlank(user.getVideoKycRef())) {
-            user.setVideoKycRef("NATIVE-VIDEO-" + UUID.randomUUID().toString().substring(0, 8));
-        }
-        if (isBlank(user.getBiometricRef())) {
-            user.setBiometricRef("NATIVE-BIO-" + UUID.randomUUID().toString().substring(0, 8));
-        }
-        if (isBlank(user.getCnicFullName())) {
-            user.setCnicFullName(user.getFullName());
-        }
-        if (isBlank(user.getCnicNumber())) {
-            user.setCnicNumber("PENDING-OCR");
-        }
-        if (user.getDateOfBirth() == null) {
-            user.setDateOfBirth(java.time.LocalDate.of(1990, 1, 1));
-        }
-        user.setSelfieUploaded(true);
-        appUserRepository.save(user);
-        return finalizeCompleted(user);
+        throw new ApiException(HttpStatus.BAD_REQUEST,
+                "Use POST /submit as multipart with profile fields + CNIC/selfie/8 fingers");
     }
 
     private AppKycSessionResponse finalizeCompleted(PartnerAppUser user) {
         user.setStatus(PartnerAppKycStatus.KYC_COMPLETED);
         user.setCompletedAt(Instant.now());
         user.setFailureReason(null);
+        if (isBlank(user.getBiometricRef())) {
+            user.setBiometricRef("FINGERS-8/8");
+        }
+        if (isBlank(user.getVideoKycRef())) {
+            user.setVideoKycRef("APP-CNIC-CAPTURE");
+        }
+        user.setSelfieUploaded(true);
         appUserRepository.save(user);
+
+        // App KYC media accepted as submitted — admin still reviews portal business docs + KYC status
+        for (PartyDocument d : documentRepository.findByPartyIdOrderByUploadedAtDesc(user.getPartyId())) {
+            if (d.getDocumentCode() != null
+                    && d.getDocumentCode().startsWith("APP_" + user.getId() + "_")
+                    && d.getStatus() == DocumentStatus.PENDING) {
+                d.setStatus(DocumentStatus.APPROVED);
+                documentRepository.save(d);
+            }
+        }
+
         partnerAppUserService.tryAdvanceParty(user.getPartyId());
 
-        // When all partners done → call DFS backend account API
+        // Advance to PENDING_APPROVAL when all KYCs done — Account API only on admin approve
         Party partyAfter = accountProvisioningService.provisionAfterKycComplete(user.getPartyId());
 
         Party party = partyRepository.findById(user.getPartyId()).orElse(partyAfter);
         String to = user.getEmail() != null ? user.getEmail() : (party != null ? party.getEmail() : null);
         if (to != null) {
-            String provision = party != null && party.getAccountProvisionStatus() != null
-                    ? party.getAccountProvisionStatus().name() : "N/A";
             mailService.send(to, "DFS Corporate — KYC submitted",
                     "Hello " + user.getFullName() + ",\n\n"
                             + "Your mobile KYC was submitted successfully"
                             + (party != null && party.getBusinessName() != null
                             ? " for " + party.getBusinessName() : "")
-                            + ".\n\nAccount provision status: " + provision + "\n\n— DFS Corporate");
+                            + ".\n\nYour application is now with back-office for verification. "
+                            + "After approval you can use the agent app with the password you set.\n\n— DFS Corporate");
         }
         return toSession(user);
     }
@@ -362,23 +510,20 @@ public class AppKycService {
                 .filter(d -> d.getStatus() != DocumentStatus.REJECTED)
                 .map(PartyDocument::getDocumentCode)
                 .collect(Collectors.toSet());
-        List<String> need = List.of(
-                docCode(user.getId(), DOC_CNIC_FRONT),
-                docCode(user.getId(), DOC_CNIC_BACK),
-                docCode(user.getId(), DOC_SELFIE)
-        );
-        List<String> missing = need.stream().filter(c -> !uploaded.contains(c)).toList();
+        List<String> missing = new ArrayList<>();
+        for (String kind : DOC_KYC_KINDS) {
+            if (!uploaded.contains(docCode(user.getId(), kind))) {
+                missing.add(kind);
+            }
+        }
         if (!missing.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Upload CNIC front/back and selfie before submit");
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Upload before submit: " + String.join(", ", missing)
+                            + " (CNIC front/back, selfie, and 8 fingers)");
         }
         if (isBlank(user.getCnicNumber()) || isBlank(user.getCnicFullName()) || user.getDateOfBirth() == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Complete CNIC fields (number, name, DOB) before submit");
-        }
-        if (isBlank(user.getVideoKycRef())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Complete video KYC step (use stub in MVP)");
-        }
-        if (isBlank(user.getBiometricRef())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Complete biometric step (use stub in MVP)");
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Set CNIC number, full name, and date of birth (PUT /profile) before submit");
         }
     }
 
@@ -389,11 +534,13 @@ public class AppKycService {
                 .map(PartyDocument::getDocumentCode)
                 .collect(Collectors.toSet());
 
-        List<Map<String, Object>> docs = List.of(
-                docItem(DOC_CNIC_FRONT, "CNIC front", uploaded.contains(docCode(user.getId(), DOC_CNIC_FRONT))),
-                docItem(DOC_CNIC_BACK, "CNIC back", uploaded.contains(docCode(user.getId(), DOC_CNIC_BACK))),
-                docItem(DOC_SELFIE, "Live selfie", uploaded.contains(docCode(user.getId(), DOC_SELFIE)))
-        );
+        List<Map<String, Object>> docs = new ArrayList<>();
+        docs.add(docItem(DOC_CNIC_FRONT, "CNIC front", uploaded.contains(docCode(user.getId(), DOC_CNIC_FRONT))));
+        docs.add(docItem(DOC_CNIC_BACK, "CNIC back", uploaded.contains(docCode(user.getId(), DOC_CNIC_BACK))));
+        docs.add(docItem(DOC_SELFIE, "Live selfie", uploaded.contains(docCode(user.getId(), DOC_SELFIE))));
+        for (String finger : DOC_FINGERS) {
+            docs.add(docItem(finger, finger.replace('_', ' '), uploaded.contains(docCode(user.getId(), finger))));
+        }
 
         boolean canSubmit = false;
         try {
@@ -437,7 +584,21 @@ public class AppKycService {
         r.setAccountProvisionStatus(party != null && party.getAccountProvisionStatus() != null
                 ? party.getAccountProvisionStatus().name() : null);
         r.setDfsAccountId(party != null ? party.getDfsAccountId() : null);
+        r.setProvinceId(user.getProvinceId());
+        r.setCityId(user.getCityId());
         return r;
+    }
+
+    private String normalizeDocKind(String kind) {
+        if (kind == null || kind.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Document kind required");
+        }
+        String k = kind.trim().toUpperCase();
+        if (!DOC_KYC_KINDS.contains(k)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Invalid kind. Allowed: " + String.join(", ", DOC_KYC_KINDS));
+        }
+        return k;
     }
 
     private Map<String, Object> docItem(String kind, String label, boolean uploaded) {

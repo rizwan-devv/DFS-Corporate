@@ -48,49 +48,65 @@ public class AppKycController {
         return appKycService.sendMobileOtp(bearer(authorization));
     }
 
+    /** Verify OTP; response includes session + provinces/cities LOVs. */
     @PostMapping("/otp/verify")
-    public AppKycSessionResponse verifyOtp(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
-                                           @Valid @RequestBody AppKycOtpVerifyRequest req) {
+    public AppKycOtpVerifyResponse verifyOtp(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                             @Valid @RequestBody AppKycOtpVerifyRequest req) {
         return appKycService.verifyMobileOtp(bearer(authorization), req);
     }
 
-    /** Proxy DFS backend getAllSegments for KYC app dropdowns. */
+    /** Provinces/cities/etc from DFS getAllLovs (same as otp/verify.lovs). */
+    @GetMapping("/lovs")
+    public JsonNode lovs() {
+        return appKycService.lovs();
+    }
+
+    /** Proxy DFS backend getAllSegments for optional dropdowns. */
     @GetMapping("/segments")
     public JsonNode segments() {
         return appKycService.segments();
     }
 
-    @PutMapping("/profile")
-    public AppKycSessionResponse profile(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
-                                         @RequestBody AppKycProfileRequest req) {
-        return appKycService.updateProfile(bearer(authorization), req);
-    }
-
-    @PostMapping("/documents")
-    public AppKycSessionResponse upload(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
-                                        @RequestParam String kind,
-                                        @RequestParam("file") MultipartFile file) {
-        return appKycService.uploadDocument(bearer(authorization), kind, file);
-    }
-
-    @PostMapping("/video-stub")
-    public AppKycSessionResponse videoStub(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
-        return appKycService.stubVideo(bearer(authorization));
-    }
-
-    @PostMapping("/biometric-stub")
-    public AppKycSessionResponse biometricStub(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
-        return appKycService.stubBiometric(bearer(authorization));
-    }
-
-    @PostMapping("/submit")
-    public AppKycSessionResponse submit(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
-        return appKycService.submit(bearer(authorization));
-    }
-
-    @PostMapping("/complete")
-    public AppKycSessionResponse completeNative(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
-        return appKycService.completeNative(bearer(authorization));
+    /**
+     * Single KYC finish call: profile fields + CNIC front/back + selfie + 8 fingers.
+     * multipart/form-data — see AppKycService.submitAll.
+     */
+    @PostMapping(value = "/submit", consumes = "multipart/form-data")
+    public AppKycSessionResponse submit(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @RequestParam String cnicNumber,
+            @RequestParam String cnicFullName,
+            @RequestParam String dateOfBirth,
+            @RequestParam(required = false) String fatherName,
+            @RequestParam(required = false) String gender,
+            @RequestParam(required = false) String permanentAddress,
+            @RequestParam(required = false) String presentAddress,
+            @RequestParam(required = false) String nidIssuanceDate,
+            @RequestParam(required = false) String cityId,
+            @RequestParam(required = false) String provinceId,
+            @RequestParam(required = false) String walletPin,
+            @RequestParam(required = false) String imeiNo,
+            @RequestParam(required = false) String deviceModel,
+            @RequestParam(required = false) String appVersion,
+            @RequestParam("cnicFront") MultipartFile cnicFront,
+            @RequestParam("cnicBack") MultipartFile cnicBack,
+            @RequestParam("selfie") MultipartFile selfie,
+            @RequestParam("fingerL1") MultipartFile fingerL1,
+            @RequestParam("fingerL2") MultipartFile fingerL2,
+            @RequestParam("fingerL3") MultipartFile fingerL3,
+            @RequestParam("fingerL4") MultipartFile fingerL4,
+            @RequestParam("fingerR1") MultipartFile fingerR1,
+            @RequestParam("fingerR2") MultipartFile fingerR2,
+            @RequestParam("fingerR3") MultipartFile fingerR3,
+            @RequestParam("fingerR4") MultipartFile fingerR4) {
+        return appKycService.submitAll(
+                bearer(authorization),
+                cnicNumber, cnicFullName, dateOfBirth,
+                fatherName, gender, permanentAddress, presentAddress, nidIssuanceDate,
+                cityId, provinceId, walletPin, imeiNo, deviceModel, appVersion,
+                cnicFront, cnicBack, selfie,
+                fingerL1, fingerL2, fingerL3, fingerL4,
+                fingerR1, fingerR2, fingerR3, fingerR4);
     }
 
     @PostMapping("/fail")

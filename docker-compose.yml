@@ -1,0 +1,40 @@
+services:
+  dfs-corporate-backend:
+    build: ./backend
+    image: dfs-corporate-backend:latest
+    container_name: dfs-corporate-backend
+    restart: unless-stopped
+    ports:
+      - "8050:8090"
+    environment:
+      MYSQL_HOST: 172.17.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: dfs_corporate
+      MYSQL_USER: dfs
+      MYSQL_PASSWORD: change-me
+      JWT_SECRET: change-this-to-a-long-random-secret-32chars
+      FRONTEND_BASE_URL: http://46.224.146.158:8060
+      MOBILE_APP_BASE_URL: dfscorporate://kyc
+      MAIL_ENABLED: "false"
+      DFS_ACCOUNT_API_ENABLED: "false"
+      DFS_ACCOUNT_API_BASE_URL: http://46.225.160.93:18001
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - dfs_uploads:/app/uploads
+
+  dfs-corporate-frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: http://46.224.146.158:8050
+    image: dfs-corporate-frontend:latest
+    container_name: dfs-corporate-frontend
+    restart: unless-stopped
+    ports:
+      - "8060:80"
+    depends_on:
+      - dfs-corporate-backend
+
+volumes:
+  dfs_uploads:
