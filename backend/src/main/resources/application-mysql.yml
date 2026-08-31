@@ -1,0 +1,20 @@
+# Optional overrides (defaults already set in application.yml)
+# MYSQL_HOST=localhost
+# MYSQL_PORT=3306
+# MYSQL_DATABASE=dfs_corporate
+# MYSQL_USER=dfs
+# MYSQL_PASSWORD=change-me
+
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:dfs_corporate}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${MYSQL_USER:dfs}
+    password: ${MYSQL_PASSWORD:change-me}
+  h2:
+    console:
+      enabled: false
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect

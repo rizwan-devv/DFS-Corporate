@@ -1,0 +1,114 @@
+import { type FormEvent, useEffect, useState } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { api, type PartyType } from '../lib/api';
+import { useAuth } from '../auth/AuthContext';
+
+type PartyTypeOption = { code: PartyType; label: string };
+
+export function SignupPage() {
+  const navigate = useNavigate();
+  const { session } = useAuth();
+  const [types, setTypes] = useState<PartyTypeOption[]>([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({
+    partyType: 'MERCHANT' as PartyType,
+    fullName: '',
+    businessName: '',
+    email: '',
+    phone: '',
+    parentPartyPublicId: '',
+  });
+
+  useEffect(() => {
+    api<PartyTypeOption[]>('/api/party-types')
+      .then(setTypes)
+      .catch(() =>
+        setTypes([
+          { code: 'MERCHANT', label: 'Corporate Merchant' },
+          { code: 'SUB_MERCHANT', label: 'Corporate Sub-merchant' },
+        ]),
+      );
+  }, []);
+
+  if (session?.role === 'PLATFORM_ADMIN') return <Navigate to="/admin" replace />;
+  if (session) return <Navigate to="/dashboard" replace />;
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const res = await api<{ email: string; devOtpHint?: string }>('/api/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify(form),
+      });
+      navigate('/verify-otp', {
+        state: { email: res.email, devOtpHint: res.devOtpHint },
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Signup failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="page">
+      <div className="container">
+        <div className="panel">
+          <div className="badge">CORPORATE ACCOUNT</div>
+          <h2 style={{ marginTop: 0 }}>Register corporate account</h2>
+          <p className="muted">Merchant or sub-merchant only — SBP EMI corporate KYC.</p>
+          {error && <div className="alert alert-error">{error}</div>}
+          <form className="form-grid" onSubmit={onSubmit}>
+            <div className="form-row">
+              <label>Account type</label>
+              <select
+                value={form.partyType}
+                onChange={(e) => setForm({ ...form, partyType: e.target.value as PartyType })}
+              >
+                {types.map((t) => (
+                  <option key={t.code} value={t.code}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-row">
+              <label>Authorized person full name</label>
+              <input required value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
+            </div>
+            <div className="form-row">
+              <label>Legal / business name</label>
+              <input required value={form.businessName} onChange={(e) => setForm({ ...form, businessName: e.target.value })} />
+            </div>
+            <div className="form-row">
+              <label>Email</label>
+              <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </div>
+            <div className="form-row">
+              <label>Mobile number</label>
+              <input required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            </div>
+            {form.partyType === 'SUB_MERCHANT' && (
+              <div className="form-row">
+                <label>Parent merchant public ID</label>
+                <input
+                  required
+                  value={form.parentPartyPublicId}
+                  onChange={(e) => setForm({ ...form, parentPartyPublicId: e.target.value })}
+                  placeholder="UUID of active corporate merchant"
+                />
+              </div>
+            )}
+            <div className="actions">
+              <button className="btn btn-primary" disabled={loading} type="submit">
+                {loading ? 'Creating…' : 'Send OTP'}
+              </button>
+              <Link className="btn btn-ghost" to="/login">Already approved? Login</Link>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}

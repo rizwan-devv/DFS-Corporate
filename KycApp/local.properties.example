@@ -1,0 +1,5 @@
+## Optional: DFS backend URL for partner invite login / complete
+## Physical phone on same Wi‑Fi — use your PC LAN IP:
+# dfs.api.baseUrl=http://192.168.1.24:8090
+## Android emulator:
+# dfs.api.baseUrl=http://10.0.2.2:8090
