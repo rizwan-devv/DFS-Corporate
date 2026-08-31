@@ -133,9 +133,7 @@ public class AppKycService {
     @Transactional
     public Map<String, Object> sendMobileOtp(String sessionToken) {
         PartnerAppUser user = requireSession(sessionToken);
-        if (Boolean.TRUE.equals(user.getMustChangePassword()) || user.getPasswordHash() == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Change password before requesting mobile OTP");
-        }
+        // OTP is the first gate after login (phone+PIN). Password change comes later.
         if (Boolean.TRUE.equals(user.getMobileVerified())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Mobile already verified");
         }
@@ -151,9 +149,7 @@ public class AppKycService {
     @Transactional
     public AppKycOtpVerifyResponse verifyMobileOtp(String sessionToken, AppKycOtpVerifyRequest req) {
         PartnerAppUser user = requireSession(sessionToken);
-        if (Boolean.TRUE.equals(user.getMustChangePassword()) || user.getPasswordHash() == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Change password before verifying OTP");
-        }
+        // No password change required before OTP verify
         otpService.verifyMobile(user.getPhone(), OtpService.PURPOSE_APP_MOBILE, req.getCode());
         user.setMobileVerified(true);
         if (user.getStatus() == PartnerAppKycStatus.INVITED
@@ -471,12 +467,11 @@ public class AppKycService {
     }
 
     private void requireMobileGate(PartnerAppUser user) {
-        if (Boolean.TRUE.equals(user.getMustChangePassword()) || user.getPasswordHash() == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Force password change required first");
-        }
         if (!Boolean.TRUE.equals(user.getMobileVerified())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Mobile OTP verification required first");
         }
+        // Password change is after OTP (mustChangePassword flag for app UX / agent credentials).
+        // Not required to submit KYC media; set before admin approve for DFS Account API.
     }
 
     private PartnerAppUser requireSession(String sessionToken) {

@@ -35,14 +35,7 @@ public class AppKycController {
         return appKycService.me(bearer(authorization));
     }
 
-    /** Force password change after first login (temp PIN → password). */
-    @PostMapping("/change-password")
-    public AppKycSessionResponse changePassword(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
-                                                @Valid @RequestBody AppKycChangePasswordRequest req) {
-        return appKycService.changePassword(bearer(authorization), req);
-    }
-
-    /** Send OTP to partner mobile (after password change). */
+    /** Send OTP to partner mobile right after login (phone+PIN). No password change required first. */
     @PostMapping("/otp/send")
     public Map<String, Object> sendOtp(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
         return appKycService.sendMobileOtp(bearer(authorization));
@@ -53,6 +46,13 @@ public class AppKycController {
     public AppKycOtpVerifyResponse verifyOtp(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
                                              @Valid @RequestBody AppKycOtpVerifyRequest req) {
         return appKycService.verifyMobileOtp(bearer(authorization), req);
+    }
+
+    /** Temp PIN → password (after OTP). Needed for DFS Account API / agent login before admin approve. */
+    @PostMapping("/change-password")
+    public AppKycSessionResponse changePassword(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+                                                @Valid @RequestBody AppKycChangePasswordRequest req) {
+        return appKycService.changePassword(bearer(authorization), req);
     }
 
     /** Provinces/cities/etc from DFS getAllLovs (same as otp/verify.lovs). */

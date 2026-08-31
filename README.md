@@ -13,9 +13,9 @@ Standalone **entity / corporate** digital onboarding (not Paybridge).
 
 ## KYC app API sequence (`/api/public/app-kyc`)
 1. `POST /login` — phone+PIN **or** email+password  
-2. `POST /change-password` — force change (Bearer session); password kept for DFS Account API (plain) until admin approve  
-3. `POST /otp/send` → `POST /otp/verify` — on success calls DFS `getAllLovs` and returns it as `lovs`  
-4. **`POST /submit` (multipart)** — single call with profile fields + CNIC front/back + selfie + 8 fingers → `KYC_COMPLETED`  
+2. `POST /otp/send` → `POST /otp/verify` — OTP first (no password change required); on verify success returns DFS `getAllLovs` as `lovs`  
+3. `POST /change-password` — after OTP (temp PIN → password); password kept for DFS Account API (plain) until admin approve  
+4. **`POST /submit` (multipart)** — single call with profile fields + CNIC front/back + selfie + 8 fingers → `KYC_COMPLETED` (requires mobile verified)  
 5. When **all** partners done → party `PENDING_APPROVAL`  
 6. **Admin approve** → DFS `corporateonboarding` → agent app login  
 
