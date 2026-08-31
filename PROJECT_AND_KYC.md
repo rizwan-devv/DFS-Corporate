@@ -57,13 +57,18 @@ Signup → OTP → Entity form (§E) → Persons / Partner invites → Annex-C d
     → EDD (if HIGH) → Submit (Tracking ID + TAT) → Admin decision → Login
 ```
 
-### Partner KYC links (Partnership / LLP)
+### Partner KYC (Partnership / LLP)
 1. Lead selects **Partnership** or **LLP** and saves entity details.  
-2. Lead invites each partner (name + email) → system creates `associated_persons` + `partner_invites` with a public token.  
-3. Email/log shows link: `{frontend}/partner-kyc/{token}` (14-day expiry).  
-4. Partner opens link (**no login**) → fills CDD + uploads ID front/back + live photo → **COMPLETED**.  
-5. Lead uploads **firm** docs (deed, authority, registration/SECP).  
-6. Submit is allowed only when **all** active partner invites are COMPLETED.  
+2. Lead adds each **partner** (name + phone + email) on the roster.  
+3. After submit, each partner gets a **mobile app** invite (phone + temp PIN).  
+4. Partners complete OTP + biometric KYC in the app themselves.  
+5. Lead uploads firm docs (deed, authority, registration/SECP).  
+6. Submit / pending approval when all partner app KYCs are COMPLETED.
+
+### Sole prop / small business
+- **No authorized-person CDD** on the portal.  
+- Owner is the applicant (`applicantIsPartner` forced on).  
+- Owner completes KYC in the mobile app after submit.  
 
 ### Statuses
 `DRAFT` → `PENDING_APPROVAL` → `ACTIVE` | `REJECTED`
@@ -93,8 +98,9 @@ Signup → OTP → Entity form (§E) → Persons / Partner invites → Annex-C d
 - Terms acceptance  
 
 ### Associated natural persons
-- Sole / small business: add persons on the form (operators need mother’s maiden name, place of birth, DOB).  
-- Partnership / LLP: partners complete CDD via **invite link** (not only on the lead form).  
+- **Removed** as a separate “authorized person” portal step.  
+- Sole / small business: owner only (mobile KYC).  
+- Partnership / LLP: partner roster → each partner’s mobile KYC.  
 
 ### Documents (Annex-C driven)
 - Sole / small: ID front/back/photo + at least one alternative (NTN / trade body / letterhead / etc.).  

@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -72,6 +71,10 @@ public class OnboardingService {
         if (req.getApplicantIsPartner() != null) {
             party.setApplicantIsPartner(req.getApplicantIsPartner());
         }
+        // Sole prop / small business: owner is always the mobile KYC user (no authorized-person CDD)
+        if (!ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
+            party.setApplicantIsPartner(true);
+        }
         party.setIncorporationNumber(trim(req.getIncorporationNumber()));
         party.setIncorporationDate(req.getIncorporationDate());
         party.setIncorporationCountry(trim(req.getIncorporationCountry()) != null ? trim(req.getIncorporationCountry()) : "Pakistan");
@@ -123,13 +126,20 @@ public class OnboardingService {
     public PartyResponse addAssociatedPerson(AccountPrincipal principal, AssociatedPersonRequest req) {
         Party party = getParty(principal);
         assertEditable(party);
-        if (ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
-            if (isBlank(req.getPhone()) || isBlank(req.getEmail())) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Partner roster requires phone (app user ID) and email");
-            }
+        // Authorized-person CDD removed: only Partnership/LLP partner roster is allowed
+        if (!ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Associated persons are not used for this entity. "
+                            + "Sole prop / small business: tick “I am the owner” — owner completes KYC in the mobile app.");
+        }
+        if (isBlank(req.getPhone()) || isBlank(req.getEmail()) || isBlank(req.getFullName())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Partner roster requires full name, phone (app user ID) and email");
         }
         AssociatedPerson p = new AssociatedPerson();
         applyPerson(p, party.getId(), req);
+        // Always store as PARTNER — partners self-KYC in the app (no authorized-signatory role)
+        p.setRoleType(AssociatedPersonRole.PARTNER);
+        p.setAuthorizedToOperate(true);
         associatedPersonRepository.save(p);
         return enrich(party);
     }
@@ -246,30 +256,16 @@ public class OnboardingService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Complete entity information (Framework §E Table-B) before submit");
         }
 
-        if (Boolean.TRUE.equals(party.getApplicantIsPartner()) && isBlank(party.getPhone())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "Phone required when you are also a partner (used as mobile app user ID)");
-        }
-
         List<AssociatedPerson> persons = associatedPersonRepository.findByPartyIdOrderByIdAsc(party.getId());
-        boolean hasOperator = persons.stream().anyMatch(p -> Boolean.TRUE.equals(p.getAuthorizedToOperate()));
-        if (!hasOperator && !Boolean.TRUE.equals(party.getApplicantIsPartner())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "Add at least one natural person authorized to open/operate the account (Framework §E)");
-        }
-        if (!hasOperator && Boolean.TRUE.equals(party.getApplicantIsPartner())) {
-            // Lead is a partner — treat as operator for portal purposes
-        }
 
         if (ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
+            // Partnership / LLP: partners on roster self-KYC in the mobile app
             List<AssociatedPerson> partners = persons.stream()
-                    .filter(p -> p.getRoleType() == AssociatedPersonRole.PARTNER
-                            || p.getRoleType() == AssociatedPersonRole.AUTHORIZED_SIGNATORY
-                            || Boolean.TRUE.equals(p.getAuthorizedToOperate()))
+                    .filter(p -> p.getRoleType() == AssociatedPersonRole.PARTNER)
                     .toList();
             if (partners.isEmpty() && !Boolean.TRUE.equals(party.getApplicantIsPartner())) {
                 throw new ApiException(HttpStatus.BAD_REQUEST,
-                        "Add partner roster (name, phone, email) — partners complete KYC in the mobile app");
+                        "Add partner roster (name, phone, email) — each partner completes KYC in the mobile app");
             }
             for (AssociatedPerson p : partners) {
                 if (isBlank(p.getPhone()) || isBlank(p.getEmail())) {
@@ -277,23 +273,19 @@ public class OnboardingService {
                             "Each partner needs phone (app user ID) and email: " + p.getFullName());
                 }
             }
-        } else {
-            BigDecimal boThreshold = ConsolidatedKycRules.needsEdd(party.getRiskRating(), Boolean.TRUE.equals(party.getEddRequired()))
-                    ? new BigDecimal("10") : new BigDecimal("20");
-            boolean hasBo = persons.stream().anyMatch(p ->
-                    p.getRoleType() == AssociatedPersonRole.BENEFICIAL_OWNER
-                            || (p.getOwnershipPercent() != null && p.getOwnershipPercent().compareTo(boThreshold) >= 0)
-                            || p.getRoleType() == AssociatedPersonRole.SENIOR_MANAGING_OFFICIAL
-                            || p.getRoleType() == AssociatedPersonRole.PARTNER);
-            if (party.getEntityType() != CorporateEntityType.SOLE_PROPRIETORSHIP && !hasBo) {
+            if (Boolean.TRUE.equals(party.getApplicantIsPartner()) && isBlank(party.getPhone())) {
                 throw new ApiException(HttpStatus.BAD_REQUEST,
-                        "Declare beneficial owner(s) ≥" + boThreshold + "% or senior managing official (Framework §E)");
+                        "Phone required when you are also a partner (used as mobile app user ID)");
             }
-            for (AssociatedPerson op : persons.stream().filter(p -> Boolean.TRUE.equals(p.getAuthorizedToOperate())).toList()) {
-                if (isBlank(op.getMotherMaidenName()) || isBlank(op.getPlaceOfBirth()) || op.getDateOfBirth() == null) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST,
-                            "Authorized operators require mother's maiden name, place of birth and DOB (Framework §E.2)");
-                }
+        } else {
+            // Sole prop / small business: owner only — no authorized-person CDD on portal
+            if (!Boolean.TRUE.equals(party.getApplicantIsPartner())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        "Confirm you are the owner/applicant (mobile KYC will be sent to you after submit)");
+            }
+            if (isBlank(party.getPhone())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        "Phone required — used as mobile app user ID for the owner");
             }
         }
 
@@ -311,9 +303,7 @@ public class OnboardingService {
 
         if (ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
             for (AssociatedPerson p : persons) {
-                if (p.getRoleType() != AssociatedPersonRole.PARTNER
-                        && p.getRoleType() != AssociatedPersonRole.AUTHORIZED_SIGNATORY
-                        && !Boolean.TRUE.equals(p.getAuthorizedToOperate())) {
+                if (p.getRoleType() != AssociatedPersonRole.PARTNER) {
                     continue;
                 }
                 List<String> need = List.of(
@@ -383,9 +373,7 @@ public class OnboardingService {
                 .toList());
         if (ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
             for (AssociatedPerson p : persons) {
-                if (p.getRoleType() != AssociatedPersonRole.PARTNER
-                        && p.getRoleType() != AssociatedPersonRole.AUTHORIZED_SIGNATORY
-                        && !Boolean.TRUE.equals(p.getAuthorizedToOperate())) {
+                if (p.getRoleType() != AssociatedPersonRole.PARTNER) {
                     continue;
                 }
                 String front = ConsolidatedKycRules.partnerCnicFront(p.getId());

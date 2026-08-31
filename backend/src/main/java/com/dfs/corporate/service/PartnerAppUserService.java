@@ -57,10 +57,9 @@ public class PartnerAppUserService {
         List<PartnerAppUser> created = new ArrayList<>();
 
         if (ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
+            // Only PARTNER roster entries — each partner self-KYCs in the app (no authorized-person invites)
             for (AssociatedPerson p : persons) {
-                if (p.getRoleType() == AssociatedPersonRole.PARTNER
-                        || p.getRoleType() == AssociatedPersonRole.AUTHORIZED_SIGNATORY
-                        || Boolean.TRUE.equals(p.getAuthorizedToOperate())) {
+                if (p.getRoleType() == AssociatedPersonRole.PARTNER) {
                     created.add(upsertUser(party, p.getId(), p.getFullName(), p.getPhone(), p.getEmail()));
                 }
             }

@@ -71,10 +71,12 @@ type Party = {
   onboardingStep?: number;
 };
 
-const ROLES = ['AUTHORIZED_SIGNATORY', 'BENEFICIAL_OWNER', 'PARTNER', 'SENIOR_MANAGING_OFFICIAL', 'OTHER'];
-
 function needsPartnerRoster(entityType?: string) {
   return entityType === 'PARTNERSHIP' || entityType === 'LLP';
+}
+
+function isOwnerEntity(entityType?: string) {
+  return !needsPartnerRoster(entityType);
 }
 
 export function OnboardingPage() {
@@ -87,7 +89,7 @@ export function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [entity, setEntity] = useState({
     fullName: '', businessName: '', entityType: 'SOLE_PROPRIETORSHIP',
-    partnershipUnregistered: false, applicantIsPartner: false,
+    partnershipUnregistered: false, applicantIsPartner: true,
     incorporationNumber: '', incorporationDate: '', incorporationCountry: 'Pakistan',
     incorporationAuthority: 'SECP', ntnNumber: '', taxCountry: 'Pakistan',
     fatcaCrsDeclared: false, fatcaCrsDetails: '',
@@ -97,14 +99,8 @@ export function OnboardingPage() {
     intendedRelationship: '', termsAccepted: false, onboardingStep: 2,
     geoLocation: '', riskRating: 'MEDIUM', eddRequired: false, eddNotes: '', videoKycRef: '',
   });
-  const [person, setPerson] = useState({
-    roleType: 'AUTHORIZED_SIGNATORY', fullName: '', fatherOrSpouseName: '',
-    dateOfBirth: '', motherMaidenName: '', placeOfBirth: '',
-    idDocumentType: 'CNIC', idDocumentNumber: '', ownershipPercent: '',
-    authorizedToOperate: true, phone: '', email: '',
-  });
   const [roster, setRoster] = useState({
-    fullName: '', email: '', phone: '', roleType: 'PARTNER', authorizedToOperate: true,
+    fullName: '', email: '', phone: '',
   });
 
   const load = useCallback(async () => {
@@ -169,31 +165,22 @@ export function OnboardingPage() {
     e.preventDefault();
     setError(''); setOk(''); setLoading(true);
     try {
+      const ownerMode = isOwnerEntity(entity.entityType);
+      const payload = {
+        ...entity,
+        applicantIsPartner: ownerMode ? true : entity.applicantIsPartner,
+        onboardingStep: ownerMode ? 3 : 2,
+      };
       const data = await api<Party>('/api/onboarding/profile', {
         method: 'PUT', token: session!.token,
-        body: JSON.stringify({ ...entity, onboardingStep: 2 }),
+        body: JSON.stringify(payload),
       });
-      setParty(data); setOk('Entity details saved'); setStep(2);
+      setParty(data);
+      setEntity((prev) => ({ ...prev, applicantIsPartner: !!data.applicantIsPartner }));
+      setOk('Entity details saved');
+      setStep(ownerMode ? 3 : 2);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
-    } finally { setLoading(false); }
-  }
-
-  async function addPerson(e: FormEvent) {
-    e.preventDefault();
-    setError(''); setOk(''); setLoading(true);
-    try {
-      const body = {
-        ...person,
-        ownershipPercent: person.ownershipPercent ? Number(person.ownershipPercent) : null,
-        dateOfBirth: person.dateOfBirth || null,
-      };
-      const data = await api<Party>('/api/onboarding/associated-persons', {
-        method: 'POST', token: session!.token, body: JSON.stringify(body),
-      });
-      setParty(data); setOk('Associated person added'); setStep(3);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed');
     } finally { setLoading(false); }
   }
 
@@ -204,16 +191,16 @@ export function OnboardingPage() {
       const data = await api<Party>('/api/onboarding/associated-persons', {
         method: 'POST', token: session!.token,
         body: JSON.stringify({
-          roleType: roster.roleType,
+          roleType: 'PARTNER',
           fullName: roster.fullName,
           email: roster.email,
           phone: roster.phone,
-          authorizedToOperate: roster.authorizedToOperate,
+          authorizedToOperate: true,
         }),
       });
       setParty(data);
-      setOk('Partner added to roster — upload their CNIC & agreement in Documents');
-      setRoster({ fullName: '', email: '', phone: '', roleType: 'PARTNER', authorizedToOperate: true });
+      setOk('Partner added — they will complete KYC in the mobile app after submit');
+      setRoster({ fullName: '', email: '', phone: '' });
       setStep(3);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
@@ -262,14 +249,23 @@ export function OnboardingPage() {
 
   const editable = party?.status === 'DRAFT' || party?.status === 'REJECTED';
   const partnerMode = needsPartnerRoster(entity.entityType);
+  const stepLabels = partnerMode
+    ? ['Entity', 'Partners', 'Documents', 'EDD', 'Review']
+    : ['Entity', 'Documents', 'EDD', 'Review'];
 
   return (
     <div className="page">
       <div className="container">
         <div className="steps">
-          {['Entity', 'Persons', 'Documents', 'EDD', 'Review'].map((label, i) => (
-            <span key={label} className={`step-pill ${step >= i + 1 ? 'active' : ''}`}>{i + 1}. {label}</span>
-          ))}
+          {stepLabels.map((label, i) => {
+            const stepNum = partnerMode ? i + 1 : (i === 0 ? 1 : i + 2);
+            const active = partnerMode ? step >= i + 1 : (i === 0 ? step >= 1 : step >= i + 2);
+            return (
+              <span key={label} className={`step-pill ${active ? 'active' : ''}`}>
+                {stepNum}. {label}
+              </span>
+            );
+          })}
         </div>
 
         <div className="panel panel--wide">
@@ -302,18 +298,32 @@ export function OnboardingPage() {
               <div className="form-row"><label>Contact / onboarder name</label>
                 <input required value={entity.fullName} onChange={(e) => setEntity({ ...entity, fullName: e.target.value })} /></div>
               <div className="form-row"><label>Entity type (Annex-C 1–4)</label>
-                <select value={entity.entityType} onChange={(e) => setEntity({ ...entity, entityType: e.target.value })}>
+                <select value={entity.entityType} onChange={(e) => {
+                  const next = e.target.value;
+                  setEntity({
+                    ...entity,
+                    entityType: next,
+                    applicantIsPartner: isOwnerEntity(next) ? true : entity.applicantIsPartner,
+                  });
+                }}>
                   {(entityTypes.length ? entityTypes : [
                     { code: 'SOLE_PROPRIETORSHIP', label: 'Sole Proprietorship' },
                   ]).map((t) => (
                     <option key={t.code} value={t.code}>{t.label}</option>
                   ))}
                 </select></div>
-              <label className="form-check">
-                <input type="checkbox" checked={entity.applicantIsPartner}
-                  onChange={(e) => setEntity({ ...entity, applicantIsPartner: e.target.checked })} />
-                I am also a partner / BO of this entity (I will receive the mobile KYC app link after submit)
-              </label>
+              {isOwnerEntity(entity.entityType) ? (
+                <p className="muted">
+                  Sole prop / small business: <strong>you are the owner</strong>. After submit you get the mobile KYC
+                  invite (phone below). No separate authorized person.
+                </p>
+              ) : (
+                <label className="form-check">
+                  <input type="checkbox" checked={entity.applicantIsPartner}
+                    onChange={(e) => setEntity({ ...entity, applicantIsPartner: e.target.checked })} />
+                  I am also a partner of this entity (I will also receive a mobile KYC app invite)
+                </label>
+              )}
               {entity.entityType === 'PARTNERSHIP' && (
                 <label className="form-check">
                   <input type="checkbox" checked={entity.partnershipUnregistered}
@@ -341,8 +351,9 @@ export function OnboardingPage() {
                 <input value={entity.addressDifferenceReason} onChange={(e) => setEntity({ ...entity, addressDifferenceReason: e.target.value })} /></div>
               <div className="form-row"><label>City</label>
                 <input value={entity.city} onChange={(e) => setEntity({ ...entity, city: e.target.value })} /></div>
-              <div className="form-row"><label>Phone (also used as app user ID if you are a partner)</label>
-                <input value={entity.phone} onChange={(e) => setEntity({ ...entity, phone: e.target.value })} /></div>
+              <div className="form-row"><label>Phone (mobile app user ID for owner / partner)</label>
+                <input required={isOwnerEntity(entity.entityType) || entity.applicantIsPartner}
+                  value={entity.phone} onChange={(e) => setEntity({ ...entity, phone: e.target.value })} /></div>
               <div className="form-row"><label>Nature of business</label>
                 <textarea required rows={2} value={entity.natureOfBusiness} onChange={(e) => setEntity({ ...entity, natureOfBusiness: e.target.value })} /></div>
               <div className="form-row"><label>Purpose of account/wallet</label>
@@ -361,90 +372,40 @@ export function OnboardingPage() {
             </form>
           )}
 
-          {editable && step >= 2 && step < 5 && (
+          {editable && partnerMode && step >= 2 && step < 5 && (
             <div className="section-block">
-              {partnerMode ? (
-                <>
-                  <h3>Partner roster</h3>
-                  <p className="muted">
-                    Add each partner (name, phone = future app user ID, email). You upload their CNIC &amp; agreement on the portal.
-                    After submit they get a <strong>mobile app</strong> KYC link — not a portal KYC page.
-                  </p>
-                  {(party?.associatedPersons || []).map((p) => (
-                    <div className="doc-row" key={p.id}>
-                      <div>
-                        <strong>{p.fullName}</strong>
-                        <div className="muted">{p.roleType} · {p.phone || 'no phone'} · {p.email || 'no email'}
-                          {p.authorizedToOperate ? ' · operator' : ''}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <form className="form-grid" onSubmit={addRosterPartner}>
-                    <div className="form-row"><label>Partner full name</label>
-                      <input required value={roster.fullName} onChange={(e) => setRoster({ ...roster, fullName: e.target.value })} /></div>
-                    <div className="form-row"><label>Phone (app user ID)</label>
-                      <input required value={roster.phone} onChange={(e) => setRoster({ ...roster, phone: e.target.value })} /></div>
-                    <div className="form-row"><label>Email</label>
-                      <input required type="email" value={roster.email} onChange={(e) => setRoster({ ...roster, email: e.target.value })} /></div>
-                    <div className="form-row"><label>Role</label>
-                      <select value={roster.roleType} onChange={(e) => setRoster({ ...roster, roleType: e.target.value })}>
-                        <option value="PARTNER">PARTNER</option>
-                        <option value="AUTHORIZED_SIGNATORY">AUTHORIZED_SIGNATORY</option>
-                        <option value="BENEFICIAL_OWNER">BENEFICIAL_OWNER</option>
-                      </select></div>
-                    <label className="form-check">
-                      <input type="checkbox" checked={roster.authorizedToOperate}
-                        onChange={(e) => setRoster({ ...roster, authorizedToOperate: e.target.checked })} />
-                      Authorized to open / operate account
-                    </label>
-                    <div className="actions">
-                      <button className="btn btn-primary" disabled={loading} type="submit">Add partner</button>
-                      <button className="btn btn-ghost" type="button" onClick={() => setStep(3)}>Continue to documents</button>
-                    </div>
-                  </form>
-                </>
-              ) : (
-                <>
-                  <h3>Associated persons (§E)</h3>
-                  <p className="muted">Need ≥1 authorized operator; BOs ≥20% (or ≥10% if EDD/HIGH).</p>
-                  {(party?.associatedPersons || []).map((p) => (
-                    <div className="doc-row" key={p.id}>
-                      <div><strong>{p.fullName}</strong>
-                        <div className="muted">{p.roleType} {p.authorizedToOperate ? '· operator' : ''} {p.ownershipPercent != null ? `· ${p.ownershipPercent}%` : ''}</div>
-                      </div>
-                    </div>
-                  ))}
-                  <form className="form-grid" onSubmit={addPerson}>
-                    <div className="form-row"><label>Role</label>
-                      <select value={person.roleType} onChange={(e) => setPerson({ ...person, roleType: e.target.value })}>
-                        {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                      </select></div>
-                    <div className="form-row"><label>Full name</label>
-                      <input required value={person.fullName} onChange={(e) => setPerson({ ...person, fullName: e.target.value })} /></div>
-                    <div className="form-row"><label>Father / spouse</label>
-                      <input value={person.fatherOrSpouseName} onChange={(e) => setPerson({ ...person, fatherOrSpouseName: e.target.value })} /></div>
-                    <div className="form-row"><label>Date of birth</label>
-                      <input type="date" value={person.dateOfBirth} onChange={(e) => setPerson({ ...person, dateOfBirth: e.target.value })} /></div>
-                    <div className="form-row"><label>Mother&apos;s maiden name (operators)</label>
-                      <input value={person.motherMaidenName} onChange={(e) => setPerson({ ...person, motherMaidenName: e.target.value })} /></div>
-                    <div className="form-row"><label>Place of birth (operators)</label>
-                      <input value={person.placeOfBirth} onChange={(e) => setPerson({ ...person, placeOfBirth: e.target.value })} /></div>
-                    <div className="form-row"><label>ID number</label>
-                      <input value={person.idDocumentNumber} onChange={(e) => setPerson({ ...person, idDocumentNumber: e.target.value })} /></div>
-                    <div className="form-row"><label>Ownership %</label>
-                      <input value={person.ownershipPercent} onChange={(e) => setPerson({ ...person, ownershipPercent: e.target.value })} /></div>
-                    <label className="form-check">
-                      <input type="checkbox" checked={person.authorizedToOperate} onChange={(e) => setPerson({ ...person, authorizedToOperate: e.target.checked })} />
-                      Authorized to open / operate account
-                    </label>
-                    <div className="actions">
-                      <button className="btn btn-primary" disabled={loading} type="submit">Add person</button>
-                      <button className="btn btn-ghost" type="button" onClick={() => setStep(3)}>Continue to documents</button>
-                    </div>
-                  </form>
-                </>
-              )}
+              <h3>Partner roster</h3>
+              <p className="muted">
+                Add each partner (name, phone = app user ID, email). After submit, <strong>each partner</strong> completes
+                KYC in the mobile app — no separate authorized-person form.
+              </p>
+              {(party?.associatedPersons || []).map((p) => (
+                <div className="doc-row" key={p.id}>
+                  <div>
+                    <strong>{p.fullName}</strong>
+                    <div className="muted">PARTNER · {p.phone || 'no phone'} · {p.email || 'no email'}</div>
+                  </div>
+                </div>
+              ))}
+              <form className="form-grid" onSubmit={addRosterPartner}>
+                <div className="form-row"><label>Partner full name</label>
+                  <input required value={roster.fullName} onChange={(e) => setRoster({ ...roster, fullName: e.target.value })} /></div>
+                <div className="form-row"><label>Phone (app user ID)</label>
+                  <input required value={roster.phone} onChange={(e) => setRoster({ ...roster, phone: e.target.value })} /></div>
+                <div className="form-row"><label>Email</label>
+                  <input required type="email" value={roster.email} onChange={(e) => setRoster({ ...roster, email: e.target.value })} /></div>
+                <div className="actions">
+                  <button className="btn btn-primary" disabled={loading} type="submit">Add partner</button>
+                  <button className="btn btn-ghost" type="button" onClick={() => setStep(3)}>Continue to documents</button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {editable && !partnerMode && step === 2 && (
+            <div className="section-block">
+              <p className="muted">No authorized-person step for this entity. Continue to documents.</p>
+              <button className="btn btn-primary" type="button" onClick={() => setStep(3)}>Continue to documents</button>
             </div>
           )}
 

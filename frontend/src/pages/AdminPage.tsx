@@ -484,13 +484,15 @@ export function AdminPage() {
             )}
 
             <div className="ops-block">
-              <h4>Associated persons / roster</h4>
-              {(selected.associatedPersons || []).length === 0 && <p className="muted">None listed</p>}
+              <h4>Partners / owner roster</h4>
+              {(selected.associatedPersons || []).length === 0 && (
+                <p className="muted">None on roster (sole prop uses owner mobile KYC only)</p>
+              )}
               {(selected.associatedPersons || []).map((p) => (
                 <div className="doc-row" key={p.id}>
                   <div>
                     <strong>{p.fullName}</strong>
-                    <div className="muted">{p.roleType}{p.authorizedToOperate ? ' · operator' : ''}{p.phone ? ` · ${p.phone}` : ''}{p.email ? ` · ${p.email}` : ''}</div>
+                    <div className="muted">{p.roleType}{p.phone ? ` · ${p.phone}` : ''}{p.email ? ` · ${p.email}` : ''}</div>
                   </div>
                 </div>
               ))}
