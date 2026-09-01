@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, apiUrl } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 
 type Brand = { id: number; code: string; name: string; merchantCount: number };
@@ -75,9 +75,48 @@ const STATUS_FILTERS = [
   { value: 'ALL', label: 'All' },
 ];
 
-function isIdDoc(code: string) {
-  const c = code.toUpperCase();
-  return c.includes('ID_FRONT') || c.includes('ID_BACK') || c.includes('CNIC') || c.includes('PHOTO') || c.includes('_PHOTO');
+function isPreviewable(doc: Doc) {
+  const ct = (doc.contentType || '').toLowerCase();
+  if (ct.startsWith('image/') || ct.startsWith('video/')) return true;
+  return /\.(jpe?g|png|gif|webp|mp4|webm|mov|3gp)$/i.test(doc.originalName || '');
+}
+
+function humanizeDocKind(code: string): string {
+  const stripped = code.replace(/^PARTNER_\d+_/, '').replace(/^APP_\d+_/, '');
+  return stripped.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+type DocGroup = { title: string; docs: Doc[] };
+
+function buildDocGroups(party: Party): DocGroup[] {
+  const docs = party.documents ?? [];
+  const used = new Set<number>();
+  const groups: DocGroup[] = [];
+
+  const firm = docs.filter((d) => !d.documentCode.startsWith('PARTNER_') && !d.documentCode.startsWith('APP_'));
+  if (firm.length) {
+    firm.forEach((d) => used.add(d.id));
+    groups.push({ title: 'Firm / entity documents', docs: firm });
+  }
+
+  for (const p of party.associatedPersons ?? []) {
+    const list = docs.filter((d) => d.documentCode.startsWith(`PARTNER_${p.id}_`));
+    list.forEach((d) => used.add(d.id));
+    if (list.length) groups.push({ title: `${p.fullName} — portal uploads`, docs: list });
+  }
+
+  for (const u of party.partnerAppUsers ?? []) {
+    const list = docs.filter((d) => d.documentCode.startsWith(`APP_${u.id}_`));
+    list.forEach((d) => used.add(d.id));
+    if (list.length) {
+      groups.push({ title: `${u.fullName} (${u.phone}) — mobile KYC`, docs: list });
+    }
+  }
+
+  const rest = docs.filter((d) => !used.has(d.id));
+  if (rest.length) groups.push({ title: 'Other documents', docs: rest });
+
+  return groups;
 }
 
 function kycPct(p: Party) {
@@ -276,12 +315,8 @@ export function AdminPage() {
     if (selected) await open(selected.id);
   }
 
-  function docUrl(docId: number) {
-    return `/api/admin/documents/${docId}/file`;
-  }
-
   async function fetchDocBlob(docId: number): Promise<string> {
-    const res = await fetch(docUrl(docId), {
+    const res = await fetch(apiUrl(`/api/admin/documents/${docId}/file`), {
       headers: { Authorization: `Bearer ${session!.token}` },
     });
     if (!res.ok) throw new Error('Could not load document');
@@ -499,32 +534,48 @@ export function AdminPage() {
             </div>
 
             <div className="ops-block">
-              <h4>Documents & ID thumbnails</h4>
-              <div className="ops-thumb-grid">
-                {(selected.documents || []).filter((d) => isIdDoc(d.documentCode)).map((d) => (
-                  <DocThumb key={d.id} doc={d} token={session.token} onOpen={() => setViewerDocId(d.id)} fetchBlob={fetchDocBlob} />
-                ))}
-              </div>
-              {(selected.documents || []).map((d) => (
-                <div className="doc-row" key={d.id}>
-                  <div>
-                    <strong>{d.documentCode}</strong>
-                    <div className="muted">{d.originalName}</div>
+              <h4>Documents — review each before approve</h4>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Grouped by firm, partner portal uploads, and mobile KYC. View then Approve or Reject — viewing alone does not approve.
+              </p>
+              {buildDocGroups(selected).map((group) => (
+                <div key={group.title} style={{ marginBottom: '1rem' }}>
+                  <h5 style={{ margin: '0 0 0.5rem', fontSize: '0.95rem' }}>{group.title}</h5>
+                  <div className="ops-thumb-grid">
+                    {group.docs.filter((d) => isPreviewable(d)).map((d) => (
+                      <DocThumb
+                        key={d.id}
+                        doc={d}
+                        label={humanizeDocKind(d.documentCode)}
+                        token={session.token}
+                        onOpen={() => setViewerDocId(d.id)}
+                        fetchBlob={fetchDocBlob}
+                      />
+                    ))}
                   </div>
-                  <div className="actions" style={{ marginTop: 0 }}>
-                    <span className={`status status-${d.status === 'APPROVED' ? 'ACTIVE' : d.status === 'REJECTED' ? 'REJECTED' : 'PENDING_APPROVAL'}`}>{d.status}</span>
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => setViewerDocId(d.id)}>View</button>
-                    {d.status === 'PENDING' && (
-                      <>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => void reviewDoc(d.id, true)}>Approve</button>
-                        <button className="btn btn-danger btn-sm" type="button" onClick={() => void reviewDoc(d.id, false)}>Reject</button>
-                      </>
-                    )}
-                  </div>
+                  {group.docs.map((d) => (
+                    <DocRow
+                      key={d.id}
+                      doc={d}
+                      label={humanizeDocKind(d.documentCode)}
+                      onView={() => setViewerDocId(d.id)}
+                      onApprove={() => void reviewDoc(d.id, true)}
+                      onReject={() => void reviewDoc(d.id, false)}
+                    />
+                  ))}
                 </div>
               ))}
+              {(selected.documents || []).length === 0 && (
+                <p className="muted">No documents uploaded yet.</p>
+              )}
               {viewerDocId != null && (
-                <DocViewer docId={viewerDocId} token={session.token} onClose={() => setViewerDocId(null)} fetchBlob={fetchDocBlob} />
+                <DocViewer
+                  docId={viewerDocId}
+                  doc={(selected.documents || []).find((d) => d.id === viewerDocId)}
+                  token={session.token}
+                  onClose={() => setViewerDocId(null)}
+                  fetchBlob={fetchDocBlob}
+                />
               )}
             </div>
 
@@ -615,12 +666,49 @@ export function AdminPage() {
   );
 }
 
+function DocRow({
+  doc,
+  label,
+  onView,
+  onApprove,
+  onReject,
+}: {
+  doc: Doc;
+  label: string;
+  onView: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <div className="doc-row">
+      <div>
+        <strong>{label}</strong>
+        <div className="muted">{doc.documentCode} · {doc.originalName}</div>
+      </div>
+      <div className="actions" style={{ marginTop: 0 }}>
+        <span className={`status status-${doc.status === 'APPROVED' ? 'ACTIVE' : doc.status === 'REJECTED' ? 'REJECTED' : 'PENDING_APPROVAL'}`}>
+          {doc.status}
+        </span>
+        <button className="btn btn-ghost btn-sm" type="button" onClick={onView}>View</button>
+        {doc.status === 'PENDING' && (
+          <>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={onApprove}>Approve</button>
+            <button className="btn btn-danger btn-sm" type="button" onClick={onReject}>Reject</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DocThumb({
   doc,
+  label,
   onOpen,
   fetchBlob,
 }: {
   doc: Doc;
+  label: string;
   token: string;
   onOpen: () => void;
   fetchBlob: (id: number) => Promise<string>;
@@ -628,31 +716,36 @@ function DocThumb({
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let url: string | null = null;
-    const isImg = (doc.contentType || '').startsWith('image/') || /\.(jpe?g|png|gif|webp)$/i.test(doc.originalName);
-    if (!isImg) return;
+    if (!isPreviewable(doc)) return;
     fetchBlob(doc.id).then((u) => { url = u; setSrc(u); }).catch(() => undefined);
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [doc.id, doc.contentType, doc.originalName, fetchBlob]);
 
   return (
-    <button type="button" className="ops-thumb" onClick={onOpen} title={doc.documentCode}>
-      {src ? <img src={src} alt={doc.documentCode} /> : <span>{doc.documentCode}</span>}
+    <button type="button" className="ops-thumb" onClick={onOpen} title={label}>
+      {src ? <img src={src} alt={label} /> : <span>{label}</span>}
     </button>
   );
 }
 
 function DocViewer({
   docId,
+  doc,
   onClose,
   fetchBlob,
 }: {
   docId: number;
+  doc?: Doc;
   token: string;
   onClose: () => void;
   fetchBlob: (id: number) => Promise<string>;
 }) {
   const [src, setSrc] = useState<string | null>(null);
   const [err, setErr] = useState('');
+  const isVideo =
+    (doc?.contentType || '').toLowerCase().startsWith('video/') ||
+    /\.(mp4|webm|mov|3gp)$/i.test(doc?.originalName || '');
+
   useEffect(() => {
     let url: string | null = null;
     fetchBlob(docId)
@@ -664,11 +757,14 @@ function DocViewer({
   return (
     <div className="ops-viewer">
       <div className="ops-viewer-bar">
-        <strong>Document #{docId}</strong>
+        <strong>{doc ? humanizeDocKind(doc.documentCode) : `Document #${docId}`}</strong>
         <button className="btn btn-ghost btn-sm" type="button" onClick={onClose}>Close viewer</button>
       </div>
       {err && <div className="alert alert-error">{err}</div>}
-      {src && (
+      {src && isVideo && (
+        <video src={src} controls className="ops-viewer-frame" style={{ maxWidth: '100%' }} />
+      )}
+      {src && !isVideo && (
         <iframe title="Document" src={src} className="ops-viewer-frame" />
       )}
     </div>

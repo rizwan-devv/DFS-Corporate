@@ -562,15 +562,7 @@ public class AppKycService {
         user.setSelfieUploaded(true);
         appUserRepository.save(user);
 
-        // App KYC media accepted as submitted — admin still reviews portal business docs + KYC status
-        for (PartyDocument d : documentRepository.findByPartyIdOrderByUploadedAtDesc(user.getPartyId())) {
-            if (d.getDocumentCode() != null
-                    && d.getDocumentCode().startsWith("APP_" + user.getId() + "_")
-                    && d.getStatus() == DocumentStatus.PENDING) {
-                d.setStatus(DocumentStatus.APPROVED);
-                documentRepository.save(d);
-            }
-        }
+        // Mobile KYC media stays PENDING until backoffice View + Approve/Reject each file.
 
         partnerAppUserService.tryAdvanceParty(user.getPartyId());
 

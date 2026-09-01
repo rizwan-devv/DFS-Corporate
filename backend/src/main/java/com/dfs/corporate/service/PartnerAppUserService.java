@@ -2,6 +2,7 @@ package com.dfs.corporate.service;
 
 import com.dfs.corporate.domain.*;
 import com.dfs.corporate.repository.AssociatedPersonRepository;
+import com.dfs.corporate.util.IdentityFormats;
 import com.dfs.corporate.repository.PartnerAppUserRepository;
 import com.dfs.corporate.repository.PartyRepository;
 import com.dfs.corporate.web.dto.PartnerAppUserResponse;
@@ -195,6 +196,7 @@ public class PartnerAppUserService {
     }
 
     private String normalizePhone(String phone) {
-        return phone == null ? "" : phone.replaceAll("[^0-9+]", "");
+        String digits = IdentityFormats.phoneDigits(phone);
+        return digits != null ? digits : "";
     }
 }

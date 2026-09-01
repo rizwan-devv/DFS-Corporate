@@ -178,12 +178,15 @@ public class AdminOnboardingService {
 
                 Your DFS Corporate application (%s) has been approved.
 
-                Login email: %s
-                Temporary password: %s
+                Portal login (web :8060):
+                  Email: %s
+                  Temporary password: %s
+                Use the portal to view your approved application — change password on first login.
 
-                Please login and change your password on first use.
+                Agent / mobile app: use your phone number + the password you set during mobile KYC
+                (change-password step), NOT this portal password.
 
-                DFS account status: %s%s
+                DFS backend account provision: %s%s
 
                 — DFS Corporate
                 """.formatted(

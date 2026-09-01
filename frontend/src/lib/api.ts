@@ -1,4 +1,9 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+export const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+
+/** Full URL for non-JSON fetches (e.g. admin document file download). */
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
 
 export type PartyType = 'MERCHANT' | 'SUB_MERCHANT';
 
