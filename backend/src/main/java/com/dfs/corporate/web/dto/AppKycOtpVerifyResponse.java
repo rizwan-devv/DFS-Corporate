@@ -3,7 +3,8 @@ package com.dfs.corporate.web.dto;
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
- * OTP verify success: session + DFS getAllLovs payload (city, occupation, …).
+ * OTP verify success: session + DFS getAllLovs payload (city, occupation, …)
+ * with {@code data.videoKyc} injected for read-aloud video verification.
  */
 public class AppKycOtpVerifyResponse {
     private AppKycSessionResponse session;

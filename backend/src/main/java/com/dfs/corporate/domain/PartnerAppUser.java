@@ -109,6 +109,10 @@ public class PartnerAppUser {
     @Column(name = "video_kyc_ref", length = 500)
     private String videoKycRef;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "video_verification_status", nullable = false, length = 32)
+    private VideoVerificationStatus videoVerificationStatus = VideoVerificationStatus.NONE;
+
     @Column(name = "biometric_ref", length = 500)
     private String biometricRef;
 
@@ -182,6 +186,10 @@ public class PartnerAppUser {
     public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
     public String getVideoKycRef() { return videoKycRef; }
     public void setVideoKycRef(String videoKycRef) { this.videoKycRef = videoKycRef; }
+    public VideoVerificationStatus getVideoVerificationStatus() { return videoVerificationStatus; }
+    public void setVideoVerificationStatus(VideoVerificationStatus videoVerificationStatus) {
+        this.videoVerificationStatus = videoVerificationStatus;
+    }
     public String getBiometricRef() { return biometricRef; }
     public void setBiometricRef(String biometricRef) { this.biometricRef = biometricRef; }
     public Boolean getSelfieUploaded() { return selfieUploaded; }

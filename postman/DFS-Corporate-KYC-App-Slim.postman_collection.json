@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "DFS Corporate — KYC App (Latest)",
-    "description": "Mobile KYC app APIs.\n\n**Base URL**\n- Local: http://localhost:8090\n- Server: http://46.224.146.158:8050\n\n**Required flow**\n1. POST login (phone+PIN) OR GET invite/{token}\n2. POST otp/send → POST otp/verify (OTP first; returns session + DFS getAllLovs in lovs)\n3. POST change-password (after OTP; temp PIN → password for DFS Account API)\n4. Capture CNIC/selfie/8 fingers on device\n5. **ONE** POST /submit (multipart) = profile fields + all 11 files → KYC_COMPLETED\n\nNo separate profile or documents APIs needed.\n\nAuth: Authorization: Bearer {{sessionToken}}",
+    "description": "Mobile KYC app APIs.\n\n**Base URL**\n- Local: http://localhost:8090\n- Server: http://46.224.146.158:8050\n\n**Required flow**\n1. POST login (phone+PIN) OR GET invite/{token}\n2. POST otp/send → POST otp/verify (OTP first; returns session + DFS getAllLovs in lovs)\n3. POST change-password (after OTP; temp PIN → password for DFS Account API)\n4. POST video-challenge → record ~10s → POST video-verification (multipart)\n5. Capture CNIC/selfie/8 fingers on device\n6. **ONE** POST /submit (multipart) = profile fields + all 11 files → KYC_COMPLETED\n\nAuth: Authorization: Bearer {{sessionToken}}",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -13,7 +13,8 @@
     { "key": "newPassword", "value": "NewPass@123" },
     { "key": "otpCode", "value": "123456" },
     { "key": "cityId", "value": "302" },
-    { "key": "walletPin", "value": "1234" }
+    { "key": "walletPin", "value": "1234" },
+    { "key": "challengeId", "value": "" }
   ],
   "item": [
     {
@@ -146,7 +147,64 @@
       ]
     },
     {
-      "name": "3 — Submit KYC (all-in-one)",
+      "name": "3 — Video verification",
+      "item": [
+        {
+          "name": "POST video-challenge (get text to read)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Challenge OK', () => pm.response.code === 200);",
+                "try {",
+                "  var j = pm.response.json();",
+                "  if (j.challengeId) pm.collectionVariables.set('challengeId', j.challengeId);",
+                "  pm.test('Has script', () => j.scriptText && j.scriptText.length > 0);",
+                "} catch(e){}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "url": "{{baseUrl}}/api/public/app-kyc/video-challenge",
+            "description": "Returns random read-aloud text (~10 sec). Show scriptText on screen, record video, then upload with challengeId."
+          }
+        },
+        {
+          "name": "POST video-verification (upload recording)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "type": "text/javascript",
+              "exec": [
+                "pm.test('Upload OK', () => pm.response.code === 200);",
+                "try {",
+                "  var j = pm.response.json();",
+                "  pm.test('Video uploaded', () => j.session && j.session.videoUploaded === true);",
+                "} catch(e){}"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{sessionToken}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "challengeId", "type": "text", "value": "{{challengeId}}" },
+                { "key": "video", "type": "file", "src": [], "description": "MP4/WebM read-aloud clip (~10s)" },
+                { "key": "durationMs", "type": "text", "value": "10000" }
+              ]
+            },
+            "url": "{{baseUrl}}/api/public/app-kyc/video-verification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 — Submit KYC (all-in-one)",
       "item": [
         {
           "name": "POST submit (profile + CNIC + selfie + 8 fingers)",

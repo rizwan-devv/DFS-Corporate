@@ -5,10 +5,14 @@ import com.dfs.corporate.integration.dfs.CorporateOnboardingHttpClient;
 import com.dfs.corporate.repository.PartnerAppUserRepository;
 import com.dfs.corporate.repository.PartyDocumentRepository;
 import com.dfs.corporate.repository.PartyRepository;
+import com.dfs.corporate.repository.VideoChallengeRepository;
 import com.dfs.corporate.util.IdentityFormats;
 import com.dfs.corporate.web.dto.*;
 import com.dfs.corporate.web.error.ApiException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -16,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -25,6 +30,7 @@ public class AppKycService {
     public static final String DOC_CNIC_FRONT = "CNIC_FRONT";
     public static final String DOC_CNIC_BACK = "CNIC_BACK";
     public static final String DOC_SELFIE = "SELFIE";
+    public static final String DOC_VIDEO_READALOUD = "VIDEO_READALOUD";
     /** 8 non-thumb fingers (KycApp left/right × 4). */
     public static final List<String> DOC_FINGERS = List.of(
             "FINGER_L1", "FINGER_L2", "FINGER_L3", "FINGER_L4",
@@ -41,38 +47,55 @@ public class AppKycService {
         DOC_KYC_KINDS = List.copyOf(kinds);
     }
 
+    private static final int VIDEO_CHALLENGE_TTL_MINUTES = 10;
+    private static final int VIDEO_DURATION_SECONDS = 10;
+    private static final Set<String> ALLOWED_VIDEO_TYPES = Set.of(
+            "video/mp4", "video/webm", "video/3gpp", "video/quicktime", "application/octet-stream");
+
     private final PartnerAppUserRepository appUserRepository;
     private final PartyRepository partyRepository;
     private final PartyDocumentRepository documentRepository;
+    private final VideoChallengeRepository videoChallengeRepository;
     private final FileStorageService fileStorageService;
+    private final VideoScriptService videoScriptService;
     private final PartnerAppUserService partnerAppUserService;
     private final AccountProvisioningService accountProvisioningService;
     private final OtpService otpService;
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
     private final CorporateOnboardingHttpClient corporateOnboardingHttpClient;
+    private final ObjectMapper objectMapper;
 
     public AppKycService(PartnerAppUserRepository appUserRepository,
                          PartyRepository partyRepository,
                          PartyDocumentRepository documentRepository,
+                         VideoChallengeRepository videoChallengeRepository,
                          FileStorageService fileStorageService,
+                         VideoScriptService videoScriptService,
                          PartnerAppUserService partnerAppUserService,
                          AccountProvisioningService accountProvisioningService,
                          OtpService otpService,
                          PasswordEncoder passwordEncoder,
                          MailService mailService,
-                         CorporateOnboardingHttpClient corporateOnboardingHttpClient) {
+                         CorporateOnboardingHttpClient corporateOnboardingHttpClient,
+                         ObjectMapper objectMapper) {
         this.appUserRepository = appUserRepository;
         this.partyRepository = partyRepository;
         this.documentRepository = documentRepository;
+        this.videoChallengeRepository = videoChallengeRepository;
         this.fileStorageService = fileStorageService;
+        this.videoScriptService = videoScriptService;
         this.partnerAppUserService = partnerAppUserService;
         this.accountProvisioningService = accountProvisioningService;
         this.otpService = otpService;
         this.passwordEncoder = passwordEncoder;
         this.mailService = mailService;
         this.corporateOnboardingHttpClient = corporateOnboardingHttpClient;
+        this.objectMapper = objectMapper;
     }
+
+    private record IssuedVideoChallenge(VideoChallenge challenge, VideoScriptService.ScriptPick script,
+                                        String businessName) {}
 
     @Transactional
     public AppKycSessionResponse openByToken(String inviteToken) {
@@ -159,8 +182,10 @@ public class AppKycService {
         }
         appUserRepository.save(user);
 
-        // OTP OK → fetch DFS getAllLovs for app dropdowns
-        JsonNode lovs = fetchDfsLovs();
+        // OTP OK → fetch DFS getAllLovs + inject video read-aloud text under data.videoKyc
+        JsonNode dfsLovs = fetchDfsLovs();
+        IssuedVideoChallenge issued = issueVideoChallengeForUser(user);
+        JsonNode lovs = mergeVideoKycIntoLovs(dfsLovs, issued);
         return new AppKycOtpVerifyResponse(toSession(user), lovs);
     }
 
@@ -184,6 +209,135 @@ public class AppKycService {
         } catch (Exception e) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Failed to load segments: " + e.getMessage());
         }
+    }
+
+    /** Re-issue read-aloud script if challenge expired (optional; also included in otp/verify lovs). */
+    @Transactional
+    public AppKycVideoChallengeResponse issueVideoChallenge(String sessionToken) {
+        PartnerAppUser user = requireEditable(sessionToken);
+        requireMobileGate(user);
+        IssuedVideoChallenge issued = issueVideoChallengeForUser(user);
+        return toVideoChallengeResponse(user, issued);
+    }
+
+    private IssuedVideoChallenge issueVideoChallengeForUser(PartnerAppUser user) {
+        expireOpenChallenges(user.getId());
+
+        Party party = partyRepository.findById(user.getPartyId()).orElse(null);
+        String businessName = party != null ? party.getBusinessName() : null;
+        VideoScriptService.ScriptPick script = videoScriptService.pickRandom(user.getFullName(), businessName);
+
+        VideoChallenge challenge = new VideoChallenge();
+        challenge.setChallengeId("vc_" + UUID.randomUUID().toString().replace("-", ""));
+        challenge.setAppUserId(user.getId());
+        challenge.setTemplateId(script.templateId());
+        challenge.setScriptText(script.scriptText());
+        challenge.setExpiresAt(Instant.now().plus(VIDEO_CHALLENGE_TTL_MINUTES, ChronoUnit.MINUTES));
+        challenge.setStatus(VideoChallengeStatus.ISSUED);
+        videoChallengeRepository.save(challenge);
+
+        user.setVideoVerificationStatus(VideoVerificationStatus.CHALLENGE_ISSUED);
+        appUserRepository.save(user);
+        return new IssuedVideoChallenge(challenge, script, businessName);
+    }
+
+    private AppKycVideoChallengeResponse toVideoChallengeResponse(PartnerAppUser user, IssuedVideoChallenge issued) {
+        AppKycVideoChallengeResponse res = new AppKycVideoChallengeResponse();
+        res.setChallengeId(issued.challenge().getChallengeId());
+        res.setScriptText(issued.challenge().getScriptText());
+        res.setDurationSeconds(VIDEO_DURATION_SECONDS);
+        res.setExpiresAt(issued.challenge().getExpiresAt());
+        res.setFullName(user.getFullName());
+        res.setBusinessName(issued.businessName());
+        res.setTemplateId(issued.script().templateId());
+        return res;
+    }
+
+    /** Adds data.videoKyc to DFS getAllLovs copy (city/province unchanged). */
+    private JsonNode mergeVideoKycIntoLovs(JsonNode dfsLovs, IssuedVideoChallenge issued) {
+        ObjectNode root = dfsLovs != null && dfsLovs.isObject()
+                ? (ObjectNode) dfsLovs.deepCopy()
+                : objectMapper.createObjectNode();
+        ObjectNode data;
+        if (root.has("data") && root.get("data").isObject()) {
+            data = (ObjectNode) root.get("data");
+        } else {
+            data = objectMapper.createObjectNode();
+            root.set("data", data);
+        }
+
+        VideoChallenge challenge = issued.challenge();
+        ObjectNode videoKyc = objectMapper.createObjectNode();
+        videoKyc.put("challengeId", challenge.getChallengeId());
+        videoKyc.put("scriptText", challenge.getScriptText());
+        videoKyc.put("durationSeconds", VIDEO_DURATION_SECONDS);
+        videoKyc.put("expiresAt", challenge.getExpiresAt().toString());
+        videoKyc.put("templateId", issued.script().templateId());
+        ArrayNode lines = videoKyc.putArray("lines");
+        for (String line : videoScriptService.toDisplayLines(challenge.getScriptText())) {
+            lines.add(line);
+        }
+        data.set("videoKyc", videoKyc);
+        return root;
+    }
+
+    /** Upload recorded read-aloud video for the issued challenge. */
+    @Transactional
+    public AppKycVideoVerificationResponse uploadVideoVerification(String sessionToken,
+                                                                     String challengeId,
+                                                                     MultipartFile video,
+                                                                     String durationMs) {
+        PartnerAppUser user = requireEditable(sessionToken);
+        requireMobileGate(user);
+
+        if (isBlank(challengeId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "challengeId is required");
+        }
+        if (video == null || video.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "video file is required");
+        }
+        validateVideoFile(video);
+
+        VideoChallenge challenge = videoChallengeRepository.findByChallengeId(challengeId.trim())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Invalid challengeId"));
+        if (!challenge.getAppUserId().equals(user.getId())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Challenge does not belong to this session");
+        }
+        if (challenge.getStatus() != VideoChallengeStatus.ISSUED) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Challenge already used");
+        }
+        if (Instant.now().isAfter(challenge.getExpiresAt())) {
+            challenge.setStatus(VideoChallengeStatus.EXPIRED);
+            videoChallengeRepository.save(challenge);
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Challenge expired — request a new video-challenge");
+        }
+
+        String code = docCode(user.getId(), DOC_VIDEO_READALOUD);
+        String path = fileStorageService.store(user.getPartyId(), code, video);
+
+        PartyDocument doc = documentRepository.findByPartyIdAndDocumentCode(user.getPartyId(), code)
+                .orElseGet(PartyDocument::new);
+        doc.setPartyId(user.getPartyId());
+        doc.setDocumentCode(code);
+        doc.setOriginalName(video.getOriginalFilename() != null ? video.getOriginalFilename() : "video-readaloud");
+        doc.setStoredPath(path);
+        doc.setContentType(video.getContentType());
+        doc.setStatus(DocumentStatus.PENDING);
+        documentRepository.save(doc);
+
+        challenge.setVideoPath(path);
+        challenge.setConsumedAt(Instant.now());
+        challenge.setStatus(VideoChallengeStatus.UPLOADED);
+        videoChallengeRepository.save(challenge);
+
+        user.setVideoKycRef("APP_" + user.getId() + "_VIDEO_" + challenge.getChallengeId());
+        user.setVideoVerificationStatus(VideoVerificationStatus.UPLOADED);
+        appUserRepository.save(user);
+
+        String msg = "Video received"
+                + (durationMs != null && !durationMs.isBlank() ? " (" + durationMs.trim() + " ms)" : "")
+                + "; complete CNIC/biometric submit next";
+        return new AppKycVideoVerificationResponse(toSession(user), msg);
     }
 
     @Transactional
@@ -313,10 +467,10 @@ public class AppKycService {
             storeDoc(user, e.getKey(), e.getValue());
         }
         user.setSelfieUploaded(true);
-        user.setVideoKycRef("APP-CNIC-CAPTURE");
         user.setBiometricRef("FINGERS-8/8");
         appUserRepository.save(user);
 
+        validateReady(user);
         return finalizeCompleted(user);
     }
 
@@ -338,9 +492,29 @@ public class AppKycService {
         if (DOC_FINGERS.contains(kind)) {
             user.setBiometricRef("FINGERS-CAPTURED");
         }
-        if (DOC_CNIC_FRONT.equals(kind) || DOC_CNIC_BACK.equals(kind)) {
-            if (isBlank(user.getVideoKycRef())) {
-                user.setVideoKycRef("APP-CNIC-CAPTURE");
+    }
+
+    private void expireOpenChallenges(Long appUserId) {
+        for (VideoChallenge open : videoChallengeRepository.findByAppUserIdAndStatus(
+                appUserId, VideoChallengeStatus.ISSUED)) {
+            open.setStatus(VideoChallengeStatus.EXPIRED);
+            videoChallengeRepository.save(open);
+        }
+    }
+
+    private void validateVideoFile(MultipartFile video) {
+        String contentType = video.getContentType();
+        if (contentType != null && !ALLOWED_VIDEO_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Unsupported video type: " + contentType + " (use mp4 or webm)");
+        }
+        String name = video.getOriginalFilename();
+        if (name != null) {
+            String lower = name.toLowerCase(Locale.ROOT);
+            if (!lower.endsWith(".mp4") && !lower.endsWith(".webm") && !lower.endsWith(".mov")
+                    && !lower.endsWith(".3gp")) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        "Video file must be .mp4, .webm, .mov, or .3gp");
             }
         }
     }
@@ -384,9 +558,6 @@ public class AppKycService {
         user.setFailureReason(null);
         if (isBlank(user.getBiometricRef())) {
             user.setBiometricRef("FINGERS-8/8");
-        }
-        if (isBlank(user.getVideoKycRef())) {
-            user.setVideoKycRef("APP-CNIC-CAPTURE");
         }
         user.setSelfieUploaded(true);
         appUserRepository.save(user);
@@ -434,6 +605,8 @@ public class AppKycService {
         user.setMustChangePassword(true);
         user.setMobileVerified(false);
         user.setPasswordHash(null);
+        user.setVideoVerificationStatus(VideoVerificationStatus.NONE);
+        user.setVideoKycRef(null);
         appUserRepository.save(user);
 
         Party party = partyRepository.findById(user.getPartyId()).orElse(null);
@@ -521,6 +694,10 @@ public class AppKycService {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Set CNIC number, full name, and date of birth (PUT /profile) before submit");
         }
+        if (user.getVideoVerificationStatus() != VideoVerificationStatus.UPLOADED) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Video verification required: POST /video-challenge then POST /video-verification before submit");
+        }
     }
 
     private AppKycSessionResponse toSession(PartnerAppUser user) {
@@ -534,6 +711,9 @@ public class AppKycService {
         docs.add(docItem(DOC_CNIC_FRONT, "CNIC front", uploaded.contains(docCode(user.getId(), DOC_CNIC_FRONT))));
         docs.add(docItem(DOC_CNIC_BACK, "CNIC back", uploaded.contains(docCode(user.getId(), DOC_CNIC_BACK))));
         docs.add(docItem(DOC_SELFIE, "Live selfie", uploaded.contains(docCode(user.getId(), DOC_SELFIE))));
+        docs.add(docItem(DOC_VIDEO_READALOUD, "Video read-aloud",
+                user.getVideoVerificationStatus() == VideoVerificationStatus.UPLOADED
+                        || uploaded.contains(docCode(user.getId(), DOC_VIDEO_READALOUD))));
         for (String finger : DOC_FINGERS) {
             docs.add(docItem(finger, finger.replace('_', ' '), uploaded.contains(docCode(user.getId(), finger))));
         }
@@ -563,6 +743,9 @@ public class AppKycService {
         r.setCnicFullName(user.getCnicFullName());
         r.setDateOfBirth(user.getDateOfBirth());
         r.setVideoKycRef(user.getVideoKycRef());
+        r.setVideoVerificationStatus(user.getVideoVerificationStatus() != null
+                ? user.getVideoVerificationStatus().name() : VideoVerificationStatus.NONE.name());
+        r.setVideoUploaded(user.getVideoVerificationStatus() == VideoVerificationStatus.UPLOADED);
         r.setBiometricRef(user.getBiometricRef());
         r.setSelfieUploaded(Boolean.TRUE.equals(user.getSelfieUploaded())
                 || uploaded.contains(docCode(user.getId(), DOC_SELFIE)));

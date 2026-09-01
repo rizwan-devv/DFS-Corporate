@@ -20,6 +20,8 @@ public class AppKycSessionResponse {
     private String cnicFullName;
     private LocalDate dateOfBirth;
     private String videoKycRef;
+    private String videoVerificationStatus;
+    private Boolean videoUploaded;
     private String biometricRef;
     private Boolean selfieUploaded;
     private String failureReason;
@@ -62,6 +64,12 @@ public class AppKycSessionResponse {
     public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }
     public String getVideoKycRef() { return videoKycRef; }
     public void setVideoKycRef(String videoKycRef) { this.videoKycRef = videoKycRef; }
+    public String getVideoVerificationStatus() { return videoVerificationStatus; }
+    public void setVideoVerificationStatus(String videoVerificationStatus) {
+        this.videoVerificationStatus = videoVerificationStatus;
+    }
+    public Boolean getVideoUploaded() { return videoUploaded; }
+    public void setVideoUploaded(Boolean videoUploaded) { this.videoUploaded = videoUploaded; }
     public String getBiometricRef() { return biometricRef; }
     public void setBiometricRef(String biometricRef) { this.biometricRef = biometricRef; }
     public Boolean getSelfieUploaded() { return selfieUploaded; }

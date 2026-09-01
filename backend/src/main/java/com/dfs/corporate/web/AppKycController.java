@@ -55,6 +55,24 @@ public class AppKycController {
         return appKycService.changePassword(bearer(authorization), req);
     }
 
+    /** Random read-aloud text (~10 sec) for video verification. Call before recording. */
+    @PostMapping("/video-challenge")
+    public AppKycVideoChallengeResponse videoChallenge(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization) {
+        return appKycService.issueVideoChallenge(bearer(authorization));
+    }
+
+    /** Upload recorded read-aloud video (multipart). Requires challengeId from video-challenge. */
+    @PostMapping(value = "/video-verification", consumes = "multipart/form-data")
+    public AppKycVideoVerificationResponse videoVerification(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @RequestParam String challengeId,
+            @RequestParam("video") MultipartFile video,
+            @RequestParam(required = false) String durationMs) {
+        return appKycService.uploadVideoVerification(
+                bearer(authorization), challengeId, video, durationMs);
+    }
+
     /** Provinces/cities/etc from DFS getAllLovs (same as otp/verify.lovs). */
     @GetMapping("/lovs")
     public JsonNode lovs() {
