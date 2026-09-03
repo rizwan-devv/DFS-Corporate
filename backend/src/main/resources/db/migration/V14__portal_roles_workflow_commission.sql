@@ -1,8 +1,12 @@
 -- Portal workflow roles, approval engine, franchise commission
 
 -- Allow multiple portal accounts per corporate party
+-- Unique index on party_id is also used by fk_accounts_party — drop FK first (MySQL 1553)
+ALTER TABLE accounts DROP FOREIGN KEY fk_accounts_party;
 ALTER TABLE accounts DROP INDEX party_id;
 CREATE INDEX idx_accounts_party ON accounts (party_id);
+ALTER TABLE accounts
+    ADD CONSTRAINT fk_accounts_party FOREIGN KEY (party_id) REFERENCES parties(id);
 
 CREATE TABLE IF NOT EXISTS account_portal_roles (
     id           BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
