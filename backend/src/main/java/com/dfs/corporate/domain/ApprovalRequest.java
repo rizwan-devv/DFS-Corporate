@@ -27,8 +27,7 @@ public class ApprovalRequest {
     @Column(nullable = false, length = 300)
     private String title;
 
-    @Lob
-    @Column(name = "payload_json")
+    @Column(name = "payload_json", columnDefinition = "TEXT")
     private String payloadJson;
 
     @Enumerated(EnumType.STRING)
