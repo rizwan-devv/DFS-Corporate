@@ -15,7 +15,12 @@ public class SignupRequest {
     private String email;
     @NotBlank
     private String phone;
-    /** Required when partyType = SUB_MERCHANT */
+    /**
+     * Franchise / child wallet signup — parent is taken from invite (preferred).
+     * Manual parentPartyPublicId is deprecated.
+     */
+    private String franchiseInviteToken;
+    /** @deprecated Use franchiseInviteToken invite link instead */
     private String parentPartyPublicId;
 
     public PartyType getPartyType() { return partyType; }
@@ -28,6 +33,8 @@ public class SignupRequest {
     public void setEmail(String email) { this.email = email; }
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
+    public String getFranchiseInviteToken() { return franchiseInviteToken; }
+    public void setFranchiseInviteToken(String franchiseInviteToken) { this.franchiseInviteToken = franchiseInviteToken; }
     public String getParentPartyPublicId() { return parentPartyPublicId; }
     public void setParentPartyPublicId(String parentPartyPublicId) { this.parentPartyPublicId = parentPartyPublicId; }
 }

@@ -17,17 +17,16 @@ export function SignupPage() {
     businessName: '',
     email: '',
     phone: '',
-    parentPartyPublicId: '',
   });
 
   useEffect(() => {
     api<PartyTypeOption[]>('/api/party-types')
-      .then(setTypes)
+      .then((data) => {
+        setTypes(data.length ? data : [{ code: 'MERCHANT', label: 'Corporate (Master Wallet)' }]);
+        if (data[0]?.code) setForm((f) => ({ ...f, partyType: data[0].code }));
+      })
       .catch(() =>
-        setTypes([
-          { code: 'MERCHANT', label: 'Corporate Merchant' },
-          { code: 'SUB_MERCHANT', label: 'Corporate Sub-merchant' },
-        ]),
+        setTypes([{ code: 'MERCHANT', label: 'Corporate (Master Wallet)' }]),
       );
   }, []);
 
@@ -57,22 +56,27 @@ export function SignupPage() {
     <div className="page">
       <div className="container">
         <div className="panel">
-          <div className="badge">CORPORATE ACCOUNT</div>
-          <h2 style={{ marginTop: 0 }}>Register corporate account</h2>
-          <p className="muted">Merchant or sub-merchant only — SBP EMI corporate KYC.</p>
+          <div className="badge">CORPORATE MASTER</div>
+          <h2 style={{ marginTop: 0 }}>Register corporate (master wallet)</h2>
+          <p className="muted">
+            Master corporate onboarding only. Franchises / child wallets join via a secure invite
+            link from the parent — not by entering a parent ID here.
+          </p>
           {error && <div className="alert alert-error">{error}</div>}
           <form className="form-grid" onSubmit={onSubmit}>
-            <div className="form-row">
-              <label>Account type</label>
-              <select
-                value={form.partyType}
-                onChange={(e) => setForm({ ...form, partyType: e.target.value as PartyType })}
-              >
-                {types.map((t) => (
-                  <option key={t.code} value={t.code}>{t.label}</option>
-                ))}
-              </select>
-            </div>
+            {types.length > 1 && (
+              <div className="form-row">
+                <label>Account type</label>
+                <select
+                  value={form.partyType}
+                  onChange={(e) => setForm({ ...form, partyType: e.target.value as PartyType })}
+                >
+                  {types.map((t) => (
+                    <option key={t.code} value={t.code}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="form-row">
               <label>Authorized person full name</label>
               <input required value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
@@ -89,17 +93,6 @@ export function SignupPage() {
               <label>Mobile number</label>
               <input required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
-            {form.partyType === 'SUB_MERCHANT' && (
-              <div className="form-row">
-                <label>Parent merchant public ID</label>
-                <input
-                  required
-                  value={form.parentPartyPublicId}
-                  onChange={(e) => setForm({ ...form, parentPartyPublicId: e.target.value })}
-                  placeholder="UUID of active corporate merchant"
-                />
-              </div>
-            )}
             <div className="actions">
               <button className="btn btn-primary" disabled={loading} type="submit">
                 {loading ? 'Creating…' : 'Send OTP'}

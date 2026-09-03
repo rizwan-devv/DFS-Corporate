@@ -53,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**", "/h2-console/**", "/actuator/health").permitAll()
                         .requestMatchers("/api/public/partner-kyc/**").permitAll()
                         .requestMatchers("/api/public/app-kyc/**").permitAll()
+                        .requestMatchers("/api/public/franchise-invite/**").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/party-types", "/api/party-types/**",
                                 "/api/entity-types", "/api/id-document-types").permitAll()

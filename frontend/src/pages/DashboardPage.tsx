@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
@@ -25,6 +25,35 @@ type Party = {
   dfsAccountId?: string;
   accountProvisionError?: string;
   accountProvisionedAt?: string;
+};
+
+type FranchiseInvite = {
+  id: number;
+  contactName: string;
+  email: string;
+  phone: string;
+  businessName?: string;
+  entityType?: string;
+  status: string;
+  inviteUrl: string;
+  invitedAt?: string;
+  expiresAt?: string;
+  completedAt?: string;
+  childTrackingId?: string;
+  childStatus?: string;
+};
+
+type FranchiseChild = {
+  id: number;
+  publicId: string;
+  trackingId?: string;
+  businessName?: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  status?: string;
+  partyType?: string;
+  entityType?: string;
 };
 
 function fmt(iso?: string) {
@@ -75,6 +104,34 @@ export function DashboardPage() {
   const [party, setParty] = useState<Party | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [invites, setInvites] = useState<FranchiseInvite[]>([]);
+  const [children, setChildren] = useState<FranchiseChild[]>([]);
+  const [franchiseError, setFranchiseError] = useState('');
+  const [franchiseBusy, setFranchiseBusy] = useState(false);
+  const [inviteForm, setInviteForm] = useState({
+    contactName: '',
+    email: '',
+    phone: '',
+    businessName: '',
+  });
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  const isMaster = (party?.partyType || session?.partyType) === 'MERCHANT';
+  const canManageFranchises = isMaster && (party?.status || session?.partyStatus) === 'ACTIVE';
+
+  const loadFranchiseData = useCallback(async (token: string) => {
+    try {
+      const [inv, kids] = await Promise.all([
+        api<FranchiseInvite[]>('/api/franchises/invites', { token }),
+        api<FranchiseChild[]>('/api/franchises/children', { token }),
+      ]);
+      setInvites(inv);
+      setChildren(kids);
+      setFranchiseError('');
+    } catch (err) {
+      setFranchiseError(err instanceof Error ? err.message : 'Failed to load franchise data');
+    }
+  }, []);
 
   useEffect(() => {
     if (!session?.token || session.role === 'PLATFORM_ADMIN') return;
@@ -85,7 +142,10 @@ export function DashboardPage() {
         if (cancelled) return;
         setParty(data);
         if (data.status && data.status !== session.partyStatus) {
-          setSession({ ...session, partyStatus: data.status });
+          setSession({ ...session, partyStatus: data.status, partyType: data.partyType || session.partyType });
+        }
+        if (data.partyType === 'MERCHANT' && data.status === 'ACTIVE') {
+          return loadFranchiseData(session.token);
         }
       })
       .catch((err) => {
@@ -106,6 +166,63 @@ export function DashboardPage() {
   const kycPct = kycTotal > 0 ? Math.round((kycDone / kycTotal) * 100) : 0;
   const provision = party?.accountProvisionStatus;
   const showApp = status === 'DRAFT' || status === 'REJECTED' || status === 'SUBMITTED' || status === 'PENDING_APPROVAL';
+  const badgeLabel = isMaster ? 'CORPORATE MASTER' : 'FRANCHISE / CHILD WALLET';
+
+  async function createInvite(e: FormEvent) {
+    e.preventDefault();
+    if (!session?.token) return;
+    setFranchiseBusy(true);
+    setFranchiseError('');
+    try {
+      await api('/api/franchises/invites', {
+        method: 'POST',
+        token: session.token,
+        body: JSON.stringify(inviteForm),
+      });
+      setInviteForm({ contactName: '', email: '', phone: '', businessName: '' });
+      await loadFranchiseData(session.token);
+    } catch (err) {
+      setFranchiseError(err instanceof Error ? err.message : 'Invite failed');
+    } finally {
+      setFranchiseBusy(false);
+    }
+  }
+
+  async function resendInvite(id: number) {
+    if (!session?.token) return;
+    setFranchiseBusy(true);
+    try {
+      await api(`/api/franchises/invites/${id}/resend`, { method: 'POST', token: session.token });
+      await loadFranchiseData(session.token);
+    } catch (err) {
+      setFranchiseError(err instanceof Error ? err.message : 'Resend failed');
+    } finally {
+      setFranchiseBusy(false);
+    }
+  }
+
+  async function cancelInvite(id: number) {
+    if (!session?.token) return;
+    setFranchiseBusy(true);
+    try {
+      await api(`/api/franchises/invites/${id}/cancel`, { method: 'POST', token: session.token });
+      await loadFranchiseData(session.token);
+    } catch (err) {
+      setFranchiseError(err instanceof Error ? err.message : 'Cancel failed');
+    } finally {
+      setFranchiseBusy(false);
+    }
+  }
+
+  async function copyLink(inv: FranchiseInvite) {
+    try {
+      await navigator.clipboard.writeText(inv.inviteUrl);
+      setCopiedId(inv.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      setFranchiseError('Could not copy link — select it manually from the invite row.');
+    }
+  }
 
   return (
     <div className="page">
@@ -113,7 +230,7 @@ export function DashboardPage() {
         <div className="panel panel--wide animate-in">
           <div className="panel-header">
             <div>
-              <div className="badge">MERCHANT PORTAL</div>
+              <div className="badge">{badgeLabel}</div>
               <h2 style={{ margin: '0 0 0.35rem' }}>
                 Welcome, {party?.fullName || session.fullName || 'user'}
               </h2>
@@ -217,6 +334,113 @@ export function DashboardPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {canManageFranchises && (
+                <div className="dash-kyc animate-in animate-in-delay-1" style={{ marginTop: '1.5rem' }}>
+                  <div className="dash-kyc-head">
+                    <h3 style={{ margin: 0 }}>Franchise / child wallets</h3>
+                    <span className="muted">{children.length} onboarded · {invites.length} invites</span>
+                  </div>
+                  <p className="muted" style={{ margin: '0.5rem 0 1rem' }}>
+                    Invite a franchise with a secure link. Parent is bound automatically — they never
+                    type your public ID.
+                  </p>
+                  {franchiseError && <div className="alert alert-error">{franchiseError}</div>}
+
+                  <form className="form-grid" onSubmit={createInvite} style={{ marginBottom: '1.25rem' }}>
+                    <div className="form-row">
+                      <label>Contact name</label>
+                      <input
+                        required
+                        value={inviteForm.contactName}
+                        onChange={(e) => setInviteForm({ ...inviteForm, contactName: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Email</label>
+                      <input
+                        required
+                        type="email"
+                        value={inviteForm.email}
+                        onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Phone (app user ID)</label>
+                      <input
+                        required
+                        value={inviteForm.phone}
+                        onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                        placeholder="03XXXXXXXXX"
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>Outlet / business name (optional)</label>
+                      <input
+                        value={inviteForm.businessName}
+                        onChange={(e) => setInviteForm({ ...inviteForm, businessName: e.target.value })}
+                      />
+                    </div>
+                    <div className="actions">
+                      <button className="btn btn-primary" disabled={franchiseBusy} type="submit">
+                        {franchiseBusy ? 'Working…' : 'Send franchise invite'}
+                      </button>
+                    </div>
+                  </form>
+
+                  {invites.length > 0 && (
+                    <div className="dash-kyc-list" style={{ marginBottom: '1.25rem' }}>
+                      <h4 style={{ margin: '0 0 0.5rem' }}>Invites</h4>
+                      {invites.map((inv) => (
+                        <div className="doc-row" key={inv.id} style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+                          <div style={{ flex: '1 1 200px' }}>
+                            <strong>{inv.contactName}</strong>
+                            <div className="muted">{inv.email} · {inv.phone}</div>
+                            <div className="muted" style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
+                              {inv.inviteUrl}
+                            </div>
+                          </div>
+                          <span className={`status status-${
+                            inv.status === 'COMPLETED' ? 'ACTIVE'
+                              : inv.status === 'CANCELLED' || inv.status === 'EXPIRED' ? 'REJECTED'
+                                : 'SUBMITTED'
+                          }`}>{inv.status}</span>
+                          <div className="actions" style={{ margin: 0 }}>
+                            <button type="button" className="btn btn-ghost" onClick={() => copyLink(inv)}>
+                              {copiedId === inv.id ? 'Copied' : 'Copy link'}
+                            </button>
+                            {inv.status !== 'COMPLETED' && inv.status !== 'CANCELLED' && (
+                              <>
+                                <button type="button" className="btn btn-ghost" disabled={franchiseBusy} onClick={() => resendInvite(inv.id)}>
+                                  Resend
+                                </button>
+                                <button type="button" className="btn btn-ghost" disabled={franchiseBusy} onClick={() => cancelInvite(inv.id)}>
+                                  Cancel
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {children.length > 0 && (
+                    <div className="dash-kyc-list">
+                      <h4 style={{ margin: '0 0 0.5rem' }}>Onboarded franchises</h4>
+                      {children.map((c) => (
+                        <div className="doc-row" key={c.id}>
+                          <div>
+                            <strong>{c.businessName || c.fullName}</strong>
+                            <div className="muted">{c.trackingId} · {c.email}</div>
+                          </div>
+                          <span className={`status status-${c.status || 'DRAFT'}`}>{c.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

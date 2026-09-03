@@ -30,48 +30,63 @@ public class AuthService {
     private final OtpService otpService;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
+    private final FranchiseInviteService franchiseInviteService;
 
     public AuthService(PartyRepository partyRepository,
                        AccountRepository accountRepository,
                        BrandRepository brandRepository,
                        OtpService otpService,
                        JwtService jwtService,
-                       PasswordEncoder passwordEncoder) {
+                       PasswordEncoder passwordEncoder,
+                       FranchiseInviteService franchiseInviteService) {
         this.partyRepository = partyRepository;
         this.accountRepository = accountRepository;
         this.brandRepository = brandRepository;
         this.otpService = otpService;
         this.jwtService = jwtService;
         this.passwordEncoder = passwordEncoder;
+        this.franchiseInviteService = franchiseInviteService;
     }
 
     @Transactional
     public Map<String, Object> signup(SignupRequest req) {
-        if (req.getPartyType() != PartyType.MERCHANT && req.getPartyType() != PartyType.SUB_MERCHANT) {
+        boolean viaFranchiseInvite = req.getFranchiseInviteToken() != null && !req.getFranchiseInviteToken().isBlank();
+        FranchiseInvite franchiseInvite = null;
+        Long parentPartyId = null;
+        PartyType partyType = req.getPartyType();
+
+        if (!viaFranchiseInvite && partyType == PartyType.SUB_MERCHANT) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "Only corporate accounts are supported: MERCHANT or SUB_MERCHANT");
+                    "Franchise / child wallet signup requires a secure invite link from the corporate parent "
+                            + "(do not enter parent ID manually)");
         }
+        if (!viaFranchiseInvite && partyType != PartyType.MERCHANT) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Only Corporate (master) signup is available here. Franchises join via invite link.");
+        }
+
         String email = req.getEmail().trim().toLowerCase();
         if (partyRepository.existsByEmailIgnoreCase(email) || accountRepository.existsByEmailIgnoreCase(email)) {
             throw new ApiException(HttpStatus.CONFLICT, "Email already registered");
         }
-        if (req.getPartyType() == PartyType.SUB_MERCHANT) {
-            if (req.getParentPartyPublicId() == null || req.getParentPartyPublicId().isBlank()) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Parent merchant is required for sub-merchant");
-            }
-            Party parent = partyRepository.findByPublicId(req.getParentPartyPublicId().trim())
-                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Parent merchant not found"));
-            if (parent.getPartyType() != PartyType.MERCHANT || parent.getStatus() != PartyStatus.ACTIVE) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Parent must be an active merchant");
-            }
+
+        if (viaFranchiseInvite) {
+            franchiseInvite = franchiseInviteService.consumeForSignup(req.getFranchiseInviteToken().trim());
+            parentPartyId = franchiseInvite.getParentPartyId();
+            partyType = PartyType.SUB_MERCHANT;
         }
 
         Party party = new Party();
         party.setPublicId(UUID.randomUUID().toString());
-        party.setPartyType(req.getPartyType());
+        party.setPartyType(partyType);
         party.setStatus(PartyStatus.DRAFT);
         party.setFullName(req.getFullName().trim());
-        party.setBusinessName(req.getBusinessName() != null ? req.getBusinessName().trim() : req.getFullName().trim());
+        String businessName = req.getBusinessName() != null ? req.getBusinessName().trim() : req.getFullName().trim();
+        if (viaFranchiseInvite && (req.getBusinessName() == null || req.getBusinessName().isBlank())
+                && franchiseInvite.getBusinessName() != null) {
+            businessName = franchiseInvite.getBusinessName();
+        }
+        party.setBusinessName(businessName);
         party.setEmail(email);
         party.setPhone(req.getPhone().trim());
         party.setKycTier("ENTITY_CONSOLIDATED");
@@ -84,10 +99,21 @@ public class AuthService {
         brandRepository.findByCodeIgnoreCase("DFS")
                 .map(Brand::getId)
                 .ifPresent(party::setBrandId);
-        if (req.getPartyType() == PartyType.SUB_MERCHANT) {
-            party.setParentPartyId(partyRepository.findByPublicId(req.getParentPartyPublicId().trim()).orElseThrow().getId());
+        if (parentPartyId != null) {
+            party.setParentPartyId(parentPartyId);
+        }
+        if (viaFranchiseInvite && franchiseInvite.getEntityType() != null && !franchiseInvite.getEntityType().isBlank()) {
+            try {
+                party.setEntityType(CorporateEntityType.valueOf(franchiseInvite.getEntityType().trim()));
+            } catch (IllegalArgumentException ignored) {
+                // entity type chosen later in onboarding
+            }
         }
         Party savedParty = partyRepository.save(party);
+
+        if (franchiseInvite != null) {
+            franchiseInviteService.markCompleted(franchiseInvite, savedParty.getId());
+        }
 
         Account account = new Account();
         account.setPublicId(UUID.randomUUID().toString());
@@ -103,7 +129,10 @@ public class AuthService {
         res.put("email", email);
         res.put("partyPublicId", savedParty.getPublicId());
         res.put("trackingId", savedParty.getTrackingId());
-        // Exposed only when mail is disabled — helps parallel local testing
+        res.put("partyType", savedParty.getPartyType().name());
+        if (parentPartyId != null) {
+            res.put("parentLinked", true);
+        }
         res.put("devOtpHint", code);
         return res;
     }

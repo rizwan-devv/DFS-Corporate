@@ -28,10 +28,9 @@ public class AuthController {
 
     @GetMapping("/party-types")
     public List<Map<String, String>> partyTypes() {
-        // Corporate accounts only (SBP EMI KYC scope for DFS Corporate)
+        // Master corporate only on public signup — franchises join via invite link
         return List.of(
-                Map.of("code", PartyType.MERCHANT.name(), "label", "Corporate Merchant"),
-                Map.of("code", PartyType.SUB_MERCHANT.name(), "label", "Corporate Sub-merchant")
+                Map.of("code", PartyType.MERCHANT.name(), "label", "Corporate (Master Wallet)")
         );
     }
 

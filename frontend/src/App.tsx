@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { HomePage } from './pages/HomePage';
 import { GettingStartedPage } from './pages/GettingStartedPage';
 import { SignupPage } from './pages/SignupPage';
+import { FranchiseOnboardPage } from './pages/FranchiseOnboardPage';
 import { VerifyOtpPage } from './pages/VerifyOtpPage';
 import { LoginPage } from './pages/LoginPage';
 import { OnboardingPage } from './pages/OnboardingPage';
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/getting-started" element={<GettingStartedPage />} />
             <Route path="/signup" element={<SignupPage />} />
+            <Route path="/franchise-onboard" element={<FranchiseOnboardPage />} />
             <Route path="/verify-otp" element={<VerifyOtpPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />

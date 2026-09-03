@@ -16,4 +16,5 @@ public interface PartyRepository extends JpaRepository<Party, Long> {
     List<Party> findAllByOrderByCreatedAtDesc();
     List<Party> findByBrandIdOrderByCreatedAtDesc(Long brandId);
     List<Party> findByBrandIdAndStatusOrderByCreatedAtDesc(Long brandId, PartyStatus status);
+    List<Party> findByParentPartyIdOrderByCreatedAtDesc(Long parentPartyId);
 }
