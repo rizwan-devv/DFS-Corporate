@@ -1,6 +1,7 @@
 package com.dfs.corporate.domain;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
@@ -31,6 +32,15 @@ public class FranchiseInvite {
 
     @Column(name = "entity_type", length = 40)
     private String entityType;
+
+    @Column(name = "commission_rate_percent", precision = 8, scale = 4)
+    private BigDecimal commissionRatePercent;
+
+    @Column(name = "commission_type", length = 40)
+    private String commissionType;
+
+    @Column(name = "commission_notes", length = 500)
+    private String commissionNotes;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
@@ -63,6 +73,14 @@ public class FranchiseInvite {
     public void setBusinessName(String businessName) { this.businessName = businessName; }
     public String getEntityType() { return entityType; }
     public void setEntityType(String entityType) { this.entityType = entityType; }
+    public BigDecimal getCommissionRatePercent() { return commissionRatePercent; }
+    public void setCommissionRatePercent(BigDecimal commissionRatePercent) {
+        this.commissionRatePercent = commissionRatePercent;
+    }
+    public String getCommissionType() { return commissionType; }
+    public void setCommissionType(String commissionType) { this.commissionType = commissionType; }
+    public String getCommissionNotes() { return commissionNotes; }
+    public void setCommissionNotes(String commissionNotes) { this.commissionNotes = commissionNotes; }
     public FranchiseInviteStatus getStatus() { return status; }
     public void setStatus(FranchiseInviteStatus status) { this.status = status; }
     public Long getChildPartyId() { return childPartyId; }

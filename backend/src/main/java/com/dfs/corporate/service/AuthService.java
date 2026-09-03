@@ -31,6 +31,8 @@ public class AuthService {
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
     private final FranchiseInviteService franchiseInviteService;
+    private final FranchiseCommissionService franchiseCommissionService;
+    private final PortalUserService portalUserService;
 
     public AuthService(PartyRepository partyRepository,
                        AccountRepository accountRepository,
@@ -38,7 +40,9 @@ public class AuthService {
                        OtpService otpService,
                        JwtService jwtService,
                        PasswordEncoder passwordEncoder,
-                       FranchiseInviteService franchiseInviteService) {
+                       FranchiseInviteService franchiseInviteService,
+                       FranchiseCommissionService franchiseCommissionService,
+                       PortalUserService portalUserService) {
         this.partyRepository = partyRepository;
         this.accountRepository = accountRepository;
         this.brandRepository = brandRepository;
@@ -46,6 +50,8 @@ public class AuthService {
         this.jwtService = jwtService;
         this.passwordEncoder = passwordEncoder;
         this.franchiseInviteService = franchiseInviteService;
+        this.franchiseCommissionService = franchiseCommissionService;
+        this.portalUserService = portalUserService;
     }
 
     @Transactional
@@ -113,6 +119,7 @@ public class AuthService {
 
         if (franchiseInvite != null) {
             franchiseInviteService.markCompleted(franchiseInvite, savedParty.getId());
+            franchiseCommissionService.proposeFromInvite(franchiseInvite, savedParty.getId());
         }
 
         Account account = new Account();
@@ -197,15 +204,20 @@ public class AuthService {
         account.setLastLoginAt(Instant.now());
         accountRepository.save(account);
 
+        portalUserService.ensureOwnerRoles(account, party);
+        var portalRoles = portalUserService.rolesOf(account.getId()).stream().map(Enum::name).toList();
+
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", account.getRole().name());
         claims.put("partyId", party.getId());
         claims.put("partyStatus", party.getStatus().name());
+        claims.put("portalRoles", portalRoles);
         String token = jwtService.generateToken(email, claims);
 
         Map<String, Object> res = new HashMap<>();
         res.put("token", token);
         res.put("role", account.getRole().name());
+        res.put("portalRoles", portalRoles);
         res.put("partyStatus", party.getStatus().name());
         res.put("partyType", party.getPartyType().name());
         res.put("partyPublicId", party.getPublicId());

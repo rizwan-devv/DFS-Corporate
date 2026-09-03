@@ -3,6 +3,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 export type Session = {
   token: string;
   role: string;
+  portalRoles?: string[];
   partyStatus?: string;
   partyType?: string;
   partyPublicId?: string;

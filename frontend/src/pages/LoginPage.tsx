@@ -19,6 +19,7 @@ export function LoginPage() {
       const res = await api<{
         token: string;
         role: string;
+        portalRoles?: string[];
         partyStatus: string;
         partyType: string;
         partyPublicId: string;
@@ -30,6 +31,7 @@ export function LoginPage() {
       setSession({
         token: res.token,
         role: res.role,
+        portalRoles: res.portalRoles || [],
         partyStatus: res.partyStatus,
         partyType: res.partyType,
         partyPublicId: res.partyPublicId,

@@ -41,6 +41,9 @@ type FranchiseInvite = {
   completedAt?: string;
   childTrackingId?: string;
   childStatus?: string;
+  commissionRatePercent?: number;
+  commissionType?: string;
+  commissionNotes?: string;
 };
 
 type FranchiseChild = {
@@ -54,6 +57,9 @@ type FranchiseChild = {
   status?: string;
   partyType?: string;
   entityType?: string;
+  commissionRatePercent?: number;
+  commissionStatus?: string;
+  commissionType?: string;
 };
 
 function fmt(iso?: string) {
@@ -113,6 +119,7 @@ export function DashboardPage() {
     email: '',
     phone: '',
     businessName: '',
+    commissionRatePercent: '',
   });
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
@@ -174,15 +181,42 @@ export function DashboardPage() {
     setFranchiseBusy(true);
     setFranchiseError('');
     try {
+      const body: Record<string, unknown> = {
+        contactName: inviteForm.contactName,
+        email: inviteForm.email,
+        phone: inviteForm.phone,
+        businessName: inviteForm.businessName || undefined,
+      };
+      if (inviteForm.commissionRatePercent.trim()) {
+        body.commissionRatePercent = Number(inviteForm.commissionRatePercent);
+        body.commissionType = 'PERCENT_GROSS';
+      }
       await api('/api/franchises/invites', {
         method: 'POST',
         token: session.token,
-        body: JSON.stringify(inviteForm),
+        body: JSON.stringify(body),
       });
-      setInviteForm({ contactName: '', email: '', phone: '', businessName: '' });
+      setInviteForm({ contactName: '', email: '', phone: '', businessName: '', commissionRatePercent: '' });
       await loadFranchiseData(session.token);
     } catch (err) {
       setFranchiseError(err instanceof Error ? err.message : 'Invite failed');
+    } finally {
+      setFranchiseBusy(false);
+    }
+  }
+
+  async function confirmCommission(childPartyId: number) {
+    if (!session?.token) return;
+    setFranchiseBusy(true);
+    setFranchiseError('');
+    try {
+      await api(`/api/franchises/children/${childPartyId}/confirm-commission`, {
+        method: 'POST',
+        token: session.token,
+      });
+      await loadFranchiseData(session.token);
+    } catch (err) {
+      setFranchiseError(err instanceof Error ? err.message : 'Commission lock failed');
     } finally {
       setFranchiseBusy(false);
     }
@@ -383,6 +417,18 @@ export function DashboardPage() {
                         onChange={(e) => setInviteForm({ ...inviteForm, businessName: e.target.value })}
                       />
                     </div>
+                    <div className="form-row">
+                      <label>Commission % (proposed — locked on approve)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={inviteForm.commissionRatePercent}
+                        onChange={(e) => setInviteForm({ ...inviteForm, commissionRatePercent: e.target.value })}
+                        placeholder="e.g. 10"
+                      />
+                    </div>
                     <div className="actions">
                       <button className="btn btn-primary" disabled={franchiseBusy} type="submit">
                         {franchiseBusy ? 'Working…' : 'Send franchise invite'}
@@ -398,6 +444,9 @@ export function DashboardPage() {
                           <div style={{ flex: '1 1 200px' }}>
                             <strong>{inv.contactName}</strong>
                             <div className="muted">{inv.email} · {inv.phone}</div>
+                            {inv.commissionRatePercent != null && (
+                              <div className="muted">Commission proposed: {inv.commissionRatePercent}%</div>
+                            )}
                             <div className="muted" style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
                               {inv.inviteUrl}
                             </div>
@@ -431,12 +480,27 @@ export function DashboardPage() {
                     <div className="dash-kyc-list">
                       <h4 style={{ margin: '0 0 0.5rem' }}>Onboarded franchises</h4>
                       {children.map((c) => (
-                        <div className="doc-row" key={c.id}>
-                          <div>
+                        <div className="doc-row" key={c.id} style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+                          <div style={{ flex: '1 1 200px' }}>
                             <strong>{c.businessName || c.fullName}</strong>
                             <div className="muted">{c.trackingId} · {c.email}</div>
+                            {c.commissionRatePercent != null && (
+                              <div className="muted">
+                                Commission: {c.commissionRatePercent}% ({c.commissionStatus || '—'})
+                              </div>
+                            )}
                           </div>
                           <span className={`status status-${c.status || 'DRAFT'}`}>{c.status}</span>
+                          {c.commissionStatus === 'PROPOSED' && (
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={franchiseBusy}
+                              onClick={() => confirmCommission(c.id)}
+                            >
+                              Lock commission
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>

@@ -19,6 +19,9 @@ public class FranchiseInviteResponse {
     private Long childPartyId;
     private String childTrackingId;
     private String childStatus;
+    private java.math.BigDecimal commissionRatePercent;
+    private String commissionType;
+    private String commissionNotes;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -48,4 +51,12 @@ public class FranchiseInviteResponse {
     public void setChildTrackingId(String childTrackingId) { this.childTrackingId = childTrackingId; }
     public String getChildStatus() { return childStatus; }
     public void setChildStatus(String childStatus) { this.childStatus = childStatus; }
+    public java.math.BigDecimal getCommissionRatePercent() { return commissionRatePercent; }
+    public void setCommissionRatePercent(java.math.BigDecimal commissionRatePercent) {
+        this.commissionRatePercent = commissionRatePercent;
+    }
+    public String getCommissionType() { return commissionType; }
+    public void setCommissionType(String commissionType) { this.commissionType = commissionType; }
+    public String getCommissionNotes() { return commissionNotes; }
+    public void setCommissionNotes(String commissionNotes) { this.commissionNotes = commissionNotes; }
 }

@@ -12,6 +12,8 @@ import { PartnerKycPage } from './pages/PartnerKycPage';
 import { AdminPage } from './pages/AdminPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { PortalUsersPage } from './pages/PortalUsersPage';
+import { ApprovalsPage } from './pages/ApprovalsPage';
 
 export default function App() {
   return (
@@ -29,6 +31,8 @@ export default function App() {
             <Route path="/partner-kyc/:token" element={<PartnerKycPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/portal-users" element={<PortalUsersPage />} />
+            <Route path="/approvals" element={<ApprovalsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

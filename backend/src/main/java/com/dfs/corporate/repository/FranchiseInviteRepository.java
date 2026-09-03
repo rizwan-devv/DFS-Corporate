@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface FranchiseInviteRepository extends JpaRepository<FranchiseInvite, Long> {
     Optional<FranchiseInvite> findByPublicToken(String publicToken);
     List<FranchiseInvite> findByParentPartyIdOrderByInvitedAtDesc(Long parentPartyId);
+    Optional<FranchiseInvite> findByChildPartyId(Long childPartyId);
 }

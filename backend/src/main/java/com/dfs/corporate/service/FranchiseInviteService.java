@@ -1,6 +1,7 @@
 package com.dfs.corporate.service;
 
 import com.dfs.corporate.domain.*;
+import com.dfs.corporate.repository.FranchiseCommissionPlanRepository;
 import com.dfs.corporate.repository.FranchiseInviteRepository;
 import com.dfs.corporate.repository.PartyRepository;
 import com.dfs.corporate.security.AccountPrincipal;
@@ -23,15 +24,18 @@ public class FranchiseInviteService {
     private final FranchiseInviteRepository inviteRepository;
     private final PartyRepository partyRepository;
     private final MailService mailService;
+    private final FranchiseCommissionPlanRepository commissionPlanRepository;
     private final String frontendBaseUrl;
 
     public FranchiseInviteService(FranchiseInviteRepository inviteRepository,
                                   PartyRepository partyRepository,
                                   MailService mailService,
+                                  FranchiseCommissionPlanRepository commissionPlanRepository,
                                   @Value("${app.frontend-base-url:http://localhost:5173}") String frontendBaseUrl) {
         this.inviteRepository = inviteRepository;
         this.partyRepository = partyRepository;
         this.mailService = mailService;
+        this.commissionPlanRepository = commissionPlanRepository;
         this.frontendBaseUrl = frontendBaseUrl.endsWith("/")
                 ? frontendBaseUrl.substring(0, frontendBaseUrl.length() - 1)
                 : frontendBaseUrl;
@@ -68,6 +72,11 @@ public class FranchiseInviteService {
         invite.setContactName(req.getContactName().trim());
         invite.setBusinessName(trim(req.getBusinessName()));
         invite.setEntityType(trim(req.getEntityType()));
+        FranchiseCommissionService.validateRate(req.getCommissionRatePercent());
+        invite.setCommissionRatePercent(req.getCommissionRatePercent());
+        invite.setCommissionType(trim(req.getCommissionType()) != null
+                ? trim(req.getCommissionType()) : (req.getCommissionRatePercent() != null ? "PERCENT_GROSS" : null));
+        invite.setCommissionNotes(trim(req.getCommissionNotes()));
         invite.setStatus(FranchiseInviteStatus.PENDING);
         invite.setExpiresAt(Instant.now().plus(14, ChronoUnit.DAYS));
         inviteRepository.save(invite);
@@ -131,6 +140,8 @@ public class FranchiseInviteService {
         res.setPhone(invite.getPhone());
         res.setBusinessName(invite.getBusinessName());
         res.setEntityType(invite.getEntityType());
+        res.setCommissionRatePercent(invite.getCommissionRatePercent());
+        res.setCommissionType(invite.getCommissionType());
         res.setParentBusinessName(parent.getBusinessName() != null ? parent.getBusinessName() : parent.getFullName());
         res.setParentTrackingId(parent.getTrackingId());
 
@@ -224,6 +235,11 @@ public class FranchiseInviteService {
                         + "  " + parentName
                         + (parent.getTrackingId() != null ? " (" + parent.getTrackingId() + ")" : "")
                         + "\n\n"
+                        + (invite.getCommissionRatePercent() != null
+                        ? ("Proposed commission: " + invite.getCommissionRatePercent() + "% "
+                        + (invite.getCommissionType() != null ? invite.getCommissionType() : "") + "\n"
+                        + "(Finalized when your application is approved)\n\n")
+                        : "")
                         + "Open this secure link to create your account (parent is already linked):\n"
                         + url + "\n\n"
                         + "Suggested phone (app user ID): " + invite.getPhone() + "\n"
@@ -249,6 +265,9 @@ public class FranchiseInviteService {
         r.setExpiresAt(invite.getExpiresAt());
         r.setCompletedAt(invite.getCompletedAt());
         r.setChildPartyId(invite.getChildPartyId());
+        r.setCommissionRatePercent(invite.getCommissionRatePercent());
+        r.setCommissionType(invite.getCommissionType());
+        r.setCommissionNotes(invite.getCommissionNotes());
         if (invite.getChildPartyId() != null) {
             partyRepository.findById(invite.getChildPartyId()).ifPresent(c -> {
                 r.setChildTrackingId(c.getTrackingId());
@@ -270,6 +289,11 @@ public class FranchiseInviteService {
         s.setStatus(p.getStatus() != null ? p.getStatus().name() : null);
         s.setPartyType(p.getPartyType() != null ? p.getPartyType().name() : null);
         s.setEntityType(p.getEntityType() != null ? p.getEntityType().name() : null);
+        commissionPlanRepository.findByChildPartyId(p.getId()).ifPresent(plan -> {
+            s.setCommissionRatePercent(plan.getCommissionRatePercent());
+            s.setCommissionType(plan.getCommissionType());
+            s.setCommissionStatus(plan.getStatus() != null ? plan.getStatus().name() : null);
+        });
         return s;
     }
 

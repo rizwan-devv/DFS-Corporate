@@ -17,6 +17,8 @@ public class FranchiseInvitePublicResponse {
     private String phone;
     private String businessName;
     private String entityType;
+    private java.math.BigDecimal commissionRatePercent;
+    private String commissionType;
     private Instant expiresAt;
 
     public String getToken() { return token; }
@@ -41,6 +43,12 @@ public class FranchiseInvitePublicResponse {
     public void setBusinessName(String businessName) { this.businessName = businessName; }
     public String getEntityType() { return entityType; }
     public void setEntityType(String entityType) { this.entityType = entityType; }
+    public java.math.BigDecimal getCommissionRatePercent() { return commissionRatePercent; }
+    public void setCommissionRatePercent(java.math.BigDecimal commissionRatePercent) {
+        this.commissionRatePercent = commissionRatePercent;
+    }
+    public String getCommissionType() { return commissionType; }
+    public void setCommissionType(String commissionType) { this.commissionType = commissionType; }
     public Instant getExpiresAt() { return expiresAt; }
     public void setExpiresAt(Instant expiresAt) { this.expiresAt = expiresAt; }
 }

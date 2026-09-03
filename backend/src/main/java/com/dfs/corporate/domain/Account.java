@@ -14,7 +14,7 @@ public class Account {
     @Column(name = "public_id", nullable = false, unique = true, length = 36)
     private String publicId;
 
-    @Column(name = "party_id", nullable = false, unique = true)
+    @Column(name = "party_id", nullable = false)
     private Long partyId;
 
     @Column(nullable = false, unique = true, length = 200)

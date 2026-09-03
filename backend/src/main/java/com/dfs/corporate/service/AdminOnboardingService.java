@@ -39,6 +39,8 @@ public class AdminOnboardingService {
     private final PartnerInviteService partnerInviteService;
     private final PartnerAppUserService partnerAppUserService;
     private final AccountProvisioningService accountProvisioningService;
+    private final FranchiseCommissionService franchiseCommissionService;
+    private final PortalUserService portalUserService;
     private final FileStorageService fileStorageService;
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
@@ -52,6 +54,8 @@ public class AdminOnboardingService {
                                   PartnerInviteService partnerInviteService,
                                   PartnerAppUserService partnerAppUserService,
                                   AccountProvisioningService accountProvisioningService,
+                                  FranchiseCommissionService franchiseCommissionService,
+                                  PortalUserService portalUserService,
                                   FileStorageService fileStorageService,
                                   PasswordEncoder passwordEncoder,
                                   MailService mailService) {
@@ -63,6 +67,8 @@ public class AdminOnboardingService {
         this.partnerInviteService = partnerInviteService;
         this.partnerAppUserService = partnerAppUserService;
         this.accountProvisioningService = accountProvisioningService;
+        this.franchiseCommissionService = franchiseCommissionService;
+        this.portalUserService = portalUserService;
         this.fileStorageService = fileStorageService;
         this.passwordEncoder = passwordEncoder;
         this.mailService = mailService;
@@ -171,6 +177,12 @@ public class AdminOnboardingService {
 
         // Kick off DFS Account API (stub leaves PENDING until real client is wired)
         party = accountProvisioningService.provisionAfterApprove(party.getId());
+
+        // Seed portal roles for master corporates; lock franchise commission for children
+        portalUserService.ensureOwnerRoles(account, party);
+        if (party.getPartyType() == PartyType.SUB_MERCHANT) {
+            franchiseCommissionService.lockForChild(party.getId(), admin.getAccountId(), "BACKOFFICE");
+        }
 
         mailService.send(party.getEmail(), "DFS Corporate — Account Approved",
                 """

@@ -27,6 +27,12 @@ export function Layout() {
             )}
             {session?.role === 'PLATFORM_ADMIN' && <NavLink to="/admin">Backoffice</NavLink>}
             {isMerchant && <NavLink to="/dashboard">Dashboard</NavLink>}
+            {isMerchant && session?.partyStatus === 'ACTIVE' && session?.partyType === 'MERCHANT' && (
+              <>
+                <NavLink to="/approvals">Approvals</NavLink>
+                <NavLink to="/portal-users">Users</NavLink>
+              </>
+            )}
             {isMerchant && session?.partyStatus !== 'ACTIVE' && (
               <NavLink to="/onboarding">My Application</NavLink>
             )}
@@ -58,6 +64,12 @@ export function Layout() {
             {canStartOnboarding && <NavLink to="/signup">Onboard</NavLink>}
             {session?.role === 'PLATFORM_ADMIN' && <NavLink to="/admin">Backoffice</NavLink>}
             {isMerchant && <NavLink to="/dashboard">Dashboard</NavLink>}
+            {isMerchant && session?.partyStatus === 'ACTIVE' && session?.partyType === 'MERCHANT' && (
+              <>
+                <NavLink to="/approvals">Approvals</NavLink>
+                <NavLink to="/portal-users">Users</NavLink>
+              </>
+            )}
             {isMerchant && session?.partyStatus !== 'ACTIVE' && (
               <NavLink to="/onboarding">Application</NavLink>
             )}

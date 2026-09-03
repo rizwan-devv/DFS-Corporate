@@ -12,6 +12,9 @@ public class FranchiseChildSummary {
     private String status;
     private String partyType;
     private String entityType;
+    private java.math.BigDecimal commissionRatePercent;
+    private String commissionStatus;
+    private String commissionType;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -33,4 +36,12 @@ public class FranchiseChildSummary {
     public void setPartyType(String partyType) { this.partyType = partyType; }
     public String getEntityType() { return entityType; }
     public void setEntityType(String entityType) { this.entityType = entityType; }
+    public java.math.BigDecimal getCommissionRatePercent() { return commissionRatePercent; }
+    public void setCommissionRatePercent(java.math.BigDecimal commissionRatePercent) {
+        this.commissionRatePercent = commissionRatePercent;
+    }
+    public String getCommissionStatus() { return commissionStatus; }
+    public void setCommissionStatus(String commissionStatus) { this.commissionStatus = commissionStatus; }
+    public String getCommissionType() { return commissionType; }
+    public void setCommissionType(String commissionType) { this.commissionType = commissionType; }
 }

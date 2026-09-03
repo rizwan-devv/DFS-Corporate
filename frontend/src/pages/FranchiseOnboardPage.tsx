@@ -13,6 +13,8 @@ type InviteInfo = {
   phone?: string;
   businessName?: string;
   entityType?: string;
+  commissionRatePercent?: number;
+  commissionType?: string;
   parentBusinessName?: string;
   parentTrackingId?: string;
   expiresAt?: string;
@@ -118,6 +120,12 @@ export function FranchiseOnboardPage() {
                 <span className="muted">Parent tracking</span>
                 <strong>{invite.parentTrackingId || '—'}</strong>
               </div>
+              {invite.commissionRatePercent != null && (
+                <div>
+                  <span className="muted">Proposed commission</span>
+                  <strong>{invite.commissionRatePercent}% {invite.commissionType || ''}</strong>
+                </div>
+              )}
               <div>
                 <span className="muted">Invite status</span>
                 <strong>{invite.status || '—'}</strong>
