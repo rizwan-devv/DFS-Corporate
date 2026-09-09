@@ -1,11 +1,17 @@
 package com.dfs.corporate.integration.dfs;
 
+import com.dfs.corporate.domain.FranchiseCommissionPlan;
+import com.dfs.corporate.domain.FranchiseInvite;
 import com.dfs.corporate.domain.PartnerAppUser;
 import com.dfs.corporate.domain.Party;
+import com.dfs.corporate.repository.FranchiseCommissionPlanRepository;
+import com.dfs.corporate.repository.FranchiseInviteRepository;
+import com.dfs.corporate.repository.PartyRepository;
 import com.dfs.corporate.util.IdentityFormats;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
@@ -22,18 +28,27 @@ public class CorporateOnboardingMapper {
     private final String defaultCityId;
     private final String defaultBusinessTypeId;
     private final String defaultMonthlyVolumeId;
+    private final PartyRepository partyRepository;
+    private final FranchiseCommissionPlanRepository commissionPlanRepository;
+    private final FranchiseInviteRepository inviteRepository;
 
     public CorporateOnboardingMapper(
             @Value("${dfs.account-api.channel:AGNT}") String channel,
             @Value("${dfs.account-api.level-code:L4}") String defaultLevelCode,
             @Value("${dfs.account-api.default-city-id:1}") String defaultCityId,
             @Value("${dfs.account-api.default-business-type-id:1}") String defaultBusinessTypeId,
-            @Value("${dfs.account-api.default-monthly-volume-id:1}") String defaultMonthlyVolumeId) {
+            @Value("${dfs.account-api.default-monthly-volume-id:1}") String defaultMonthlyVolumeId,
+            PartyRepository partyRepository,
+            FranchiseCommissionPlanRepository commissionPlanRepository,
+            FranchiseInviteRepository inviteRepository) {
         this.channel = channel;
         this.defaultLevelCode = defaultLevelCode;
         this.defaultCityId = defaultCityId;
         this.defaultBusinessTypeId = defaultBusinessTypeId;
         this.defaultMonthlyVolumeId = defaultMonthlyVolumeId;
+        this.partyRepository = partyRepository;
+        this.commissionPlanRepository = commissionPlanRepository;
+        this.inviteRepository = inviteRepository;
     }
 
     public CorporateOnboardingRequest map(Party party, List<PartnerAppUser> appUsers) {
@@ -103,7 +118,8 @@ public class CorporateOnboardingMapper {
                 defaultCityId));
         p.setPin(pin);
         p.setConfirmMpin(pin);
-        p.setParentAgentId(party.getParentAgentId() != null ? party.getParentAgentId() : "");
+        p.setParentAgentId(resolveParentAgentId(party));
+        p.setParentCommission(resolveParentCommission(party));
         p.setBusinessName(firstNonBlank(party.getBusinessName(), party.getFullName()));
         p.setBusinessTypeId(firstNonBlank(party.getBusinessTypeId(), defaultBusinessTypeId));
         p.setBusinessAddress(firstNonBlank(
@@ -132,6 +148,43 @@ public class CorporateOnboardingMapper {
 
         req.setPayload(p);
         return req;
+    }
+
+    /**
+     * Prefer explicit party.parentAgentId; else parent's dfsAccountId when this is a franchise child.
+     */
+    private String resolveParentAgentId(Party party) {
+        if (party.getParentAgentId() != null && !party.getParentAgentId().isBlank()) {
+            return party.getParentAgentId().trim();
+        }
+        if (party.getParentPartyId() == null) {
+            return "";
+        }
+        return partyRepository.findById(party.getParentPartyId())
+                .map(Party::getDfsAccountId)
+                .filter(id -> id != null && !id.isBlank())
+                .orElse("");
+    }
+
+    /**
+     * Locked/proposed commission plan rate, else invite rate. Sent as a number string for AgentApp.
+     */
+    private String resolveParentCommission(Party party) {
+        if (party.getParentPartyId() == null) {
+            return null;
+        }
+        BigDecimal rate = commissionPlanRepository.findByChildPartyId(party.getId())
+                .map(FranchiseCommissionPlan::getCommissionRatePercent)
+                .orElse(null);
+        if (rate == null) {
+            rate = inviteRepository.findByChildPartyId(party.getId())
+                    .map(FranchiseInvite::getCommissionRatePercent)
+                    .orElse(null);
+        }
+        if (rate == null) {
+            return null;
+        }
+        return rate.stripTrailingZeros().toPlainString();
     }
 
     private PartnerAppUser pickPrimary(Party party, List<PartnerAppUser> appUsers) {

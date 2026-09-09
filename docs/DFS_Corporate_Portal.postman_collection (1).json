@@ -1,0 +1,241 @@
+{
+  "info": {
+    "name": "DFS - Corporate Portal (AgentApp)",
+    "description": "Token-free replicas of changempin, getbalance and miniStatment for the Corporate Portal, plus the corporate onboarding call that now accepts parentCommission.\n\n## Authentication\n\nThe three /v1/corporate/* endpoints are NOT authenticated with an app login token. The portal is a server-side web application with no handset and no app login, so it authenticates as itself with a shared key in the `X-Portal-Key` header.\n\nSet the `portalKey` collection variable to the value of `CORPORATE_PORTAL_API_KEY` from the server's .env file. It is deliberately not stored in this file.\n\nEach request still names its own subject through `payload.mobileNumber`, exactly as the mobile calls do. The portal key authorises the caller as the portal; it does not select the account.\n\n## What is NOT here\n\nThe existing mobile endpoints (/v1/changempin, /v1/getbalance, /v1/miniStatment) are unchanged and still require a bearer token. The portal key gives no access to them.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://46.225.160.93:18001/agentapp",
+      "type": "string",
+      "description": "AgentApp base URL, including the /agentapp context path."
+    },
+    {
+      "key": "portalKey",
+      "value": "",
+      "type": "string",
+      "description": "CORPORATE_PORTAL_API_KEY from the server .env. Leave blank here; fill it in your own environment so it is never committed."
+    },
+    {
+      "key": "mobileNumber",
+      "value": "03095347558",
+      "type": "string",
+      "description": "The agent account the request acts on."
+    },
+    {
+      "key": "accountLevelCode",
+      "value": "L4",
+      "type": "string",
+      "description": "Account level of that account. getbalance and miniStatment match on mobile AND level - a level that does not match the account returns USER NOT FOUND."
+    }
+  ],
+  "item": [
+    {
+      "name": "Corporate Portal",
+      "description": "The three replicas. Same validators, same service methods and same responses as the mobile endpoints they mirror.",
+      "item": [
+        {
+          "name": "Get Balance",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/corporate/getbalance",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "corporate", "getbalance"]
+            },
+            "description": "Mirrors POST /v1/getbalance.\n\nRequired: payload.mobileNumber, payload.accountLevelCode.\n\nimieNo is optional here - the portal has no handset, and the field is filled with a fixed marker when omitted. The service layer never reads it.\n\nSuccess: {\"responsecode\":\"000\",\"data\":{\"balance\":4681},\"messages\":\"SUCCESS\"}",
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"channel\": \"AGNT\",\n  \"payload\": {\n    \"mobileNumber\": \"{{mobileNumber}}\",\n    \"accountLevelCode\": \"{{accountLevelCode}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Mini Statement - last nine records",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/corporate/miniStatment",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "corporate", "miniStatment"]
+            },
+            "description": "Mirrors POST /v1/miniStatment.\n\nLeave fromDate and toDate out (or empty) and the last nine transactions are returned.\n\nNote the endpoint spelling: miniStatment, not miniStatement. It matches the existing mobile endpoint.",
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"channel\": \"AGNT\",\n  \"payload\": {\n    \"mobileNumber\": \"{{mobileNumber}}\",\n    \"accountLevelCode\": \"{{accountLevelCode}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Mini Statement - date range",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/corporate/miniStatment",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "corporate", "miniStatment"]
+            },
+            "description": "Both dates must be supplied together, in yyyy-MM-dd HH:mm:ss.\n\nThe range may not exceed 180 days; a wider range is rejected.",
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"channel\": \"AGNT\",\n  \"payload\": {\n    \"mobileNumber\": \"{{mobileNumber}}\",\n    \"accountLevelCode\": \"{{accountLevelCode}}\",\n    \"fromDate\": \"2026-08-01 00:00:00\",\n    \"toDate\": \"2026-09-04 23:59:59\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Change MPIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/corporate/changempin",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "corporate", "changempin"]
+            },
+            "description": "Mirrors POST /v1/changempin.\n\nRequired: mobileNumber, currentMpin, newMpin, confirmMpin. newMpin and confirmMpin must match.\n\nThe user is resolved from mobileNumber, so no token or user id is needed.\n\nA wrong currentMpin returns responsecode 127 (Wrong Mpin) with HTTP 200 - it is a business outcome, not an error.",
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"channel\": \"AGNT\",\n  \"payload\": {\n    \"mobileNumber\": \"{{mobileNumber}}\",\n    \"currentMpin\": \"1234\",\n    \"newMpin\": \"4321\",\n    \"confirmMpin\": \"4321\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Corporate Portal - auth checks",
+      "description": "Negative cases, for confirming the endpoints are protected after a deployment. Both must return 406 Invalid Token.",
+      "item": [
+        {
+          "name": "No portal key - must be rejected",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/v1/corporate/getbalance",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "corporate", "getbalance"]
+            },
+            "description": "Expected: HTTP 401, {\"responsecode\":\"406\",\"data\":null,\"messages\":\"Invalid Token\"}",
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"channel\": \"AGNT\",\n  \"payload\": {\n    \"mobileNumber\": \"{{mobileNumber}}\",\n    \"accountLevelCode\": \"{{accountLevelCode}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Wrong portal key - must be rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "not-the-real-key" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/corporate/getbalance",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "corporate", "getbalance"]
+            },
+            "description": "Expected: {\"responsecode\":\"406\",\"data\":null,\"messages\":\"Invalid Token\"}",
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"channel\": \"AGNT\",\n  \"payload\": {\n    \"mobileNumber\": \"{{mobileNumber}}\",\n    \"accountLevelCode\": \"{{accountLevelCode}}\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Corporate Onboarding",
+      "description": "Unchanged endpoint, two new behaviours: it accepts parentCommission, and it returns the new agentId.",
+      "item": [
+        {
+          "name": "Onboard sub-agent with parentCommission",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/v1/corporateonboarding",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "corporateonboarding"]
+            },
+            "description": "No token: this call authenticates no header, the same position agentDeviceRegistration was in.\n\nparentAgentId makes the new agent a sub-agent. parentCommission is the percentage the parent earns on it, written to TBL_AGENT_COMMISSION_DISTRIBUTION at AGENT_LEVEL 1.\n\nBoth are optional and independent:\n- neither -> a standalone agent, no distribution row\n- parentAgentId only -> a sub-agent, no distribution row\n- both -> a sub-agent with the distribution row\n\nRejected if the agent named by parentAgentId is itself a sub-agent:\n{\"responsecode\":\"163\",\"messages\":\"A child agent cannot be assigned as a parent agent.\",\"data\":null}\nNothing is written when that happens.\n\nA non-numeric parentCommission returns responsecode 111 with \"Parent commission must be a number\".\n\nSuccess returns the new agent id and nothing else:\n{\"responsecode\":\"000\",\"messages\":\"SUCCESS\",\"data\":{\"agentId\":1234}}",
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"channel\": \"AGNT\",\n  \"imieNo\": \"12ad5b4525363f4f\",\n  \"payload\": {\n    \"parentAgentId\": \"101\",\n    \"parentCommission\": \"10\",\n\n    \"mobileNumber\": \"03001234567\",\n    \"nidNo\": \"3520112345671\",\n    \"fullName\": \"Example Corporate Agent\",\n    \"fatherName\": \"Father Name\",\n    \"gender\": \"M\",\n    \"dob\": \"1990-01-01\",\n    \"nidIssuanceDate\": \"2020-01-01\",\n    \"nidExpiryDate\": \"2030-01-01\",\n    \"placeOfBirth\": \"Islamabad\",\n    \"permenantAddress\": \"Street 1, Islamabad\",\n    \"presentAddress\": \"Street 1, Islamabad\",\n    \"email\": \"agent@example.com\",\n    \"levelCode\": \"L1\",\n    \"cityId\": \"1\",\n    \"occupationId\": \"1\",\n    \"customerTypeId\": \"1\",\n    \"businessName\": \"Example Trading Co\",\n    \"businessTypeId\": \"1\",\n    \"businessAddress\": \"Street 1, Islamabad\",\n    \"expectedMonthlyVolumeId\": \"1\",\n    \"accountPurposeId\": \"1\",\n\n    \"pin\": \"1234\",\n    \"confirmMpin\": \"1234\",\n\n    \"appVersion\": \"1.0.0\",\n    \"deviceModel\": \"Corporate Portal\",\n    \"imeiNo\": \"12ad5b4525363f4f\",\n    \"ipAddressP\": \"127.0.0.1\",\n    \"ipAddressA\": \"127.0.0.1\",\n\n    \"partners\": [\n      { \"email\": \"partner.one@example.com\", \"password\": \"ChangeMe1\" },\n      { \"email\": \"partner.two@example.com\", \"password\": \"ChangeMe2\" }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Onboard standalone agent - no parent, no commission",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/v1/corporateonboarding",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "corporateonboarding"]
+            },
+            "description": "Behaviour is exactly as before this change: no distribution row is written.",
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"channel\": \"AGNT\",\n  \"imieNo\": \"12ad5b4525363f4f\",\n  \"payload\": {\n    \"mobileNumber\": \"03001234568\",\n    \"nidNo\": \"3520112345672\",\n    \"fullName\": \"Example Standalone Agent\",\n    \"fatherName\": \"Father Name\",\n    \"gender\": \"M\",\n    \"dob\": \"1990-01-01\",\n    \"nidIssuanceDate\": \"2020-01-01\",\n    \"nidExpiryDate\": \"2030-01-01\",\n    \"placeOfBirth\": \"Islamabad\",\n    \"permenantAddress\": \"Street 1, Islamabad\",\n    \"presentAddress\": \"Street 1, Islamabad\",\n    \"email\": \"standalone@example.com\",\n    \"levelCode\": \"L1\",\n    \"cityId\": \"1\",\n    \"occupationId\": \"1\",\n    \"customerTypeId\": \"1\",\n    \"businessName\": \"Example Sole Trader\",\n    \"businessTypeId\": \"1\",\n    \"businessAddress\": \"Street 1, Islamabad\",\n    \"expectedMonthlyVolumeId\": \"1\",\n    \"accountPurposeId\": \"1\",\n    \"pin\": \"1234\",\n    \"confirmMpin\": \"1234\",\n    \"appVersion\": \"1.0.0\",\n    \"deviceModel\": \"Corporate Portal\",\n    \"imeiNo\": \"12ad5b4525363f4f\",\n    \"ipAddressP\": \"127.0.0.1\",\n    \"ipAddressA\": \"127.0.0.1\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Onboard with documents (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/corporateonboarding",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "corporateonboarding"]
+            },
+            "description": "Same endpoint, multipart form. Use this whenever documents are attached - base64 inside JSON is held several times over in memory and has killed the container mid-request.\n\nParts:\n- request  : the JSON envelope, with payload.documents left out\n- documents: repeated once per file, same part name each time\n\nDo not set Content-Type by hand; Postman adds the multipart boundary.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request",
+                  "type": "text",
+                  "value": "{\"channel\":\"AGNT\",\"imieNo\":\"12ad5b4525363f4f\",\"payload\":{\"parentAgentId\":\"101\",\"parentCommission\":\"10\",\"mobileNumber\":\"03001234567\",\"nidNo\":\"3520112345671\",\"fullName\":\"Example Corporate Agent\",\"levelCode\":\"L1\",\"pin\":\"1234\",\"confirmMpin\":\"1234\",\"businessName\":\"Example Trading Co\",\"businessTypeId\":\"1\",\"imeiNo\":\"12ad5b4525363f4f\"}}"
+                },
+                {
+                  "key": "documents",
+                  "type": "file",
+                  "src": [],
+                  "description": "One part per file. Repeat this exact key for each document."
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

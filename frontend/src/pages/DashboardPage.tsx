@@ -60,6 +60,44 @@ type FranchiseChild = {
   commissionRatePercent?: number;
   commissionStatus?: string;
   commissionType?: string;
+  dfsAccountId?: string;
+  levelCode?: string;
+};
+
+type AgentAppPortalResponse = {
+  responsecode?: string;
+  messages?: string;
+  data?: { balance?: number; [key: string]: unknown } | unknown;
+  childPartyId?: number;
+  childTrackingId?: string;
+  mobileNumber?: string;
+  accountLevelCode?: string;
+};
+
+type FranchiseWallet = {
+  partyId: number;
+  currency: string;
+  availableBalance: number;
+  commissionEarned: number;
+  updatedAt?: string;
+};
+
+type CommissionEntry = {
+  id: number;
+  publicId: string;
+  childPartyId: number;
+  childTrackingId?: string;
+  childBusinessName?: string;
+  externalTxnRef: string;
+  txnType?: string;
+  currency: string;
+  grossAmount: number;
+  ratePercent: number;
+  commissionAmount: number;
+  childNetAmount: number;
+  status: string;
+  source?: string;
+  postedAt?: string;
 };
 
 function fmt(iso?: string) {
@@ -112,6 +150,8 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [invites, setInvites] = useState<FranchiseInvite[]>([]);
   const [children, setChildren] = useState<FranchiseChild[]>([]);
+  const [wallet, setWallet] = useState<FranchiseWallet | null>(null);
+  const [commissionEntries, setCommissionEntries] = useState<CommissionEntry[]>([]);
   const [franchiseError, setFranchiseError] = useState('');
   const [franchiseBusy, setFranchiseBusy] = useState(false);
   const [inviteForm, setInviteForm] = useState({
@@ -121,19 +161,33 @@ export function DashboardPage() {
     businessName: '',
     commissionRatePercent: '',
   });
+  const [txnForm, setTxnForm] = useState({
+    childPartyId: '',
+    grossAmount: '',
+    externalTxnRef: '',
+  });
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [agentChildId, setAgentChildId] = useState<number | null>(null);
+  const [agentBalance, setAgentBalance] = useState<AgentAppPortalResponse | null>(null);
+  const [agentStatement, setAgentStatement] = useState<AgentAppPortalResponse | null>(null);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentError, setAgentError] = useState('');
 
   const isMaster = (party?.partyType || session?.partyType) === 'MERCHANT';
   const canManageFranchises = isMaster && (party?.status || session?.partyStatus) === 'ACTIVE';
 
   const loadFranchiseData = useCallback(async (token: string) => {
     try {
-      const [inv, kids] = await Promise.all([
+      const [inv, kids, wal, entries] = await Promise.all([
         api<FranchiseInvite[]>('/api/franchises/invites', { token }),
         api<FranchiseChild[]>('/api/franchises/children', { token }),
+        api<FranchiseWallet>('/api/franchises/wallet', { token }),
+        api<CommissionEntry[]>('/api/franchises/transactions', { token }),
       ]);
       setInvites(inv);
       setChildren(kids);
+      setWallet(wal);
+      setCommissionEntries(entries);
       setFranchiseError('');
     } catch (err) {
       setFranchiseError(err instanceof Error ? err.message : 'Failed to load franchise data');
@@ -217,6 +271,83 @@ export function DashboardPage() {
       await loadFranchiseData(session.token);
     } catch (err) {
       setFranchiseError(err instanceof Error ? err.message : 'Commission lock failed');
+    } finally {
+      setFranchiseBusy(false);
+    }
+  }
+
+  async function loadChildAgentData(childPartyId: number) {
+    if (!session?.token) return;
+    setAgentBusy(true);
+    setAgentError('');
+    setAgentChildId(childPartyId);
+    setAgentBalance(null);
+    setAgentStatement(null);
+    try {
+      const [bal, stmt] = await Promise.all([
+        api<AgentAppPortalResponse>(`/api/franchises/children/${childPartyId}/agent-balance`, {
+          token: session.token,
+        }),
+        api<AgentAppPortalResponse>(`/api/franchises/children/${childPartyId}/agent-mini-statement`, {
+          token: session.token,
+        }),
+      ]);
+      setAgentBalance(bal);
+      setAgentStatement(stmt);
+    } catch (err) {
+      setAgentError(err instanceof Error ? err.message : 'Failed to load AgentApp data');
+    } finally {
+      setAgentBusy(false);
+    }
+  }
+
+  function agentBalanceValue(resp: AgentAppPortalResponse | null): string {
+    if (!resp?.data || typeof resp.data !== 'object') return '—';
+    const bal = (resp.data as { balance?: number }).balance;
+    return bal == null ? '—' : String(bal);
+  }
+
+  async function simulateChildTxn(e: FormEvent) {
+    e.preventDefault();
+    if (!session?.token) return;
+    setFranchiseBusy(true);
+    setFranchiseError('');
+    try {
+      const ref = txnForm.externalTxnRef.trim() || `SIM-${Date.now()}`;
+      await api('/api/franchises/transactions', {
+        method: 'POST',
+        token: session.token,
+        body: JSON.stringify({
+          childPartyId: Number(txnForm.childPartyId),
+          grossAmount: Number(txnForm.grossAmount),
+          externalTxnRef: ref,
+          currency: 'PKR',
+          txnType: 'INCOMING',
+          source: 'SIMULATED',
+          notes: 'Simulated child transaction for commission split',
+        }),
+      });
+      setTxnForm({ childPartyId: txnForm.childPartyId, grossAmount: '', externalTxnRef: '' });
+      await loadFranchiseData(session.token);
+    } catch (err) {
+      setFranchiseError(err instanceof Error ? err.message : 'Transaction post failed');
+    } finally {
+      setFranchiseBusy(false);
+    }
+  }
+
+  async function reverseEntry(publicId: string) {
+    if (!session?.token) return;
+    setFranchiseBusy(true);
+    setFranchiseError('');
+    try {
+      await api(`/api/franchises/transactions/${publicId}/reverse`, {
+        method: 'POST',
+        token: session.token,
+      });
+      await loadFranchiseData(session.token);
+    } catch (err) {
+      setFranchiseError(err instanceof Error ? err.message : 'Reverse failed');
     } finally {
       setFranchiseBusy(false);
     }
@@ -484,6 +615,7 @@ export function DashboardPage() {
                           <div style={{ flex: '1 1 200px' }}>
                             <strong>{c.businessName || c.fullName}</strong>
                             <div className="muted">{c.trackingId} · {c.email}</div>
+                            {c.phone && <div className="muted">Mobile {c.phone} · Level {c.levelCode || 'L4'}</div>}
                             {c.commissionRatePercent != null && (
                               <div className="muted">
                                 Commission: {c.commissionRatePercent}% ({c.commissionStatus || '—'})
@@ -491,6 +623,14 @@ export function DashboardPage() {
                             )}
                           </div>
                           <span className={`status status-${c.status || 'DRAFT'}`}>{c.status}</span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={agentBusy}
+                            onClick={() => loadChildAgentData(c.id)}
+                          >
+                            {agentBusy && agentChildId === c.id ? 'Loading…' : 'Agent balance / statement'}
+                          </button>
                           {c.commissionStatus === 'PROPOSED' && (
                             <button
                               type="button"
@@ -503,8 +643,142 @@ export function DashboardPage() {
                           )}
                         </div>
                       ))}
+                      {(agentError || agentBalance || agentStatement) && (
+                        <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border, #ddd)' }}>
+                          <h4 style={{ margin: '0 0 0.5rem' }}>
+                            AgentApp — child #{agentChildId}
+                            {agentBalance?.childTrackingId ? ` (${agentBalance.childTrackingId})` : ''}
+                          </h4>
+                          {agentError && <div className="alert alert-error">{agentError}</div>}
+                          {agentBalance && !agentError && (
+                            <div className="doc-row" style={{ marginBottom: '0.5rem' }}>
+                              <div>
+                                <strong>Balance: {agentBalanceValue(agentBalance)}</strong>
+                                <div className="muted">
+                                  {agentBalance.messages || '—'} · code {agentBalance.responsecode || '—'}
+                                  {agentBalance.mobileNumber ? ` · ${agentBalance.mobileNumber}` : ''}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {agentStatement && !agentError && (
+                            <div>
+                              <div className="muted" style={{ marginBottom: '0.35rem' }}>
+                                Mini-statement · {agentStatement.messages || '—'} · code {agentStatement.responsecode || '—'}
+                              </div>
+                              <pre style={{
+                                margin: 0,
+                                maxHeight: 220,
+                                overflow: 'auto',
+                                fontSize: '0.8rem',
+                                padding: '0.5rem',
+                                background: 'var(--surface-2, #f6f6f6)',
+                                borderRadius: 4,
+                              }}>
+                                {JSON.stringify(agentStatement.data ?? null, null, 2)}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
+
+                  <div className="dash-kyc-list" style={{ marginTop: '1.25rem' }}>
+                    <h4 style={{ margin: '0 0 0.5rem' }}>Real-time commission wallet</h4>
+                    <p className="muted" style={{ margin: '0 0 0.75rem' }}>
+                      On each successful child transaction, locked % credits your wallet immediately
+                      (e.g. 10% of PKR 1,000 → PKR 100 here, PKR 900 to child).
+                    </p>
+                    <div className="doc-row" style={{ marginBottom: '1rem' }}>
+                      <div>
+                        <strong>{wallet?.currency || 'PKR'} {Number(wallet?.availableBalance ?? 0).toFixed(2)}</strong>
+                        <div className="muted">
+                          Available · Commission earned {Number(wallet?.commissionEarned ?? 0).toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {children.some((c) => c.commissionStatus === 'LOCKED' && c.status === 'ACTIVE') && (
+                      <form className="form-grid" onSubmit={simulateChildTxn} style={{ marginBottom: '1rem' }}>
+                        <div className="form-row">
+                          <label>Child franchise</label>
+                          <select
+                            required
+                            value={txnForm.childPartyId}
+                            onChange={(e) => setTxnForm({ ...txnForm, childPartyId: e.target.value })}
+                          >
+                            <option value="">Select child</option>
+                            {children
+                              .filter((c) => c.commissionStatus === 'LOCKED' && c.status === 'ACTIVE')
+                              .map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.businessName || c.fullName} ({c.trackingId}) — {c.commissionRatePercent}%
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <div className="form-row">
+                          <label>Gross amount (PKR)</label>
+                          <input
+                            required
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={txnForm.grossAmount}
+                            onChange={(e) => setTxnForm({ ...txnForm, grossAmount: e.target.value })}
+                            placeholder="1000"
+                          />
+                        </div>
+                        <div className="form-row">
+                          <label>External txn ref (optional)</label>
+                          <input
+                            value={txnForm.externalTxnRef}
+                            onChange={(e) => setTxnForm({ ...txnForm, externalTxnRef: e.target.value })}
+                            placeholder="Auto-generated if empty"
+                          />
+                        </div>
+                        <div className="actions">
+                          <button className="btn btn-primary" disabled={franchiseBusy} type="submit">
+                            {franchiseBusy ? 'Posting…' : 'Simulate child txn (split now)'}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    {commissionEntries.length > 0 && (
+                      <div>
+                        <h4 style={{ margin: '0 0 0.5rem' }}>Recent splits</h4>
+                        {commissionEntries.slice(0, 20).map((e) => (
+                          <div className="doc-row" key={e.id} style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <div style={{ flex: '1 1 220px' }}>
+                              <strong>{e.childBusinessName || e.childTrackingId || `Child #${e.childPartyId}`}</strong>
+                              <div className="muted">
+                                Gross {e.currency} {Number(e.grossAmount).toFixed(2)} · {Number(e.ratePercent).toFixed(2)}%
+                                → parent {Number(e.commissionAmount).toFixed(2)} / child {Number(e.childNetAmount).toFixed(2)}
+                              </div>
+                              <div className="muted" style={{ fontSize: '0.8rem' }}>
+                                {e.externalTxnRef} · {fmt(e.postedAt)}
+                              </div>
+                            </div>
+                            <span className={`status status-${e.status === 'POSTED' ? 'ACTIVE' : 'REJECTED'}`}>
+                              {e.status}
+                            </span>
+                            {e.status === 'POSTED' && e.txnType !== 'REVERSAL' && Number(e.grossAmount) > 0 && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                disabled={franchiseBusy}
+                                onClick={() => reverseEntry(e.publicId)}
+                              >
+                                Reverse
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

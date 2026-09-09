@@ -15,6 +15,8 @@ public class FranchiseChildSummary {
     private java.math.BigDecimal commissionRatePercent;
     private String commissionStatus;
     private String commissionType;
+    private String dfsAccountId;
+    private String levelCode;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -44,4 +46,8 @@ public class FranchiseChildSummary {
     public void setCommissionStatus(String commissionStatus) { this.commissionStatus = commissionStatus; }
     public String getCommissionType() { return commissionType; }
     public void setCommissionType(String commissionType) { this.commissionType = commissionType; }
+    public String getDfsAccountId() { return dfsAccountId; }
+    public void setDfsAccountId(String dfsAccountId) { this.dfsAccountId = dfsAccountId; }
+    public String getLevelCode() { return levelCode; }
+    public void setLevelCode(String levelCode) { this.levelCode = levelCode; }
 }

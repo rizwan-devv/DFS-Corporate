@@ -289,6 +289,8 @@ public class FranchiseInviteService {
         s.setStatus(p.getStatus() != null ? p.getStatus().name() : null);
         s.setPartyType(p.getPartyType() != null ? p.getPartyType().name() : null);
         s.setEntityType(p.getEntityType() != null ? p.getEntityType().name() : null);
+        s.setDfsAccountId(p.getDfsAccountId());
+        s.setLevelCode(p.getLevelCode());
         commissionPlanRepository.findByChildPartyId(p.getId()).ifPresent(plan -> {
             s.setCommissionRatePercent(plan.getCommissionRatePercent());
             s.setCommissionType(plan.getCommissionType());

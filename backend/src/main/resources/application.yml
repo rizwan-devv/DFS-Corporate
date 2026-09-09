@@ -66,6 +66,13 @@ dfs:
     default-monthly-volume-id: "1"
     api-key: ${DFS_ACCOUNT_API_KEY:}
     use-stub: false
+  # AgentApp corporate portal APIs (balance / mini-statement / change MPIN) — X-Portal-Key
+  portal-api:
+    enabled: ${DFS_PORTAL_API_ENABLED:false}
+    portal-key: ${CORPORATE_PORTAL_API_KEY:}
+    get-balance-path: /agentapp/v1/corporate/getbalance
+    mini-statement-path: /agentapp/v1/corporate/miniStatment
+    change-mpin-path: /agentapp/v1/corporate/changempin
 
 logging:
   level:

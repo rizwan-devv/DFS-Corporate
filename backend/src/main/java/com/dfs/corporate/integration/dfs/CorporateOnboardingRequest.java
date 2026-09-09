@@ -41,6 +41,8 @@ public class CorporateOnboardingRequest {
         private String pin;
         private String confirmMpin;
         private String parentAgentId;
+        /** Percentage the parent earns on this sub-agent (AgentApp TBL_AGENT_COMMISSION_DISTRIBUTION). */
+        private String parentCommission;
         private String businessName;
         private String businessTypeId;
         private String businessAddress;
@@ -81,6 +83,8 @@ public class CorporateOnboardingRequest {
         public void setConfirmMpin(String confirmMpin) { this.confirmMpin = confirmMpin; }
         public String getParentAgentId() { return parentAgentId; }
         public void setParentAgentId(String parentAgentId) { this.parentAgentId = parentAgentId; }
+        public String getParentCommission() { return parentCommission; }
+        public void setParentCommission(String parentCommission) { this.parentCommission = parentCommission; }
         public String getBusinessName() { return businessName; }
         public void setBusinessName(String businessName) { this.businessName = businessName; }
         public String getBusinessTypeId() { return businessTypeId; }
