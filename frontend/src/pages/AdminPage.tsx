@@ -463,7 +463,7 @@ export function AdminPage() {
               <div><span className="muted">Status</span><strong className={`status status-${selected.status}`}>{selected.status}</strong></div>
               <div><span className="muted">Sanctions</span><strong>{selected.sanctionsStatus || '—'}</strong></div>
               <div><span className="muted">Identity</span><strong>{selected.identityVerificationStatus || '—'}</strong></div>
-              <div><span className="muted">Risk / EDD</span><strong>{selected.riskRating || '—'} / {selected.eddRequired ? 'Yes' : 'No'}</strong></div>
+              <div><span className="muted">Risk</span><strong>{selected.riskRating || '—'}</strong></div>
               <div><span className="muted">IP / Geo</span><strong>{selected.clientIp || '—'} / {selected.geoLocation || '—'}</strong></div>
             </div>
 

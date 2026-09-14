@@ -216,14 +216,6 @@ public class OnboardingService {
             party.setIdentityVerificationMethod("PENDING_BV_OR_VERISYS");
         }
 
-        if (ConsolidatedKycRules.needsEdd(party.getRiskRating(), Boolean.TRUE.equals(party.getEddRequired()))) {
-            party.setEddRequired(true);
-            if (isBlank(party.getVideoKycRef()) && isBlank(party.getEddNotes())) {
-                throw new ApiException(HttpStatus.BAD_REQUEST,
-                        "EDD required for HIGH risk: provide video KYC reference or EDD notes (Framework §G)");
-            }
-        }
-
         Instant now = Instant.now();
         party.setSubmittedAt(now);
         party.setDecisionDueAt(addWorkingDays(now, 5)); // Framework §I — entity TAT 5 working days

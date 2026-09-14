@@ -222,19 +222,6 @@ export function OnboardingPage() {
     }
   }
 
-  async function saveEdd() {
-    setError(''); setOk(''); setLoading(true);
-    try {
-      const data = await api<Party>('/api/onboarding/profile', {
-        method: 'PUT', token: session!.token,
-        body: JSON.stringify({ ...entity, onboardingStep: 4, eddRequired: entity.riskRating === 'HIGH' || entity.eddRequired }),
-      });
-      setParty(data); setOk('EDD details saved');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed');
-    } finally { setLoading(false); }
-  }
-
   async function submit() {
     setError(''); setOk(''); setLoading(true);
     try {
@@ -250,8 +237,8 @@ export function OnboardingPage() {
   const editable = party?.status === 'DRAFT' || party?.status === 'REJECTED';
   const partnerMode = needsPartnerRoster(entity.entityType);
   const stepLabels = partnerMode
-    ? ['Entity', 'Partners', 'Documents', 'EDD', 'Review']
-    : ['Entity', 'Documents', 'EDD', 'Review'];
+    ? ['Entity', 'Partners', 'Documents', 'Review']
+    : ['Entity', 'Documents', 'Review'];
 
   return (
     <div className="page">
@@ -361,7 +348,7 @@ export function OnboardingPage() {
               <div className="form-row"><label>Intended nature of relationship</label>
                 <input value={entity.intendedRelationship} onChange={(e) => setEntity({ ...entity, intendedRelationship: e.target.value })} /></div>
               <div className="form-row"><label>Risk rating (CRP)</label>
-                <select value={entity.riskRating} onChange={(e) => setEntity({ ...entity, riskRating: e.target.value, eddRequired: e.target.value === 'HIGH' })}>
+                <select value={entity.riskRating} onChange={(e) => setEntity({ ...entity, riskRating: e.target.value })}>
                   <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
                 </select></div>
               <label className="form-check">
@@ -427,21 +414,19 @@ export function OnboardingPage() {
                 </div>
               ))}
               <div className="actions">
-                <button className="btn btn-ghost" type="button" onClick={() => setStep(4)}>EDD / continue</button>
+                <button className="btn btn-ghost" type="button" onClick={() => setStep(4)}>Continue to review</button>
               </div>
             </div>
           )}
 
           {editable && step >= 4 && step < 5 && (
             <div className="section-block form-grid">
-              <h3>§G Enhanced Due Diligence</h3>
-              <p className="muted">Required when risk is HIGH. Provide video KYC ref or EDD notes.</p>
-              <div className="form-row"><label>Video KYC reference / URL</label>
-                <input value={entity.videoKycRef} onChange={(e) => setEntity({ ...entity, videoKycRef: e.target.value })} /></div>
-              <div className="form-row"><label>EDD notes</label>
-                <textarea rows={2} value={entity.eddNotes} onChange={(e) => setEntity({ ...entity, eddNotes: e.target.value })} /></div>
+              <h3>Review &amp; submit</h3>
+              <p className="muted">
+                Confirm entity details and documents are complete, then submit. Partners will finish KYC in the mobile app after submit.
+              </p>
               <div className="actions">
-                <button className="btn btn-ghost" type="button" disabled={loading} onClick={() => void saveEdd()}>Save EDD</button>
+                <button className="btn btn-ghost" type="button" onClick={() => setStep(3)}>Back to documents</button>
                 <button className="btn btn-primary" type="button" disabled={loading || !party?.canSubmit} onClick={() => void submit()}>
                   Submit application
                 </button>

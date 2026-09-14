@@ -67,11 +67,26 @@ type FranchiseChild = {
 type AgentAppPortalResponse = {
   responsecode?: string;
   messages?: string;
-  data?: { balance?: number; [key: string]: unknown } | unknown;
+  data?: unknown;
   childPartyId?: number;
   childTrackingId?: string;
   mobileNumber?: string;
   accountLevelCode?: string;
+};
+
+/** One row from AgentApp corporate miniStatment `data` array. */
+type AgentMiniStatementRow = {
+  transDate?: string;
+  transDocsDescr?: string;
+  txnAmt?: number | null;
+  feeAmt?: number | null;
+  amountType?: string;
+  closingBalance?: number | null;
+  openingbalance?: number | null;
+  transRefnum?: string;
+  toAccountNo?: string;
+  fromAccountNo?: string;
+  channel?: string;
 };
 
 type FranchiseWallet = {
@@ -109,6 +124,37 @@ function fmt(iso?: string) {
   } catch {
     return '—';
   }
+}
+
+function fmtDateTime(iso?: string) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+}
+
+function agentMiniStatementRows(data: unknown): AgentMiniStatementRow[] {
+  if (Array.isArray(data)) return data as AgentMiniStatementRow[];
+  if (data && typeof data === 'object') {
+    const nested = (data as { transactions?: unknown; list?: unknown; records?: unknown });
+    if (Array.isArray(nested.transactions)) return nested.transactions as AgentMiniStatementRow[];
+    if (Array.isArray(nested.list)) return nested.list as AgentMiniStatementRow[];
+    if (Array.isArray(nested.records)) return nested.records as AgentMiniStatementRow[];
+  }
+  return [];
+}
+
+function amountTypeLabel(t?: string) {
+  if (!t) return '—';
+  const u = t.toUpperCase();
+  if (u === 'D' || u === 'DR') return 'Debit';
+  if (u === 'C' || u === 'CR') return 'Credit';
+  return t;
 }
 
 function statusHint(status?: string) {
@@ -302,10 +348,12 @@ export function DashboardPage() {
   }
 
   function agentBalanceValue(resp: AgentAppPortalResponse | null): string {
-    if (!resp?.data || typeof resp.data !== 'object') return '—';
+    if (!resp?.data || typeof resp.data !== 'object' || Array.isArray(resp.data)) return '—';
     const bal = (resp.data as { balance?: number }).balance;
     return bal == null ? '—' : String(bal);
   }
+
+  const statementRows = agentMiniStatementRows(agentStatement?.data);
 
   async function simulateChildTxn(e: FormEvent) {
     e.preventDefault();
@@ -663,20 +711,61 @@ export function DashboardPage() {
                           )}
                           {agentStatement && !agentError && (
                             <div>
-                              <div className="muted" style={{ marginBottom: '0.35rem' }}>
+                              <div className="muted" style={{ marginBottom: '0.5rem' }}>
                                 Mini-statement · {agentStatement.messages || '—'} · code {agentStatement.responsecode || '—'}
+                                {statementRows.length > 0 ? ` · last ${statementRows.length} txn(s)` : ''}
                               </div>
-                              <pre style={{
-                                margin: 0,
-                                maxHeight: 220,
-                                overflow: 'auto',
-                                fontSize: '0.8rem',
-                                padding: '0.5rem',
-                                background: 'var(--surface-2, #f6f6f6)',
-                                borderRadius: 4,
-                              }}>
-                                {JSON.stringify(agentStatement.data ?? null, null, 2)}
-                              </pre>
+                              {statementRows.length === 0 ? (
+                                <p className="muted">No transactions returned.</p>
+                              ) : (
+                                <div style={{ overflowX: 'auto', border: '1px solid var(--border, #e5e5e5)', borderRadius: 6 }}>
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                    <thead>
+                                      <tr style={{ textAlign: 'left', background: 'var(--surface-2, #f3f3f3)' }}>
+                                        <th style={{ padding: '0.5rem 0.65rem' }}>Date</th>
+                                        <th style={{ padding: '0.5rem 0.65rem' }}>Description</th>
+                                        <th style={{ padding: '0.5rem 0.65rem' }}>Amount</th>
+                                        <th style={{ padding: '0.5rem 0.65rem' }}>Type</th>
+                                        <th style={{ padding: '0.5rem 0.65rem' }}>Closing</th>
+                                        <th style={{ padding: '0.5rem 0.65rem' }}>Ref</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {statementRows.map((row, idx) => (
+                                        <tr key={`${row.transRefnum || 'txn'}-${idx}`} style={{ borderTop: '1px solid var(--border, #eee)' }}>
+                                          <td style={{ padding: '0.5rem 0.65rem', whiteSpace: 'nowrap' }}>
+                                            {fmtDateTime(row.transDate)}
+                                          </td>
+                                          <td style={{ padding: '0.5rem 0.65rem' }}>
+                                            <strong>{row.transDocsDescr || '—'}</strong>
+                                            {(row.toAccountNo || row.fromAccountNo) && (
+                                              <div className="muted" style={{ fontSize: '0.75rem' }}>
+                                                {row.fromAccountNo ? `${row.fromAccountNo}` : ''}
+                                                {row.toAccountNo ? ` → ${row.toAccountNo}` : ''}
+                                              </div>
+                                            )}
+                                          </td>
+                                          <td style={{ padding: '0.5rem 0.65rem', whiteSpace: 'nowrap' }}>
+                                            {row.txnAmt == null ? '—' : Number(row.txnAmt).toFixed(2)}
+                                            {row.feeAmt != null && Number(row.feeAmt) > 0 && (
+                                              <div className="muted" style={{ fontSize: '0.75rem' }}>
+                                                fee {Number(row.feeAmt).toFixed(2)}
+                                              </div>
+                                            )}
+                                          </td>
+                                          <td style={{ padding: '0.5rem 0.65rem' }}>{amountTypeLabel(row.amountType)}</td>
+                                          <td style={{ padding: '0.5rem 0.65rem', whiteSpace: 'nowrap' }}>
+                                            {row.closingBalance == null ? '—' : Number(row.closingBalance).toFixed(2)}
+                                          </td>
+                                          <td style={{ padding: '0.5rem 0.65rem', fontSize: '0.75rem' }} className="muted">
+                                            {row.transRefnum || '—'}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
