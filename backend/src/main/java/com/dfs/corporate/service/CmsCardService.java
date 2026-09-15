@@ -337,6 +337,7 @@ public class CmsCardService {
         String holder = firstNonBlank(
                 text(c, "holderName"), text(c, "cardHolder"), text(c, "cardHolderName"),
                 text(c, "customerName"), text(c, "embossedName"), text(c, "name"),
+                text(c, "cardTitle"), text(c, "CardTitle"),
                 text(c, "accountTitle"), text(c, "title"), text(c, "Title"));
         if (holder == null || holder.isBlank()) holder = "—";
 

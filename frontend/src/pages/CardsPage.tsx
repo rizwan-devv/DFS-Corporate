@@ -119,7 +119,8 @@ function mapCard(raw: Record<string, unknown>, index: number): UiCard {
     id: pick(raw, ['cardId', 'id']) || (pan ? `PAN-${last4}` : `CMS-${index + 1}`),
     holder:
       pick(raw, [
-        'holderName', 'cardHolder', 'cardHolderName', 'customerName', 'embossedName', 'name', 'accountTitle', 'title', 'Title',
+        'holderName', 'cardHolder', 'cardHolderName', 'customerName', 'embossedName', 'name',
+        'cardTitle', 'CardTitle', 'accountTitle', 'title', 'Title',
       ]) || '—',
     last4,
     accountNo: account || '••••',
