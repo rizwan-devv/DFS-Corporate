@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { HeroSlideshow } from '../components/HeroSlideshow';
 
 const parties = [
   {
@@ -57,6 +58,7 @@ export function HomePage() {
             </div>
           </div>
           <div className="hero-visual animate-in animate-in-delay-2">
+            <HeroSlideshow />
             <div className="hero-stat-grid">
               <div className="hero-stat">
                 <strong>4</strong>

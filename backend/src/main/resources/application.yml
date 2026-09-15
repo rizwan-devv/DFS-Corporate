@@ -73,6 +73,16 @@ dfs:
     get-balance-path: /agentapp/v1/corporate/getbalance
     mini-statement-path: /agentapp/v1/corporate/miniStatment
     change-mpin-path: /agentapp/v1/corporate/changempin
+  # CMS card system (server-to-server). See docs/DFS-Corporate-CMS-API.postman_collection.json
+  cms-api:
+    enabled: ${DFS_CMS_API_ENABLED:false}
+    portal-base-url: ${DFS_CMS_PORTAL_BASE_URL:http://46.224.146.158:7070}
+    app-base-url: ${DFS_CMS_APP_BASE_URL:http://46.224.146.158:8016}
+    portal-login-id: ${DFS_CMS_PORTAL_LOGIN_ID:}
+    portal-password: ${DFS_CMS_PORTAL_PASSWORD:}
+    app-username: ${DFS_CMS_APP_USERNAME:}
+    app-password: ${DFS_CMS_APP_PASSWORD:}
+    app-api-key: ${DFS_CMS_APP_API_KEY:}
 
 logging:
   level:

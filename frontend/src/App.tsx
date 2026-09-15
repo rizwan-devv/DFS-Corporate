@@ -11,33 +11,44 @@ import { OnboardingPage } from './pages/OnboardingPage';
 import { PartnerKycPage } from './pages/PartnerKycPage';
 import { AdminPage } from './pages/AdminPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { BalancePage } from './pages/BalancePage';
+import { StatementPage } from './pages/StatementPage';
+import { TransactionsPage } from './pages/TransactionsPage';
+import { CardsPage } from './pages/CardsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PortalUsersPage } from './pages/PortalUsersPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
+import { ThemeProvider } from './theme/ThemeContext';
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/getting-started" element={<GettingStartedPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/franchise-onboard" element={<FranchiseOnboardPage />} />
-            <Route path="/verify-otp" element={<VerifyOtpPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/onboarding" element={<OnboardingPage />} />
-            <Route path="/partner-kyc/:token" element={<PartnerKycPage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/portal-users" element={<PortalUsersPage />} />
-            <Route path="/approvals" element={<ApprovalsPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/getting-started" element={<GettingStartedPage />} />
+              <Route path="/signup" element={<SignupPage />} />
+              <Route path="/franchise-onboard" element={<FranchiseOnboardPage />} />
+              <Route path="/verify-otp" element={<VerifyOtpPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/onboarding" element={<OnboardingPage />} />
+              <Route path="/partner-kyc/:token" element={<PartnerKycPage />} />
+              <Route path="/admin" element={<AdminPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/balance" element={<BalancePage />} />
+              <Route path="/statement" element={<StatementPage />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/cards" element={<CardsPage />} />
+              <Route path="/portal-users" element={<PortalUsersPage />} />
+              <Route path="/approvals" element={<ApprovalsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

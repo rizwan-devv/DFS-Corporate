@@ -1,0 +1,205 @@
+{
+  "info": {
+    "name": "DFS Corporate ↔ CMS Card API",
+    "description": "Deployed CMS endpoints for DFS Corporate server-to-server integration.\n\nPortal API: http://46.224.146.158:7070\nCMS App: http://46.224.146.158:8016\nPortal UI: http://46.224.146.158:7071/\n\nSee docs/DFS-Corporate-CMS-API-Integration.md",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "cmsPortalBase", "value": "http://46.224.146.158:7070" },
+    { "key": "cmsAppBase", "value": "http://46.224.146.158:8016" },
+    { "key": "portalToken", "value": "" },
+    { "key": "cmsApiKey", "value": "" },
+    { "key": "appToken", "value": "" },
+    { "key": "cardId", "value": "1" },
+    { "key": "relationshipNum", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Portal API (:7070)",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const t = j?.data?.token || j?.data?.accessToken;",
+                  "  if (t) pm.collectionVariables.set('portalToken', t);",
+                  "} catch (e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loginId\": \"YOUR_CMS_USER\",\n  \"password\": \"YOUR_PASSWORD\"\n}"
+            },
+            "url": "{{cmsPortalBase}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Search cards (list)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{portalToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page\": 0,\n  \"size\": 20,\n  \"sort\": \"createdOn\",\n  \"sortDir\": \"desc\",\n  \"cardStatusCode\": \"ACTIVE\"\n}"
+            },
+            "url": "{{cmsPortalBase}}/api/cards/search"
+          }
+        },
+        {
+          "name": "Get all cards",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{portalToken}}" }
+            ],
+            "url": "{{cmsPortalBase}}/api/cards"
+          }
+        },
+        {
+          "name": "Get card by id",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{portalToken}}" }
+            ],
+            "url": "{{cmsPortalBase}}/api/cards/{{cardId}}"
+          }
+        },
+        {
+          "name": "Card dropdowns (status/product/type)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{portalToken}}" }
+            ],
+            "url": "{{cmsPortalBase}}/api/cards/dropdowns"
+          }
+        },
+        {
+          "name": "Update card (status)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{portalToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cardStatusCode\": \"INACTIVE\"\n}"
+            },
+            "url": "{{cmsPortalBase}}/api/cards/{{cardId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. CMS App (:8016)",
+      "item": [
+        {
+          "name": "Login (app user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const t = j?.responseBody?.token || j?.responseBody?.accessToken;",
+                  "  if (t) pm.collectionVariables.set('appToken', t);",
+                  "} catch (e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Api-Key", "value": "{{cmsApiKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"YOUR_APP_USER\",\n  \"password\": \"YOUR_PASSWORD\"\n}"
+            },
+            "url": "{{cmsAppBase}}/user/login"
+          }
+        },
+        {
+          "name": "Card inquiry (masked)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Api-Key", "value": "{{cmsApiKey}}" },
+              { "key": "Authorization", "value": "Bearer {{appToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"relationshipNum\": \"{{relationshipNum}}\"\n}"
+            },
+            "url": "{{cmsAppBase}}/card/inquiry"
+          }
+        },
+        {
+          "name": "Card inquiry UNMASK (with pin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Api-Key", "value": "{{cmsApiKey}}" },
+              { "key": "Authorization", "value": "Bearer {{appToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"relationshipNum\": \"{{relationshipNum}}\",\n  \"pin\": \"YOUR_PIN\"\n}"
+            },
+            "url": "{{cmsAppBase}}/card/inquiry",
+            "description": "Valid pin returns full PAN/CVV. Audit on DFS Corporate side before calling."
+          }
+        },
+        {
+          "name": "Update card status",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Api-Key", "value": "{{cmsApiKey}}" },
+              { "key": "Authorization", "value": "Bearer {{appToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pan\": \"\",\n  \"statusCode\": \"INACTIVE\"\n}"
+            },
+            "url": "{{cmsAppBase}}/card/update-status"
+          }
+        },
+        {
+          "name": "LOV by slug",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{cmsApiKey}}" },
+              { "key": "Authorization", "value": "Bearer {{appToken}}" }
+            ],
+            "url": "{{cmsAppBase}}/card/lov/status"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -21,6 +21,15 @@ services:
       # AgentApp corporate portal (balance / mini-statement). Leave disabled until CORPORATE_PORTAL_API_KEY is provided.
       DFS_PORTAL_API_ENABLED: "false"
       CORPORATE_PORTAL_API_KEY: ""
+      # CMS card APIs (set credentials on server; leave disabled until ready)
+      DFS_CMS_API_ENABLED: "false"
+      DFS_CMS_PORTAL_BASE_URL: http://46.224.146.158:7070
+      DFS_CMS_APP_BASE_URL: http://46.224.146.158:8016
+      DFS_CMS_PORTAL_LOGIN_ID: ""
+      DFS_CMS_PORTAL_PASSWORD: ""
+      DFS_CMS_APP_USERNAME: ""
+      DFS_CMS_APP_PASSWORD: ""
+      DFS_CMS_APP_API_KEY: ""
       APP_CORS_ORIGINS: http://46.224.146.158:8060,http://localhost:5173,http://localhost:5174
     extra_hosts:
       - "host.docker.internal:host-gateway"
