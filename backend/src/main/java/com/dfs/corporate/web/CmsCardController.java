@@ -26,13 +26,15 @@ public class CmsCardController {
     }
 
     @PostMapping("/search")
-    public JsonNode search(@RequestBody(required = false) CmsCardSearchRequest req) {
-        return cmsCardService.search(req != null ? req : new CmsCardSearchRequest());
+    public JsonNode search(@AuthenticationPrincipal AccountPrincipal principal,
+                           @RequestBody(required = false) CmsCardSearchRequest req) {
+        return cmsCardService.searchForPrincipal(principal, req != null ? req : new CmsCardSearchRequest());
     }
 
+    /** Same as search — always scoped to the logged-in party. */
     @GetMapping
-    public JsonNode list() {
-        return cmsCardService.list();
+    public JsonNode list(@AuthenticationPrincipal AccountPrincipal principal) {
+        return cmsCardService.searchForPrincipal(principal, new CmsCardSearchRequest());
     }
 
     @GetMapping("/dropdowns")
@@ -41,8 +43,9 @@ public class CmsCardController {
     }
 
     @GetMapping("/{cardId}")
-    public JsonNode get(@PathVariable String cardId) {
-        return cmsCardService.get(cardId);
+    public JsonNode get(@AuthenticationPrincipal AccountPrincipal principal,
+                        @PathVariable String cardId) {
+        return cmsCardService.getForPrincipal(principal, cardId);
     }
 
     @PutMapping("/{cardId}/status")

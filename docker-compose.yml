@@ -18,10 +18,11 @@ services:
       MAIL_ENABLED: "false"
       DFS_ACCOUNT_API_ENABLED: "true"
       DFS_ACCOUNT_API_BASE_URL: http://46.225.160.93:18001
-      # AgentApp corporate portal (balance / mini-statement). Leave disabled until CORPORATE_PORTAL_API_KEY is provided.
+      # AgentApp corporate portal (balance / mini-statement / change MPIN).
+      # BOTH must be set, then recreate backend: DFS_PORTAL_API_ENABLED=true AND a real CORPORATE_PORTAL_API_KEY.
       DFS_PORTAL_API_ENABLED: "false"
       CORPORATE_PORTAL_API_KEY: ""
-      # CMS card APIs (set credentials on server; leave disabled until ready)
+      # CMS card APIs — recreate backend after changing these
       DFS_CMS_API_ENABLED: "false"
       DFS_CMS_PORTAL_BASE_URL: http://46.224.146.158:7070
       DFS_CMS_APP_BASE_URL: http://46.224.146.158:8016

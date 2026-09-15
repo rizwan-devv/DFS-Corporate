@@ -115,7 +115,7 @@ public class CorporatePortalAgentAppClient {
     private void ensureReady() {
         if (!enabled) {
             throw new IllegalStateException(
-                    "dfs.portal-api.enabled=false — set DFS_PORTAL_API_ENABLED=true to call AgentApp corporate APIs");
+                    "dfs.portal-api.enabled=false — set DFS_PORTAL_API_ENABLED=true AND CORPORATE_PORTAL_API_KEY, then recreate the backend container");
         }
         if (baseUrl.isBlank()) {
             throw new IllegalStateException("dfs.account-api.base-url is empty");

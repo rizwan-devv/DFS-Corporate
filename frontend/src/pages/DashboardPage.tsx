@@ -89,32 +89,6 @@ type AgentMiniStatementRow = {
   channel?: string;
 };
 
-type FranchiseWallet = {
-  partyId: number;
-  currency: string;
-  availableBalance: number;
-  commissionEarned: number;
-  updatedAt?: string;
-};
-
-type CommissionEntry = {
-  id: number;
-  publicId: string;
-  childPartyId: number;
-  childTrackingId?: string;
-  childBusinessName?: string;
-  externalTxnRef: string;
-  txnType?: string;
-  currency: string;
-  grossAmount: number;
-  ratePercent: number;
-  commissionAmount: number;
-  childNetAmount: number;
-  status: string;
-  source?: string;
-  postedAt?: string;
-};
-
 function fmt(iso?: string) {
   if (!iso) return '—';
   try {
@@ -196,8 +170,6 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [invites, setInvites] = useState<FranchiseInvite[]>([]);
   const [children, setChildren] = useState<FranchiseChild[]>([]);
-  const [wallet, setWallet] = useState<FranchiseWallet | null>(null);
-  const [commissionEntries, setCommissionEntries] = useState<CommissionEntry[]>([]);
   const [franchiseError, setFranchiseError] = useState('');
   const [franchiseBusy, setFranchiseBusy] = useState(false);
   const [inviteForm, setInviteForm] = useState({
@@ -206,11 +178,6 @@ export function DashboardPage() {
     phone: '',
     businessName: '',
     commissionRatePercent: '',
-  });
-  const [txnForm, setTxnForm] = useState({
-    childPartyId: '',
-    grossAmount: '',
-    externalTxnRef: '',
   });
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [agentChildId, setAgentChildId] = useState<number | null>(null);
@@ -224,16 +191,12 @@ export function DashboardPage() {
 
   const loadFranchiseData = useCallback(async (token: string) => {
     try {
-      const [inv, kids, wal, entries] = await Promise.all([
+      const [inv, kids] = await Promise.all([
         api<FranchiseInvite[]>('/api/franchises/invites', { token }),
         api<FranchiseChild[]>('/api/franchises/children', { token }),
-        api<FranchiseWallet>('/api/franchises/wallet', { token }),
-        api<CommissionEntry[]>('/api/franchises/transactions', { token }),
       ]);
       setInvites(inv);
       setChildren(kids);
-      setWallet(wal);
-      setCommissionEntries(entries);
       setFranchiseError('');
     } catch (err) {
       setFranchiseError(err instanceof Error ? err.message : 'Failed to load franchise data');
@@ -354,52 +317,6 @@ export function DashboardPage() {
   }
 
   const statementRows = agentMiniStatementRows(agentStatement?.data);
-
-  async function simulateChildTxn(e: FormEvent) {
-    e.preventDefault();
-    if (!session?.token) return;
-    setFranchiseBusy(true);
-    setFranchiseError('');
-    try {
-      const ref = txnForm.externalTxnRef.trim() || `SIM-${Date.now()}`;
-      await api('/api/franchises/transactions', {
-        method: 'POST',
-        token: session.token,
-        body: JSON.stringify({
-          childPartyId: Number(txnForm.childPartyId),
-          grossAmount: Number(txnForm.grossAmount),
-          externalTxnRef: ref,
-          currency: 'PKR',
-          txnType: 'INCOMING',
-          source: 'SIMULATED',
-          notes: 'Simulated child transaction for commission split',
-        }),
-      });
-      setTxnForm({ childPartyId: txnForm.childPartyId, grossAmount: '', externalTxnRef: '' });
-      await loadFranchiseData(session.token);
-    } catch (err) {
-      setFranchiseError(err instanceof Error ? err.message : 'Transaction post failed');
-    } finally {
-      setFranchiseBusy(false);
-    }
-  }
-
-  async function reverseEntry(publicId: string) {
-    if (!session?.token) return;
-    setFranchiseBusy(true);
-    setFranchiseError('');
-    try {
-      await api(`/api/franchises/transactions/${publicId}/reverse`, {
-        method: 'POST',
-        token: session.token,
-      });
-      await loadFranchiseData(session.token);
-    } catch (err) {
-      setFranchiseError(err instanceof Error ? err.message : 'Reverse failed');
-    } finally {
-      setFranchiseBusy(false);
-    }
-  }
 
   async function resendInvite(id: number) {
     if (!session?.token) return;
@@ -553,7 +470,7 @@ export function DashboardPage() {
               {canManageFranchises && (
                 <div className="dash-kyc animate-in animate-in-delay-1" style={{ marginTop: '1.5rem' }}>
                   <div className="dash-kyc-head">
-                    <h3 style={{ margin: 0 }}>Franchise / child wallets</h3>
+                    <h3 style={{ margin: 0 }}>Franchise / children</h3>
                     <span className="muted">{children.length} onboarded · {invites.length} invites</span>
                   </div>
                   <p className="muted" style={{ margin: '0.5rem 0 1rem' }}>
@@ -774,98 +691,35 @@ export function DashboardPage() {
                   )}
 
                   <div className="dash-kyc-list" style={{ marginTop: '1.25rem' }}>
-                    <h4 style={{ margin: '0 0 0.5rem' }}>Real-time commission wallet</h4>
+                    <h4 style={{ margin: '0 0 0.5rem' }}>Commission rates</h4>
                     <p className="muted" style={{ margin: '0 0 0.75rem' }}>
-                      On each successful child transaction, locked % credits your wallet immediately
-                      (e.g. 10% of PKR 1,000 → PKR 100 here, PKR 900 to child).
+                      Percentage only — no amount split in this portal. Locked rates apply to franchise children.
                     </p>
-                    <div className="doc-row" style={{ marginBottom: '1rem' }}>
-                      <div>
-                        <strong>{wallet?.currency || 'PKR'} {Number(wallet?.availableBalance ?? 0).toFixed(2)}</strong>
-                        <div className="muted">
-                          Available · Commission earned {Number(wallet?.commissionEarned ?? 0).toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {children.some((c) => c.commissionStatus === 'LOCKED' && c.status === 'ACTIVE') && (
-                      <form className="form-grid" onSubmit={simulateChildTxn} style={{ marginBottom: '1rem' }}>
-                        <div className="form-row">
-                          <label>Child franchise</label>
-                          <select
-                            required
-                            value={txnForm.childPartyId}
-                            onChange={(e) => setTxnForm({ ...txnForm, childPartyId: e.target.value })}
-                          >
-                            <option value="">Select child</option>
-                            {children
-                              .filter((c) => c.commissionStatus === 'LOCKED' && c.status === 'ACTIVE')
-                              .map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.businessName || c.fullName} ({c.trackingId}) — {c.commissionRatePercent}%
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                        <div className="form-row">
-                          <label>Gross amount (PKR)</label>
-                          <input
-                            required
-                            type="number"
-                            min="0.01"
-                            step="0.01"
-                            value={txnForm.grossAmount}
-                            onChange={(e) => setTxnForm({ ...txnForm, grossAmount: e.target.value })}
-                            placeholder="1000"
-                          />
-                        </div>
-                        <div className="form-row">
-                          <label>External txn ref (optional)</label>
-                          <input
-                            value={txnForm.externalTxnRef}
-                            onChange={(e) => setTxnForm({ ...txnForm, externalTxnRef: e.target.value })}
-                            placeholder="Auto-generated if empty"
-                          />
-                        </div>
-                        <div className="actions">
-                          <button className="btn btn-primary" disabled={franchiseBusy} type="submit">
-                            {franchiseBusy ? 'Posting…' : 'Simulate child txn (split now)'}
-                          </button>
-                        </div>
-                      </form>
-                    )}
-
-                    {commissionEntries.length > 0 && (
-                      <div>
-                        <h4 style={{ margin: '0 0 0.5rem' }}>Recent splits</h4>
-                        {commissionEntries.slice(0, 20).map((e) => (
-                          <div className="doc-row" key={e.id} style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
-                            <div style={{ flex: '1 1 220px' }}>
-                              <strong>{e.childBusinessName || e.childTrackingId || `Child #${e.childPartyId}`}</strong>
-                              <div className="muted">
-                                Gross {e.currency} {Number(e.grossAmount).toFixed(2)} · {Number(e.ratePercent).toFixed(2)}%
-                                → parent {Number(e.commissionAmount).toFixed(2)} / child {Number(e.childNetAmount).toFixed(2)}
-                              </div>
-                              <div className="muted" style={{ fontSize: '0.8rem' }}>
-                                {e.externalTxnRef} · {fmt(e.postedAt)}
-                              </div>
+                    {children.length === 0 ? (
+                      <p className="muted">No franchise children yet.</p>
+                    ) : (
+                      children.map((c) => (
+                        <div className="doc-row" key={c.id}>
+                          <div>
+                            <strong>{c.businessName || c.fullName || c.trackingId}</strong>
+                            <div className="muted">
+                              {c.commissionRatePercent != null
+                                ? `${c.commissionRatePercent}% (${c.commissionStatus || '—'})`
+                                : 'No commission rate set'}
                             </div>
-                            <span className={`status status-${e.status === 'POSTED' ? 'ACTIVE' : 'REJECTED'}`}>
-                              {e.status}
-                            </span>
-                            {e.status === 'POSTED' && e.txnType !== 'REVERSAL' && Number(e.grossAmount) > 0 && (
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                disabled={franchiseBusy}
-                                onClick={() => reverseEntry(e.publicId)}
-                              >
-                                Reverse
-                              </button>
-                            )}
                           </div>
-                        ))}
-                      </div>
+                          {c.commissionStatus === 'PROPOSED' && (
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              disabled={franchiseBusy}
+                              onClick={() => confirmCommission(c.id)}
+                            >
+                              Lock commission
+                            </button>
+                          )}
+                        </div>
+                      ))
                     )}
                   </div>
                 </div>

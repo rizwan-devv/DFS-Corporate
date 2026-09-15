@@ -16,7 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 /**
- * Parent (master) views a franchise child's AgentApp balance / mini-statement / change MPIN.
+ * AgentApp portal balance / mini-statement / change MPIN for franchise children and own party.
  */
 @Service
 public class FranchiseAgentPortalService {
@@ -80,6 +80,51 @@ public class FranchiseAgentPortalService {
         }
     }
 
+    /** Logged-in party's own AgentApp wallet balance (parent or active party). */
+    public AgentAppPortalResponse getOwnBalance(AccountPrincipal principal) {
+        Party party = requireActiveOwnParty(principal);
+        String mobile = requireMobile(party);
+        String level = levelOf(party);
+        try {
+            return toResponse(party, mobile, level, portalClient.getBalance(mobile, level));
+        } catch (IllegalStateException ex) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, ex.getMessage());
+        }
+    }
+
+    /** Logged-in party's own AgentApp mini-statement. */
+    public AgentAppPortalResponse getOwnMiniStatement(AccountPrincipal principal,
+                                                      String fromDate, String toDate) {
+        Party party = requireActiveOwnParty(principal);
+        String mobile = requireMobile(party);
+        String level = levelOf(party);
+        boolean hasFrom = fromDate != null && !fromDate.isBlank();
+        boolean hasTo = toDate != null && !toDate.isBlank();
+        if (hasFrom != hasTo) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "fromDate and toDate must both be supplied or both omitted");
+        }
+        try {
+            return toResponse(party, mobile, level,
+                    portalClient.miniStatement(mobile, level,
+                            hasFrom ? fromDate.trim() : null,
+                            hasTo ? toDate.trim() : null));
+        } catch (IllegalStateException ex) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, ex.getMessage());
+        }
+    }
+
+    private Party requireActiveOwnParty(AccountPrincipal principal) {
+        if (principal.getPartyId() == null) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "No party linked to this account");
+        }
+        Party party = partyRepository.findById(principal.getPartyId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Party not found"));
+        if (party.getStatus() != PartyStatus.ACTIVE) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Party must be ACTIVE to view AgentApp balance/statement");
+        }
+        return party;
+    }
+
     private Party requireOwnedChild(AccountPrincipal principal, Long childPartyId) {
         Party parent = partyRepository.findById(principal.getPartyId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Parent party not found"));
@@ -94,26 +139,26 @@ public class FranchiseAgentPortalService {
         return child;
     }
 
-    private String requireMobile(Party child) {
-        String mobile = IdentityFormats.phoneDigits(child.getPhone());
+    private String requireMobile(Party party) {
+        String mobile = IdentityFormats.phoneDigits(party.getPhone());
         if (mobile == null || mobile.length() < 10) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "Franchise has no valid mobile number for AgentApp lookup");
+                    "Party has no valid mobile number for AgentApp lookup");
         }
         return mobile;
     }
 
-    private String levelOf(Party child) {
-        if (child.getLevelCode() != null && !child.getLevelCode().isBlank()) {
-            return child.getLevelCode().trim();
+    private String levelOf(Party party) {
+        if (party.getLevelCode() != null && !party.getLevelCode().isBlank()) {
+            return party.getLevelCode().trim();
         }
         return defaultLevelCode;
     }
 
-    private static AgentAppPortalResponse toResponse(Party child, String mobile, String level, JsonNode root) {
+    private static AgentAppPortalResponse toResponse(Party party, String mobile, String level, JsonNode root) {
         AgentAppPortalResponse r = new AgentAppPortalResponse();
-        r.setChildPartyId(child.getId());
-        r.setChildTrackingId(child.getTrackingId());
+        r.setChildPartyId(party.getId());
+        r.setChildTrackingId(party.getTrackingId());
         r.setMobileNumber(mobile);
         r.setAccountLevelCode(level);
         if (root != null) {

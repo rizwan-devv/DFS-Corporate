@@ -70,7 +70,7 @@ export function Layout() {
                   </NavLink>
                   <NavLink to="/transactions" className="portal-link">
                     <span className="portal-link-icon">⇄</span>
-                    Transactions
+                    Commission %
                   </NavLink>
                   <NavLink to="/cards" className="portal-link">
                     <span className="portal-link-icon">▭</span>
@@ -110,7 +110,7 @@ export function Layout() {
                       </NavLink>
                       <NavLink to="/transactions" className="portal-link">
                         <span className="portal-link-icon">⇄</span>
-                        Transactions
+                        Commission %
                       </NavLink>
                       <NavLink to="/cards" className="portal-link">
                         <span className="portal-link-icon">▭</span>
