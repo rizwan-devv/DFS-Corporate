@@ -15,6 +15,11 @@ type UiCard = {
   gradient: string;
   expiry: string;
   relationshipNum?: string;
+  /** Full PAN digits when revealed (session only). */
+  clearPan?: string;
+  /** 3–4 digit CVV when revealed (session only). */
+  clearCvv?: string;
+  revealed?: boolean;
   raw?: unknown;
 };
 
@@ -71,6 +76,30 @@ function mapStatus(raw: string): string {
   return raw;
 }
 
+function formatPanDisplay(pan: string): string {
+  const digits = pan.replace(/\D/g, '');
+  if (digits.length >= 12) {
+    return digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+  }
+  // already masked like 190191******6132
+  if (pan.includes('*')) {
+    const clean = pan.replace(/\s/g, '');
+    if (clean.length === 16) {
+      return `${clean.slice(0, 4)} ${clean.slice(4, 8)} ${clean.slice(8, 12)} ${clean.slice(12)}`;
+    }
+    return pan;
+  }
+  return pan;
+}
+
+function isClearPan(pan: string): boolean {
+  return /^\d{12,19}$/.test(pan.replace(/\D/g, '')) && !pan.includes('*');
+}
+
+function isClearCvv(cvv: string): boolean {
+  return /^\d{3,4}$/.test(cvv.trim());
+}
+
 /** Prefer backend-normalized `items`; else dig into cms payload. */
 function extractItems(payload: unknown): Record<string, unknown>[] {
   const root = asRecord(payload);
@@ -85,7 +114,9 @@ function extractItems(payload: unknown): Record<string, unknown>[] {
     const arr = d[key];
     if (Array.isArray(arr)) return arr.map(asRecord);
   }
-  if (d.cardId || d.id || d.accountNumber || d.pan || d.PAN || d.Title || d.relationshipNum) return [d];
+  if (d.cardId || d.id || d.accountNumber || d.pan || d.PAN || d.Title || d.relationshipNum || d.cardTitle) {
+    return [d];
+  }
   return [];
 }
 
@@ -115,6 +146,10 @@ function mapCard(raw: Record<string, unknown>, index: number): UiCard {
         ? 'Visa'
         : 'DFS Pay');
 
+  const clearPan = isClearPan(pan) ? pan.replace(/\D/g, '') : undefined;
+  const cvvRaw = pick(raw, ['cvv', 'cvv2', 'CVV']);
+  const clearCvv = isClearCvv(cvvRaw) ? cvvRaw.trim() : undefined;
+
   return {
     id: pick(raw, ['cardId', 'id']) || (pan ? `PAN-${last4}` : `CMS-${index + 1}`),
     holder:
@@ -130,6 +165,9 @@ function mapCard(raw: Record<string, unknown>, index: number): UiCard {
     gradient: `card-grad-${(index % 3) + 1}`,
     expiry,
     relationshipNum: pick(raw, ['relationshipNum', 'relationshipNumber', 'Relationship', 'accountNumber']) || account,
+    clearPan,
+    clearCvv,
+    revealed: !!(clearPan || clearCvv),
     raw,
   };
 }
@@ -140,6 +178,7 @@ export function CardsPage() {
   const [active, setActive] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [inquiring, setInquiring] = useState(false);
   const [source, setSource] = useState<'demo' | 'cms' | 'empty'>('empty');
   const [error, setError] = useState<string | null>(null);
   const [cmsEnabled, setCmsEnabled] = useState(false);
@@ -152,6 +191,17 @@ export function CardsPage() {
 
   const card = cards[active] ?? cards[0];
 
+  const remaskAll = useCallback(() => {
+    setCards((prev) =>
+      prev.map((c) => ({
+        ...c,
+        clearPan: undefined,
+        clearCvv: undefined,
+        revealed: false,
+      })),
+    );
+  }, []);
+
   const load = useCallback(async () => {
     if (!session?.token) {
       setCards(DEMO);
@@ -161,6 +211,8 @@ export function CardsPage() {
     }
     setLoading(true);
     setError(null);
+    setInquiryNote(null);
+    setPin('');
     try {
       const status = await api<{
         enabled?: boolean;
@@ -223,13 +275,15 @@ export function CardsPage() {
   useEffect(() => {
     setFlipped(false);
     setInquiryNote(null);
-  }, [active]);
+    remaskAll();
+  }, [active, remaskAll]);
 
   useEffect(() => {
     if (cards.length <= 1) return undefined;
+    if (cards.some((c) => c.revealed)) return undefined;
     const id = window.setInterval(() => setActive((i) => (i + 1) % cards.length), 5600);
     return () => window.clearInterval(id);
-  }, [cards.length]);
+  }, [cards]);
 
   useEffect(() => {
     if (!card) return;
@@ -254,7 +308,19 @@ export function CardsPage() {
       }>(`/api/cms/cards/${encodeURIComponent(cardId)}`, { token: session.token });
       if (res.item) {
         const mapped = mapCard(res.item, 0);
-        setCards((prev) => prev.map((c) => (c.id === cardId ? { ...mapped, gradient: c.gradient } : c)));
+        setCards((prev) =>
+          prev.map((c) =>
+            c.id === cardId
+              ? {
+                  ...mapped,
+                  gradient: c.gradient,
+                  clearPan: undefined,
+                  clearCvv: undefined,
+                  revealed: false,
+                }
+              : c,
+          ),
+        );
       }
       if (Array.isArray(res.sameAccountCards)) {
         setSiblings(res.sameAccountCards.map((x, i) => mapCard(asRecord(x), i)));
@@ -269,19 +335,73 @@ export function CardsPage() {
       setInquiryNote('Login + relationship/account number required for CMS inquiry.');
       return;
     }
+    if (unmask && !pin.trim()) {
+      setInquiryNote('Enter the card PIN to request unmask.');
+      return;
+    }
+    setInquiring(true);
     try {
       setInquiryNote(unmask ? 'Requesting unmask…' : 'Loading masked inquiry…');
-      await api('/api/cms/cards/inquiry', {
+      const res = await api<{
+        unmasked?: boolean;
+        unmaskRequested?: boolean;
+        message?: string;
+        item?: Record<string, unknown>;
+        cms?: unknown;
+      }>('/api/cms/cards/inquiry', {
         method: 'POST',
         token: session.token,
         body: JSON.stringify({
           relationshipNum: card.relationshipNum,
-          ...(unmask && pin ? { pin } : {}),
+          ...(unmask ? { pin: pin.trim() } : {}),
         }),
       });
-      setInquiryNote(unmask ? 'Unmask response received.' : 'Masked inquiry OK.');
+
+      const fromItem = res.item ? asRecord(res.item) : {};
+      const fromCms = asRecord(asRecord(res.cms).responseBody ?? asRecord(res.cms).data ?? res.cms);
+      const merged = { ...fromCms, ...fromItem };
+
+      const pan = pick(merged, ['pan', 'PAN', 'maskedPan', 'cardNumber']);
+      const cvv = pick(merged, ['cvv', 'cvv2', 'CVV']);
+      const panClear = isClearPan(pan) ? pan.replace(/\D/g, '') : undefined;
+      const cvvClear = isClearCvv(cvv) ? cvv.trim() : undefined;
+      const revealed = !!(res.unmasked || panClear || cvvClear);
+
+      if (unmask && revealed) {
+        setCards((prev) =>
+          prev.map((c, i) =>
+            i === active
+              ? {
+                  ...c,
+                  ...mapCard(merged, i),
+                  gradient: c.gradient,
+                  clearPan: panClear,
+                  clearCvv: cvvClear,
+                  revealed: true,
+                  last4: panClear?.slice(-4) || c.last4,
+                  holder:
+                    pick(merged, ['holderName', 'cardTitle', 'CardTitle', 'title', 'Title']) || c.holder,
+                }
+              : c,
+          ),
+        );
+        setFlipped(!!cvvClear);
+        setInquiryNote(res.message || 'Card details revealed for this session. Refresh to re-mask.');
+        setPin('');
+      } else if (unmask) {
+        remaskAll();
+        setInquiryNote(
+          res.message ||
+            'CMS still returned masked data. Check PIN or card status (COLD may block clear PAN).',
+        );
+      } else {
+        remaskAll();
+        setInquiryNote(res.message || 'Masked inquiry OK.');
+      }
     } catch (e) {
       setInquiryNote(e instanceof Error ? e.message : 'Inquiry failed');
+    } finally {
+      setInquiring(false);
     }
   }
 
@@ -295,6 +415,11 @@ export function CardsPage() {
       : source === 'demo'
         ? 'Demo'
         : 'No cards';
+
+  const panLine = card?.clearPan
+    ? formatPanDisplay(card.clearPan)
+    : `•••• •••• •••• ${card?.last4 ?? '••••'}`;
+  const cvvLine = card?.clearCvv || '•••';
 
   return (
     <div className="portal-page">
@@ -330,6 +455,7 @@ export function CardsPage() {
         Source: <strong>{sourceLabel}</strong>
         {cmsEnabled ? ' · integration enabled' : ' · integration disabled'}
         {appConfigured ? ' · App inquiry ready' : cmsEnabled ? ' · App inquiry not configured' : ''}
+        {card?.revealed ? ' · secrets visible (session)' : ''}
         {scopeKeys.length > 0 && (
           <>
             {' '}
@@ -363,7 +489,7 @@ export function CardsPage() {
                     <span className="plastic-product">{card.product}</span>
                   </div>
                   <div className="plastic-chip" aria-hidden />
-                  <div className="plastic-pan mono">•••• •••• •••• {card.last4}</div>
+                  <div className="plastic-pan mono">{panLine}</div>
                   <div className="plastic-bottom">
                     <div>
                       <span className="plastic-label">Card holder</span>
@@ -379,9 +505,13 @@ export function CardsPage() {
                   <div className="plastic-stripe" />
                   <div className="plastic-cvv-box">
                     <span>CVV</span>
-                    <strong>•••</strong>
+                    <strong className="mono">{cvvLine}</strong>
                   </div>
-                  <p className="plastic-back-note">Encrypted field. Unmask requires PIN + audited inquiry.</p>
+                  <p className="plastic-back-note">
+                    {card.revealed
+                      ? 'Revealed for this session only. Refresh to re-mask.'
+                      : 'Encrypted field. Unmask requires PIN + audited inquiry.'}
+                  </p>
                 </div>
               </button>
 
@@ -400,7 +530,7 @@ export function CardsPage() {
                   />
                 ))}
               </div>
-              <p className="muted center-hint">Click card to flip · slideshow auto-advances</p>
+              <p className="muted center-hint">Click card to flip · slideshow pauses while secrets are visible</p>
             </section>
 
             <section className="glass-panel card-details-panel">
@@ -413,12 +543,21 @@ export function CardsPage() {
               </div>
 
               <dl className="detail-list">
-                <div><dt>Card number</dt><dd className="mono">•••• •••• •••• {card.last4}</dd></div>
+                <div>
+                  <dt>Card number</dt>
+                  <dd className="mono">{panLine}</dd>
+                </div>
                 <div><dt>Account number</dt><dd className="mono">{card.accountNo}</dd></div>
                 <div><dt>Holder</dt><dd>{card.holder}</dd></div>
                 <div><dt>Network</dt><dd>{card.network}</dd></div>
                 <div><dt>Expiry</dt><dd>{card.expiry}</dd></div>
                 <div><dt>Relationship</dt><dd className="mono">{card.relationshipNum || '—'}</dd></div>
+                {card.revealed && (
+                  <div>
+                    <dt>CVV</dt>
+                    <dd className="mono">{cvvLine}</dd>
+                  </div>
+                )}
               </dl>
 
               {siblings.length > 0 && (
@@ -435,18 +574,42 @@ export function CardsPage() {
                 <input
                   className="input"
                   type="password"
-                  placeholder="PIN for unmask (optional)"
+                  placeholder="Card PIN for unmask"
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
                   autoComplete="off"
+                  disabled={inquiring}
                 />
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => void runInquiry(false)}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void runInquiry(false)}
+                    disabled={inquiring}
+                  >
                     Masked inquiry
                   </button>
-                  <button type="button" className="btn btn-primary btn-sm" onClick={() => void runInquiry(true)}>
-                    Request unmask
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => void runInquiry(true)}
+                    disabled={inquiring || !pin.trim()}
+                  >
+                    {inquiring ? 'Working…' : 'Request unmask'}
                   </button>
+                  {card.revealed && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        remaskAll();
+                        setFlipped(false);
+                        setInquiryNote('Re-masked for this session.');
+                      }}
+                    >
+                      Hide secrets
+                    </button>
+                  )}
                 </div>
                 {inquiryNote && <p className="muted" style={{ margin: 0 }}>{inquiryNote}</p>}
               </div>

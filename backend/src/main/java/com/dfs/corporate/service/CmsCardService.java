@@ -224,10 +224,40 @@ public class CmsCardService {
 
     public JsonNode inquire(CmsCardInquiryRequest req, String requester) {
         ensureApp();
-        boolean unmask = req.getPin() != null && !req.getPin().isBlank();
+        boolean requestedUnmask = req.getPin() != null && !req.getPin().isBlank();
         log.info("CMS card inquiry relationshipNum={} unmask={} requester={}",
-                req.getRelationshipNum(), unmask, requester);
-        return wrapRaw("inquiry", appClient.inquire(req.getRelationshipNum(), unmask ? req.getPin() : null));
+                req.getRelationshipNum(), requestedUnmask, requester);
+        JsonNode raw = appClient.inquire(req.getRelationshipNum(), requestedUnmask ? req.getPin() : null);
+        JsonNode body = unwrapData(raw);
+        ObjectNode item = normalizeCard(body != null ? body : raw);
+        if (text(item, "relationshipNum").isBlank()) {
+            item.put("relationshipNum", req.getRelationshipNum());
+        }
+        if (text(item, "accountNumber").isBlank()) {
+            item.put("accountNumber", req.getRelationshipNum());
+        }
+
+        String pan = firstNonBlank(text(body, "pan"), text(body, "PAN"), text(item, "maskedPan"));
+        String cvv = firstNonBlank(text(body, "cvv"), text(body, "cvv2"), text(body, "CVV"));
+        boolean panClear = pan != null && pan.matches("\\d{12,19}");
+        boolean cvvClear = cvv != null && cvv.matches("\\d{3,4}");
+        boolean unmasked = requestedUnmask && (panClear || cvvClear);
+
+        if (pan != null && !pan.isBlank()) item.put("pan", pan);
+        if (cvvClear) item.put("cvv", cvv);
+        else item.putNull("cvv");
+
+        ObjectNode out = baseWrap("inquiry");
+        out.put("unmaskRequested", requestedUnmask);
+        out.put("unmasked", unmasked);
+        out.put("message", unmasked
+                ? "Card details revealed for this session. Refresh to re-mask."
+                : requestedUnmask
+                    ? "CMS returned masked data — check PIN or card status (e.g. COLD)."
+                    : "Masked inquiry OK.");
+        out.set("item", item);
+        out.set("cms", raw != null ? raw : objectMapper.createObjectNode());
+        return out;
     }
 
     public JsonNode appStatusLov() {
