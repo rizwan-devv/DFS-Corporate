@@ -65,8 +65,9 @@ function mapStatus(raw: string): string {
   const u = raw.toUpperCase();
   if (u.includes('ACTIVE') || raw === '001' || raw === '1') return 'Active';
   if (u.includes('INACTIVE') || raw === '002' || raw === '2') return 'Inactive';
-  if (u.includes('BLOCK') || raw === '003' || raw === '3') return 'Blocked';
+  if (u.includes('BLOCK') || u.includes('HOT') || raw === '003' || raw === '3') return 'Blocked';
   if (u.includes('PEND') || raw === '004' || raw === '4') return 'Pending';
+  if (u.includes('COLD')) return 'Cold';
   return raw;
 }
 
@@ -84,40 +85,50 @@ function extractItems(payload: unknown): Record<string, unknown>[] {
     const arr = d[key];
     if (Array.isArray(arr)) return arr.map(asRecord);
   }
-  if (d.cardId || d.id || d.accountNumber) return [d];
+  if (d.cardId || d.id || d.accountNumber || d.pan || d.PAN || d.Title || d.relationshipNum) return [d];
   return [];
 }
 
 function mapCard(raw: Record<string, unknown>, index: number): UiCard {
   const pan = pick(raw, [
-    'maskedPan', 'pan', 'cardNumber', 'cardNo', 'cardPan', 'maskedCardNumber', 'card_number',
+    'maskedPan', 'pan', 'PAN', 'cardNumber', 'cardNo', 'cardPan', 'maskedCardNumber', 'card_number',
   ]);
   const last4 =
     pick(raw, ['last4', 'lastFour', 'last_four']) ||
     (pan.replace(/\D/g, '').slice(-4) || '••••');
   const account = pick(raw, [
-    'accountNumber', 'accountNo', 'accountNumberMasked', 'relationshipNum', 'relationshipNumber',
+    'accountNumber', 'accountNo', 'accountNumberMasked', 'relationshipNum', 'relationshipNumber', 'Relationship',
   ]);
   const status = mapStatus(
-    pick(raw, ['status', 'cardStatusName', 'statusName', 'cardStatusCode', 'statusCode', 'cardStatus']),
+    pick(raw, ['status', 'cardStatusName', 'statusName', 'cardStatusCode', 'statusCode', 'cardStatus', 'Status']),
   );
   const expiry = formatExpiry(
     pick(raw, ['expiry', 'expiryDate', 'cardExpiry', 'expireDate', 'expiryDateTime', 'validThru']),
   );
+  const product =
+    pick(raw, ['productName', 'productCode', 'product', 'cardType', 'cardTypeName', 'Product']) || 'Card';
+  const network =
+    pick(raw, ['network', 'scheme', 'brand', 'cardBrand']) ||
+    (product.toUpperCase().includes('MASTER')
+      ? 'Mastercard'
+      : product.toUpperCase().includes('VISA')
+        ? 'Visa'
+        : 'DFS Pay');
 
   return {
-    id: pick(raw, ['cardId', 'id']) || `CMS-${index + 1}`,
-    holder: pick(raw, [
-      'holderName', 'cardHolder', 'cardHolderName', 'customerName', 'embossedName', 'name', 'accountTitle',
-    ]) || '—',
+    id: pick(raw, ['cardId', 'id']) || (pan ? `PAN-${last4}` : `CMS-${index + 1}`),
+    holder:
+      pick(raw, [
+        'holderName', 'cardHolder', 'cardHolderName', 'customerName', 'embossedName', 'name', 'accountTitle', 'title', 'Title',
+      ]) || '—',
     last4,
     accountNo: account || '••••',
-    network: pick(raw, ['network', 'scheme', 'brand', 'cardBrand']) || 'DFS Pay',
+    network,
     status,
-    product: pick(raw, ['productName', 'productCode', 'product', 'cardType', 'cardTypeName']) || 'Card',
+    product,
     gradient: `card-grad-${(index % 3) + 1}`,
     expiry,
-    relationshipNum: pick(raw, ['relationshipNum', 'relationshipNumber', 'accountNumber']) || account,
+    relationshipNum: pick(raw, ['relationshipNum', 'relationshipNumber', 'Relationship', 'accountNumber']) || account,
     raw,
   };
 }
@@ -131,6 +142,8 @@ export function CardsPage() {
   const [source, setSource] = useState<'demo' | 'cms' | 'empty'>('empty');
   const [error, setError] = useState<string | null>(null);
   const [cmsEnabled, setCmsEnabled] = useState(false);
+  const [appConfigured, setAppConfigured] = useState(false);
+  const [loadMode, setLoadMode] = useState<string>('');
   const [scopeKeys, setScopeKeys] = useState<string[]>([]);
   const [siblings, setSiblings] = useState<UiCard[]>([]);
   const [inquiryNote, setInquiryNote] = useState<string | null>(null);
@@ -148,8 +161,15 @@ export function CardsPage() {
     setLoading(true);
     setError(null);
     try {
-      const status = await api<{ enabled?: boolean }>('/api/cms/cards/status', { token: session.token });
+      const status = await api<{
+        enabled?: boolean;
+        appConfigured?: boolean;
+        appReady?: boolean;
+        portalReady?: boolean;
+        mode?: string;
+      }>('/api/cms/cards/status', { token: session.token });
       setCmsEnabled(!!status.enabled);
+      setAppConfigured(!!status.appConfigured);
       if (!status.enabled) {
         setCards(DEMO);
         setSource('demo');
@@ -162,19 +182,23 @@ export function CardsPage() {
         scopeKeys?: string[];
         message?: string;
         scoped?: boolean;
+        mode?: string;
       }>('/api/cms/cards/search', {
         method: 'POST',
         token: session.token,
         body: JSON.stringify({ page: 0, size: 50, sort: 'createdOn', sortDir: 'desc' }),
       });
       setScopeKeys(Array.isArray(res.scopeKeys) ? res.scopeKeys.map(String) : []);
+      setLoadMode(res.mode || status.mode || '');
       const items = extractItems(res).map(mapCard);
       if (items.length === 0) {
         setCards([]);
         setSource('empty');
         setError(
           res.message ||
-            'No cards matched this corporate account (dfsAccountId / relationship).',
+            (!status.appConfigured
+              ? 'Set DFS_CMS_APP_API_KEY / USERNAME / PASSWORD (same as AgentApp) for /card/inquiry.'
+              : 'No cards matched this corporate account (dfsAccountId = CMS relationship number).'),
         );
       } else {
         setCards(items);
@@ -215,7 +239,7 @@ export function CardsPage() {
   const statusChip = useMemo(() => {
     const s = (card?.status || '').toUpperCase();
     if (s.includes('ACTIVE')) return 'chip-success';
-    if (s.includes('BLOCK') || s.includes('INACTIVE')) return 'chip-danger';
+    if (s.includes('BLOCK') || s.includes('HOT') || s.includes('INACTIVE')) return 'chip-danger';
     return 'chip-warn';
   }, [card?.status]);
 
@@ -260,12 +284,23 @@ export function CardsPage() {
     }
   }
 
+  const sourceLabel =
+    source === 'cms'
+      ? loadMode.includes('inquiry')
+        ? 'CMS App inquiry'
+        : loadMode.includes('portal')
+          ? 'CMS Portal search'
+          : 'CMS API'
+      : source === 'demo'
+        ? 'Demo'
+        : 'No cards';
+
   return (
     <div className="portal-page">
       <PageHeader
-        eyebrow="Cards · CMS"
+        eyebrow="Cards · CMS App"
         title="Card details"
-        subtitle="Only cards linked to your corporate DFS account (and franchise children) are shown."
+        subtitle="Loaded like AgentApp: CMS App /card/inquiry by your party relationship number (dfsAccountId)."
         actions={
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()} disabled={loading}>
             {loading ? 'Refreshing…' : 'Refresh'}
@@ -275,19 +310,25 @@ export function CardsPage() {
 
       <FinanceSlideshow
         slides={[
-          { accent: 'Scoped', title: 'Your cards only', body: 'Matched by party dfsAccountId / relationship number.' },
+          { accent: 'Inquiry', title: 'By relationship', body: 'Same CMS App path AgentApp uses: relationshipNum → /card/inquiry.' },
           { accent: 'Mask', title: 'Sensitive by default', body: 'PAN and CVV stay hidden until audited unmask.' },
-          { accent: 'Live', title: cmsEnabled ? 'CMS connected' : 'CMS off', body: cmsEnabled ? 'Backend CMS flag is on.' : 'Set DFS_CMS_API_ENABLED to go live.' },
+          {
+            accent: 'Live',
+            title: appConfigured ? 'CMS App ready' : cmsEnabled ? 'App creds missing' : 'CMS off',
+            body: appConfigured
+              ? 'Inquiry credentials configured.'
+              : cmsEnabled
+                ? 'Set DFS_CMS_APP_API_KEY / USERNAME / PASSWORD.'
+                : 'Set DFS_CMS_API_ENABLED to go live.',
+          },
         ]}
       />
 
       {error && <p className="api-banner">{error}</p>}
       <p className="muted" style={{ margin: 0 }}>
-        Source:{' '}
-        <strong>
-          {source === 'cms' ? 'CMS API (scoped)' : source === 'demo' ? 'Demo' : 'No cards'}
-        </strong>
+        Source: <strong>{sourceLabel}</strong>
         {cmsEnabled ? ' · integration enabled' : ' · integration disabled'}
+        {appConfigured ? ' · App inquiry ready' : cmsEnabled ? ' · App inquiry not configured' : ''}
         {scopeKeys.length > 0 && (
           <>
             {' '}
@@ -300,8 +341,9 @@ export function CardsPage() {
         <section className="glass-panel animate-in">
           <h2 className="panel-title">No cards for this login</h2>
           <p className="muted">
-            Ensure this party has a provisioned <span className="mono">dfsAccountId</span> that matches CMS
-            account / relationship numbers.
+            Set party <span className="mono">dfsAccountId</span> to the 13-digit CMS{' '}
+            <strong>Relationship #</strong> (same value AgentApp uses), and configure{' '}
+            <span className="mono">DFS_CMS_APP_*</span> on the server.
           </p>
         </section>
       ) : (
@@ -427,8 +469,8 @@ export function CardsPage() {
                 >
                   <span className={`inventory-swatch ${c.gradient}`} />
                   <div>
-                    <strong>{c.id}</strong>
-                    <p className="muted">•••• {c.last4} · {c.holder}</p>
+                    <strong>{c.holder !== '—' ? c.holder : c.id}</strong>
+                    <p className="muted">•••• {c.last4} · {c.product}</p>
                   </div>
                   <span className={`chip ${String(c.status).toUpperCase().includes('ACTIVE') ? 'chip-success' : 'chip-warn'}`}>
                     {c.status}

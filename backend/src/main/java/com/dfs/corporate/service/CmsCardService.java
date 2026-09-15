@@ -51,78 +51,143 @@ public class CmsCardService {
 
     public ObjectNode status() {
         ObjectNode n = objectMapper.createObjectNode();
-        n.put("enabled", portalClient.isEnabled());
+        n.put("enabled", portalClient.isEnabled() || appClient.isEnabled());
         n.put("portalReady", portalClient.isEnabled());
         n.put("appReady", appClient.isEnabled());
+        n.put("appConfigured", appClient.isConfigured());
+        n.put("mode", "agentapp-inquiry-preferred");
         return n;
     }
 
-    /** Scoped search for the logged-in corporate party (own + children accounts). */
+    /**
+     * Load cards like AgentApp: CMS App /card/inquiry by relationshipNum for this party (+ children).
+     * Falls back to CMS Portal search if App inquiry yields nothing.
+     */
     public JsonNode searchForPrincipal(AccountPrincipal principal, CmsCardSearchRequest req) {
-        ensurePortal();
+        ensureCms();
         Scope scope = resolveScope(principal, req);
         List<JsonNode> matched = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        ArrayNode inquiryRaw = objectMapper.createArrayNode();
+        String mode = "none";
 
         if (scope.keys().isEmpty() && !scope.allowUnscopedAdmin()) {
             ObjectNode empty = baseWrap("search");
             empty.put("scoped", true);
-            empty.put("message", "No DFS account id on this party yet — cannot match CMS cards. Complete account provisioning first.");
+            empty.put("mode", "none");
+            empty.put("message",
+                    "No relationship / DFS account id on this party — cannot inquire CMS cards. "
+                            + "Set dfsAccountId to the 13-digit CMS relationship number (same as AgentApp).");
             empty.set("scopeKeys", objectMapper.createArrayNode());
             empty.set("items", objectMapper.createArrayNode());
             return empty;
         }
 
-        if (scope.allowUnscopedAdmin() && scope.keys().isEmpty()) {
-            ObjectNode body = searchBody(req, null);
-            JsonNode raw = portalClient.searchCards(body);
-            List<JsonNode> all = extractItems(raw);
-            for (JsonNode item : all) matched.add(normalizeCard(item));
-            return finishSearch(raw, matched, scope, false);
+        // 1) AgentApp-style CMS App inquiry
+        if (appClient.isConfigured()) {
+            mode = "cms-app-inquiry";
+            for (String rel : relationshipCandidates(scope.keys())) {
+                try {
+                    JsonNode raw = appClient.inquire(rel, null);
+                    inquiryRaw.add(raw);
+                    List<JsonNode> found = extractItems(raw);
+                    if (found.isEmpty()) {
+                        JsonNode single = unwrapData(raw);
+                        if (single != null && single.isObject() && looksLikeCard(single)) {
+                            found = List.of(single);
+                        }
+                    }
+                    for (JsonNode item : found) {
+                        ObjectNode n = normalizeCard(item);
+                        if (text(n, "relationshipNum").isBlank()) n.put("relationshipNum", rel);
+                        if (text(n, "accountNumber").isBlank()) n.put("accountNumber", rel);
+                        String id = cardIdentity(n) + "|" + rel;
+                        if (seen.add(id)) matched.add(n);
+                    }
+                } catch (Exception ex) {
+                    log.warn("CMS App inquiry relationshipNum={} failed: {}", rel, ex.getMessage());
+                }
+            }
         }
 
-        // Prefer filtered CMS queries; also merge by each scope key
-        Set<String> seen = new LinkedHashSet<>();
-        JsonNode lastRaw = objectMapper.createObjectNode();
-        for (String key : scope.keys()) {
-            try {
-                ObjectNode byAccount = searchBody(req, key);
-                lastRaw = portalClient.searchCards(byAccount);
-                for (JsonNode item : extractItems(lastRaw)) {
+        // 2) Fallback: CMS Portal admin search (scoped)
+        JsonNode lastPortal = objectMapper.createObjectNode();
+        if (matched.isEmpty() && portalClient.isEnabled()) {
+            mode = mode.equals("cms-app-inquiry") ? "cms-app-empty-portal-fallback" : "cms-portal-search";
+            if (scope.allowUnscopedAdmin() && scope.keys().isEmpty()) {
+                lastPortal = portalClient.searchCards(searchBody(req, null));
+                for (JsonNode item : extractItems(lastPortal)) {
                     String id = cardIdentity(item);
                     if (seen.add(id)) matched.add(normalizeCard(item));
                 }
-            } catch (Exception ex) {
-                log.warn("CMS search by account/relationship {} failed: {}", key, ex.getMessage());
+            } else {
+                for (String key : scope.keys()) {
+                    try {
+                        lastPortal = portalClient.searchCards(searchBody(req, key));
+                        for (JsonNode item : extractItems(lastPortal)) {
+                            ObjectNode n = normalizeCard(item);
+                            if (!matchesScope(n, scope.keys())) continue;
+                            String id = cardIdentity(n);
+                            if (seen.add(id)) matched.add(n);
+                        }
+                    } catch (Exception ex) {
+                        log.warn("CMS Portal search key={} failed: {}", key, ex.getMessage());
+                    }
+                }
             }
         }
 
-        // If CMS filter ignored our key and returned everything, filter locally
-        if (matched.size() > 40 && !scope.keys().isEmpty()) {
-            List<JsonNode> filtered = new ArrayList<>();
-            for (JsonNode n : matched) {
-                if (matchesScope(n, scope.keys())) filtered.add(n);
-            }
-            matched = filtered;
-        } else if (!scope.keys().isEmpty()) {
-            List<JsonNode> filtered = new ArrayList<>();
-            for (JsonNode n : matched) {
-                if (matchesScope(n, scope.keys())) filtered.add(n);
-            }
-            // Keep filtered if we got any; if CMS filter already worked, filtered ≈ matched
-            if (!filtered.isEmpty() || matched.isEmpty()) {
-                matched = filtered;
+        ObjectNode out = finishSearch(
+                inquiryRaw.size() > 0 ? inquiryRaw : lastPortal,
+                matched,
+                scope,
+                !scope.allowUnscopedAdmin() || !scope.keys().isEmpty());
+        out.put("mode", mode);
+        if (matched.isEmpty()) {
+            if (!appClient.isConfigured()) {
+                out.put("message",
+                        "No cards found. Set DFS_CMS_APP_API_KEY / USERNAME / PASSWORD "
+                                + "(same as AgentApp) so portal can call /card/inquiry by relationshipNum.");
+            } else {
+                out.put("message",
+                        "No cards for relationship keys "
+                                + scope.keys()
+                                + ". Confirm party dfsAccountId equals CMS Relationship # (13 digits).");
             }
         }
-
-        return finishSearch(lastRaw, matched, scope, true);
+        return out;
     }
 
     public JsonNode getForPrincipal(AccountPrincipal principal, String cardId) {
-        ensurePortal();
+        ensureCms();
         Scope scope = resolveScope(principal, new CmsCardSearchRequest());
-        JsonNode raw = portalClient.getCard(cardId);
-        JsonNode card = firstCardNode(raw);
-        ObjectNode normalized = normalizeCard(card);
+        JsonNode raw = null;
+        ObjectNode normalized = null;
+
+        // Prefer listing from inquiry scope (AgentApp path), then portal get by id
+        CmsCardSearchRequest listReq = new CmsCardSearchRequest();
+        listReq.setSize(50);
+        JsonNode search = searchForPrincipal(principal, listReq);
+        JsonNode items = search.get("items");
+        if (items != null && items.isArray()) {
+            for (JsonNode s : items) {
+                if (cardId.equals(text(s, "cardId")) || cardId.equals(text(s, "relationshipNum"))
+                        || cardId.equals(text(s, "accountNumber")) || cardId.equals(text(s, "maskedPan"))) {
+                    normalized = s.isObject() ? (ObjectNode) s : normalizeCard(s);
+                    raw = search.get("cms");
+                    break;
+                }
+            }
+        }
+
+        if (normalized == null && portalClient.isEnabled()) {
+            raw = portalClient.getCard(cardId);
+            normalized = normalizeCard(firstCardNode(raw));
+        }
+
+        if (normalized == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Card not found for this account");
+        }
         if (!scope.allowUnscopedAdmin() && !scope.keys().isEmpty() && !matchesScope(normalized, scope.keys())) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Card does not belong to this corporate account");
         }
@@ -131,15 +196,11 @@ public class CmsCardService {
         out.set("cms", raw != null ? raw : objectMapper.createObjectNode());
         ArrayNode siblings = objectMapper.createArrayNode();
         String account = text(normalized, "accountNumber");
-        if (!account.isBlank()) {
-            CmsCardSearchRequest req = new CmsCardSearchRequest();
-            req.setAccountNumber(account);
-            req.setSize(50);
-            JsonNode search = searchForPrincipal(principal, req);
-            JsonNode items = search.get("items");
-            if (items != null && items.isArray()) {
-                for (JsonNode s : items) {
-                    if (!text(s, "cardId").equals(text(normalized, "cardId"))) siblings.add(s);
+        if (!account.isBlank() && items != null && items.isArray()) {
+            for (JsonNode s : items) {
+                if (!text(s, "cardId").equals(text(normalized, "cardId"))
+                        && account.equals(text(s, "accountNumber"))) {
+                    siblings.add(s);
                 }
             }
         }
@@ -257,7 +318,7 @@ public class CmsCardService {
         String cardId = firstNonBlank(
                 text(c, "cardId"), text(c, "id"), text(c, "card_id"), text(c, "CardId"));
         String pan = firstNonBlank(
-                text(c, "maskedPan"), text(c, "pan"), text(c, "cardNumber"), text(c, "cardNo"),
+                text(c, "maskedPan"), text(c, "pan"), text(c, "PAN"), text(c, "cardNumber"), text(c, "cardNo"),
                 text(c, "cardPan"), text(c, "maskedCardNumber"), text(c, "card_number"), text(c, "CardNumber"));
         String last4 = firstNonBlank(text(c, "last4"), text(c, "lastFour"), text(c, "last_four"));
         if ((last4 == null || last4.isBlank()) && pan != null) {
@@ -269,25 +330,35 @@ public class CmsCardService {
         String account = firstNonBlank(
                 text(c, "accountNumber"), text(c, "accountNo"), text(c, "account_number"),
                 text(c, "relationshipNum"), text(c, "relationshipNumber"), text(c, "relationship_num"),
-                text(c, "custAccount"), text(c, "customerAccount"));
+                text(c, "Relationship"), text(c, "RelationshipNum"), text(c, "custAccount"), text(c, "customerAccount"));
+        String relationship = firstNonBlank(
+                text(c, "relationshipNum"), text(c, "relationshipNumber"), text(c, "Relationship"),
+                text(c, "RelationshipNum"), account);
         String holder = firstNonBlank(
                 text(c, "holderName"), text(c, "cardHolder"), text(c, "cardHolderName"),
                 text(c, "customerName"), text(c, "embossedName"), text(c, "name"),
-                text(c, "accountTitle"), text(c, "title"));
+                text(c, "accountTitle"), text(c, "title"), text(c, "Title"));
         if (holder == null || holder.isBlank()) holder = "—";
 
         String product = firstNonBlank(
                 text(c, "productName"), text(c, "cardProductName"), text(c, "product"),
-                text(c, "cardType"), text(c, "cardTypeName"), text(c, "productCode"), text(c, "schemeProduct"));
+                text(c, "cardType"), text(c, "cardTypeName"), text(c, "productCode"), text(c, "schemeProduct"),
+                text(c, "Product"), text(c, "productDesc"));
         if (product == null || product.isBlank()) product = "Card";
 
         String network = firstNonBlank(
                 text(c, "network"), text(c, "scheme"), text(c, "brand"), text(c, "cardBrand"), text(c, "paymentNetwork"));
-        if (network == null || network.isBlank()) network = "DFS Pay";
+        if (network == null || network.isBlank()) {
+            String p = product.toUpperCase(Locale.ROOT);
+            if (p.contains("MASTER")) network = "Mastercard";
+            else if (p.contains("VISA")) network = "Visa";
+            else network = "DFS Pay";
+        }
 
         String statusRaw = firstNonBlank(
                 text(c, "cardStatusName"), text(c, "statusName"), text(c, "statusLabel"),
-                text(c, "cardStatusCode"), text(c, "statusCode"), text(c, "status"), text(c, "cardStatus"));
+                text(c, "cardStatusCode"), text(c, "statusCode"), text(c, "status"), text(c, "cardStatus"),
+                text(c, "Status"), text(c, "CardStatus"));
         String status = mapStatus(statusRaw);
 
         String expiry = formatExpiry(firstNonBlank(
@@ -304,7 +375,7 @@ public class CmsCardService {
         n.put("maskedPan", pan != null ? pan : ("************" + (last4.equals("••••") ? "" : last4)));
         n.put("last4", last4);
         n.put("accountNumber", account != null ? account : "");
-        n.put("relationshipNum", account != null ? account : "");
+        n.put("relationshipNum", relationship != null ? relationship : "");
         n.put("holderName", holder);
         n.put("productName", product);
         n.put("network", network);
@@ -322,7 +393,39 @@ public class CmsCardService {
         if (u.contains("INACTIVE") || r.equals("002") || r.equals("2")) return "Inactive";
         if (u.contains("BLOCK") || u.contains("HOT") || r.equals("003") || r.equals("3")) return "Blocked";
         if (u.contains("PEND") || r.equals("004") || r.equals("4")) return "Pending";
+        if (u.contains("COLD")) return "Cold";
         return r;
+    }
+
+    /** Prefer 13-digit CMS relationship numbers (AgentApp style); keep other keys as fallback. */
+    private List<String> relationshipCandidates(Set<String> keys) {
+        LinkedHashSet<String> ordered = new LinkedHashSet<>();
+        for (String k : keys) {
+            if (k == null) continue;
+            String t = k.trim();
+            if (t.matches("\\d{12,14}")) ordered.add(t);
+        }
+        for (String k : keys) {
+            if (k == null) continue;
+            String t = k.trim();
+            if (!t.isBlank()) ordered.add(t);
+        }
+        return new ArrayList<>(ordered);
+    }
+
+    private JsonNode unwrapData(JsonNode raw) {
+        if (raw == null) return null;
+        if (raw.has("responseBody") && !raw.get("responseBody").isNull()) return raw.get("responseBody");
+        if (raw.has("data") && !raw.get("data").isNull()) return raw.get("data");
+        if (raw.has("result") && !raw.get("result").isNull()) return raw.get("result");
+        return raw;
+    }
+
+    private boolean looksLikeCard(JsonNode n) {
+        if (n == null || !n.isObject()) return false;
+        return n.has("cardId") || n.has("id") || n.has("pan") || n.has("PAN") || n.has("maskedPan")
+                || n.has("cardNumber") || n.has("relationshipNum") || n.has("Title") || n.has("title")
+                || n.has("accountNumber") || n.has("Status") || n.has("status");
     }
 
     private static String formatExpiry(String raw) {
@@ -399,7 +502,7 @@ public class CmsCardService {
                 return items;
             }
         }
-        if (data.isObject() && (data.has("cardId") || data.has("id") || data.has("accountNumber"))) {
+        if (data.isObject() && looksLikeCard(data)) {
             items.add(data);
         }
         return items;
@@ -418,17 +521,26 @@ public class CmsCardService {
         return out;
     }
 
+    private void ensureCms() {
+        if (!portalClient.isEnabled() && !appClient.isConfigured()) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "CMS integration disabled. Set DFS_CMS_API_ENABLED=true and CMS App "
+                            + "(DFS_CMS_APP_API_KEY / USERNAME / PASSWORD) and/or Portal credentials.");
+        }
+    }
+
     private void ensurePortal() {
         if (!portalClient.isEnabled()) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "CMS integration disabled. Set DFS_CMS_API_ENABLED=true and portal credentials.");
+                    "CMS Portal disabled. Set DFS_CMS_API_ENABLED=true and portal credentials.");
         }
     }
 
     private void ensureApp() {
-        if (!appClient.isEnabled()) {
+        if (!appClient.isConfigured()) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "CMS App inquiry disabled. Set DFS_CMS_API_ENABLED=true and DFS_CMS_APP_* credentials.");
+                    "CMS App inquiry not configured. Set DFS_CMS_API_ENABLED=true and "
+                            + "DFS_CMS_APP_API_KEY / DFS_CMS_APP_USERNAME / DFS_CMS_APP_PASSWORD.");
         }
     }
 

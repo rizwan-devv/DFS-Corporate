@@ -51,6 +51,11 @@ public class CmsAppClient {
         return enabled;
     }
 
+    /** True when App inquiry can run (flag on + API key + login credentials). */
+    public boolean isConfigured() {
+        return enabled && !apiKey.isBlank() && !username.isBlank() && !password.isBlank() && !baseUrl.isBlank();
+    }
+
     public JsonNode inquire(String relationshipNum, String pinOrNull) {
         ObjectNode body = objectMapper.createObjectNode();
         body.put("relationshipNum", relationshipNum);
