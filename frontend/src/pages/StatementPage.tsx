@@ -8,6 +8,7 @@ import {
   agentMiniStatementRows,
   amountTypeLabel,
   formatMoney,
+  fmtDateTime,
 } from '../lib/agentPortal';
 
 export function StatementPage() {
@@ -111,7 +112,7 @@ export function StatementPage() {
                   const isCredit = type.toUpperCase().startsWith('C');
                   return (
                     <tr key={`${row.transRefnum || i}-${row.transDate || i}`}>
-                      <td className="mono">{row.transDate || '—'}</td>
+                      <td className="mono">{fmtDateTime(row.transDate)}</td>
                       <td>{row.transDocsDescr || '—'}</td>
                       <td>
                         <span className={`chip ${isCredit ? 'chip-success' : 'chip-warn'}`}>{type}</span>

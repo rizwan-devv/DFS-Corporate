@@ -80,12 +80,19 @@ export function fmtDate(iso?: string) {
 export function fmtDateTime(iso?: string) {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString(undefined, {
-      year: 'numeric', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit',
+    const d = new Date(iso.trim().replace(' ', 'T'));
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString('en-PK', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
     });
   } catch {
-    return '—';
+    return iso;
   }
 }
 

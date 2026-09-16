@@ -53,3 +53,26 @@ export function formatMoney(n: number | null | undefined): string {
   if (n == null || Number.isNaN(Number(n))) return '—';
   return Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+/**
+ * Format AgentApp txn timestamps (often UTC ISO like 2026-09-01T14:27:37.000+00:00)
+ * into Pakistan local time for statement tables.
+ */
+export function fmtDateTime(iso?: string): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso.trim().replace(' ', 'T'));
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString('en-PK', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return iso;
+  }
+}
