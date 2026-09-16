@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-
-export type ThemeMode = 'dark' | 'light';
+import { THEME_ORDER, isThemeMode, type ThemeMode } from './themeModes';
 
 type ThemeCtx = {
   theme: ThemeMode;
@@ -14,7 +13,7 @@ const KEY = 'dfs_corporate_theme';
 function load(): ThemeMode {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw === 'light' || raw === 'dark') return raw;
+    if (isThemeMode(raw)) return raw;
   } catch {
     /* ignore */
   }
@@ -26,7 +25,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.style.colorScheme = theme;
+    document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
     try {
       localStorage.setItem(KEY, theme);
     } catch {
@@ -35,7 +34,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [theme]);
 
   const setTheme = (t: ThemeMode) => setThemeState(t);
-  const toggleTheme = () => setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  const toggleTheme = () =>
+    setThemeState((prev) => THEME_ORDER[(THEME_ORDER.indexOf(prev) + 1) % THEME_ORDER.length]);
 
   const value = useMemo(() => ({ theme, toggleTheme, setTheme }), [theme]);
 

@@ -1,7 +1,38 @@
-import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
+import { PageHeader } from '../components/PageHeader';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
+import {
+  type FranchiseChild,
+  type FranchiseInvite,
+  fmtDate,
+  isPendingInvite,
+} from '../lib/franchiseTypes';
+import {
+  type AgentAppPortalResponse,
+  type AgentMiniStatementRow,
+  agentBalanceValue,
+  agentMiniStatementRows,
+  formatMoney,
+} from '../lib/agentPortal';
+import {
+  AreaChart,
+  BarChart,
+  ChartCard,
+  ChartEmpty,
+  GaugeChart,
+  KpiTile,
+  RankRow,
+  Sparkline,
+  compactNumber,
+} from '../components/charts';
+
+function formatBalanceDisplay(raw: string): string {
+  if (!raw || raw === '—') return '—';
+  const n = Number(raw);
+  return Number.isFinite(n) ? formatMoney(n) : raw;
+}
 
 type AppUser = { id: number; fullName: string; phone: string; status: string };
 type Party = {
@@ -15,120 +46,66 @@ type Party = {
   phone?: string;
   submittedAt?: string;
   approvedAt?: string;
-  decisionDueAt?: string;
-  partnerKycTotal?: number;
-  partnerKycCompleted?: number;
-  partnerAppUsers?: AppUser[];
   discrepancyNote?: string;
   rejectionReason?: string;
   accountProvisionStatus?: string;
   dfsAccountId?: string;
   accountProvisionError?: string;
   accountProvisionedAt?: string;
-};
-
-type FranchiseInvite = {
-  id: number;
-  contactName: string;
-  email: string;
-  phone: string;
-  businessName?: string;
-  entityType?: string;
-  status: string;
-  inviteUrl: string;
-  invitedAt?: string;
-  expiresAt?: string;
-  completedAt?: string;
-  childTrackingId?: string;
-  childStatus?: string;
-  commissionRatePercent?: number;
-  commissionType?: string;
-  commissionNotes?: string;
-};
-
-type FranchiseChild = {
-  id: number;
-  publicId: string;
-  trackingId?: string;
-  businessName?: string;
-  fullName?: string;
-  email?: string;
-  phone?: string;
-  status?: string;
-  partyType?: string;
-  entityType?: string;
-  commissionRatePercent?: number;
-  commissionStatus?: string;
-  commissionType?: string;
-  dfsAccountId?: string;
+  partnerKycTotal?: number;
+  partnerKycCompleted?: number;
+  partnerAppUsers?: AppUser[];
   levelCode?: string;
 };
 
-type AgentAppPortalResponse = {
-  responsecode?: string;
-  messages?: string;
-  data?: unknown;
-  childPartyId?: number;
-  childTrackingId?: string;
-  mobileNumber?: string;
-  accountLevelCode?: string;
+type DayBucket = {
+  label: string;
+  sort: number;
+  credit: number;
+  debit: number;
+  fee: number;
+  closing: number | null;
+  count: number;
 };
 
-/** One row from AgentApp corporate miniStatment `data` array. */
-type AgentMiniStatementRow = {
-  transDate?: string;
-  transDocsDescr?: string;
-  txnAmt?: number | null;
-  feeAmt?: number | null;
-  amountType?: string;
-  closingBalance?: number | null;
-  openingbalance?: number | null;
-  transRefnum?: string;
-  toAccountNo?: string;
-  fromAccountNo?: string;
-  channel?: string;
-};
-
-function fmt(iso?: string) {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      year: 'numeric', month: 'short', day: 'numeric',
-    });
-  } catch {
-    return '—';
-  }
+/** AgentApp sends several date shapes; fall back to row order when unparseable. */
+function parseTxnDate(raw?: string): Date | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  const direct = new Date(s.replace(' ', 'T'));
+  if (!Number.isNaN(direct.getTime())) return direct;
+  const dmy = s.match(/^(\d{2})[/-](\d{2})[/-](\d{4})/);
+  if (dmy) return new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+  return null;
 }
 
-function fmtDateTime(iso?: string) {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      year: 'numeric', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    });
-  } catch {
-    return '—';
-  }
-}
-
-function agentMiniStatementRows(data: unknown): AgentMiniStatementRow[] {
-  if (Array.isArray(data)) return data as AgentMiniStatementRow[];
-  if (data && typeof data === 'object') {
-    const nested = (data as { transactions?: unknown; list?: unknown; records?: unknown });
-    if (Array.isArray(nested.transactions)) return nested.transactions as AgentMiniStatementRow[];
-    if (Array.isArray(nested.list)) return nested.list as AgentMiniStatementRow[];
-    if (Array.isArray(nested.records)) return nested.records as AgentMiniStatementRow[];
-  }
-  return [];
-}
-
-function amountTypeLabel(t?: string) {
-  if (!t) return '—';
-  const u = t.toUpperCase();
-  if (u === 'D' || u === 'DR') return 'Debit';
-  if (u === 'C' || u === 'CR') return 'Credit';
-  return t;
+function bucketByDay(rows: AgentMiniStatementRow[]): DayBucket[] {
+  const map = new Map<string, DayBucket>();
+  rows.forEach((row, idx) => {
+    const d = parseTxnDate(row.transDate);
+    const key = d ? d.toISOString().slice(0, 10) : `#${idx}`;
+    const bucket =
+      map.get(key) ??
+      {
+        label: d
+          ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+          : `#${idx + 1}`,
+        sort: d ? d.getTime() : idx,
+        credit: 0,
+        debit: 0,
+        fee: 0,
+        closing: null,
+        count: 0,
+      };
+    const amount = Math.abs(Number(row.txnAmt ?? 0) || 0);
+    if ((row.amountType || '').toUpperCase().startsWith('C')) bucket.credit += amount;
+    else bucket.debit += amount;
+    bucket.fee += Math.abs(Number(row.feeAmt ?? 0) || 0);
+    if (row.closingBalance != null) bucket.closing = Number(row.closingBalance);
+    bucket.count += 1;
+    map.set(key, bucket);
+  });
+  return [...map.values()].sort((a, b) => a.sort - b.sort).slice(-10);
 }
 
 function statusHint(status?: string) {
@@ -140,7 +117,7 @@ function statusHint(status?: string) {
     case 'PENDING_APPROVAL':
       return 'With backoffice for final review (5 working-day TAT).';
     case 'ACTIVE':
-      return 'Entity approved. DFS account provisioning status is shown below.';
+      return 'Entity approved. Master account and network shortcuts are below.';
     case 'REJECTED':
       return 'Application was rejected — open My Application to correct and resubmit.';
     default:
@@ -170,52 +147,59 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [invites, setInvites] = useState<FranchiseInvite[]>([]);
   const [children, setChildren] = useState<FranchiseChild[]>([]);
-  const [franchiseError, setFranchiseError] = useState('');
-  const [franchiseBusy, setFranchiseBusy] = useState(false);
-  const [inviteForm, setInviteForm] = useState({
-    contactName: '',
-    email: '',
-    phone: '',
-    businessName: '',
-    commissionRatePercent: '',
-  });
-  const [copiedId, setCopiedId] = useState<number | null>(null);
-  const [agentChildId, setAgentChildId] = useState<number | null>(null);
-  const [agentBalance, setAgentBalance] = useState<AgentAppPortalResponse | null>(null);
-  const [agentStatement, setAgentStatement] = useState<AgentAppPortalResponse | null>(null);
-  const [agentBusy, setAgentBusy] = useState(false);
-  const [agentError, setAgentError] = useState('');
+  const [balance, setBalance] = useState<AgentAppPortalResponse | null>(null);
+  const [statement, setStatement] = useState<AgentAppPortalResponse | null>(null);
 
   const isMaster = (party?.partyType || session?.partyType) === 'MERCHANT';
-  const canManageFranchises = isMaster && (party?.status || session?.partyStatus) === 'ACTIVE';
-
-  const loadFranchiseData = useCallback(async (token: string) => {
-    try {
-      const [inv, kids] = await Promise.all([
-        api<FranchiseInvite[]>('/api/franchises/invites', { token }),
-        api<FranchiseChild[]>('/api/franchises/children', { token }),
-      ]);
-      setInvites(inv);
-      setChildren(kids);
-      setFranchiseError('');
-    } catch (err) {
-      setFranchiseError(err instanceof Error ? err.message : 'Failed to load franchise data');
-    }
-  }, []);
+  const canManageNetwork = isMaster && (party?.status || session?.partyStatus) === 'ACTIVE';
+  const status = party?.status || session?.partyStatus || '—';
+  const provision = party?.accountProvisionStatus;
+  const kycTotal = party?.partnerKycTotal || 0;
+  const kycDone = party?.partnerKycCompleted || 0;
+  const kycPct = kycTotal > 0 ? Math.round((kycDone / kycTotal) * 100) : 0;
+  const showApp = status === 'DRAFT' || status === 'REJECTED' || status === 'SUBMITTED' || status === 'PENDING_APPROVAL';
+  const badgeLabel = isMaster ? 'CORPORATE MASTER' : 'FRANCHISE / CHILD WALLET';
+  const pendingInvites = invites.filter(isPendingInvite).length;
+  const onboardedCount = children.length;
 
   useEffect(() => {
     if (!session?.token || session.role === 'PLATFORM_ADMIN') return;
     let cancelled = false;
     setLoading(true);
     api<Party>('/api/onboarding/me', { token: session.token })
-      .then((data) => {
+      .then(async (data) => {
         if (cancelled) return;
         setParty(data);
         if (data.status && data.status !== session.partyStatus) {
           setSession({ ...session, partyStatus: data.status, partyType: data.partyType || session.partyType });
         }
         if (data.partyType === 'MERCHANT' && data.status === 'ACTIVE') {
-          return loadFranchiseData(session.token);
+          try {
+            const [inv, kids] = await Promise.all([
+              api<FranchiseInvite[]>('/api/franchises/invites', { token: session.token }),
+              api<FranchiseChild[]>('/api/franchises/children', { token: session.token }),
+            ]);
+            if (!cancelled) {
+              setInvites(inv);
+              setChildren(kids);
+            }
+          } catch {
+            /* network section optional */
+          }
+        }
+        if (data.status === 'ACTIVE') {
+          const [bal, stmt] = await Promise.all([
+            api<AgentAppPortalResponse>('/api/me/agent-balance', { token: session.token }).catch(
+              () => null,
+            ),
+            api<AgentAppPortalResponse>('/api/me/agent-mini-statement', {
+              token: session.token,
+            }).catch(() => null),
+          ]);
+          if (!cancelled) {
+            setBalance(bal);
+            setStatement(stmt);
+          }
         }
       })
       .catch((err) => {
@@ -224,524 +208,414 @@ export function DashboardPage() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [session?.token, session?.role]);
+
+  const rows = useMemo(() => agentMiniStatementRows(statement?.data), [statement]);
+  const buckets = useMemo(() => bucketByDay(rows), [rows]);
+  const totals = useMemo(() => {
+    const credit = buckets.reduce((sum, b) => sum + b.credit, 0);
+    const debit = buckets.reduce((sum, b) => sum + b.debit, 0);
+    const fee = buckets.reduce((sum, b) => sum + b.fee, 0);
+    const count = buckets.reduce((sum, b) => sum + b.count, 0);
+    const turnover = credit + debit;
+    return {
+      credit,
+      debit,
+      fee,
+      count,
+      creditShare: turnover > 0 ? (credit / turnover) * 100 : 0,
+    };
+  }, [buckets]);
+
+  const closingTrend = useMemo(
+    () => buckets.map((b) => b.closing).filter((v): v is number => v != null),
+    [buckets],
+  );
+
+  const topFranchises = useMemo(() => {
+    const ranked = children
+      .filter((c) => (c.commissionRatePercent ?? 0) > 0)
+      .sort((a, b) => (b.commissionRatePercent ?? 0) - (a.commissionRatePercent ?? 0))
+      .slice(0, 5);
+    const max = ranked.length ? ranked[0].commissionRatePercent ?? 1 : 1;
+    return ranked.map((c) => ({ child: c, percent: ((c.commissionRatePercent ?? 0) / max) * 100 }));
+  }, [children]);
+
+  const avgCommission = useMemo(() => {
+    const rates = children
+      .map((c) => c.commissionRatePercent)
+      .filter((v): v is number => v != null && v > 0);
+    if (!rates.length) return 0;
+    return rates.reduce((a, b) => a + b, 0) / rates.length;
+  }, [children]);
 
   if (!session) return <Navigate to="/login" replace />;
   if (session.role === 'PLATFORM_ADMIN') return <Navigate to="/admin" replace />;
 
-  const status = party?.status || session.partyStatus || '—';
-  const kycTotal = party?.partnerKycTotal || 0;
-  const kycDone = party?.partnerKycCompleted || 0;
-  const kycPct = kycTotal > 0 ? Math.round((kycDone / kycTotal) * 100) : 0;
-  const provision = party?.accountProvisionStatus;
-  const showApp = status === 'DRAFT' || status === 'REJECTED' || status === 'SUBMITTED' || status === 'PENDING_APPROVAL';
-  const badgeLabel = isMaster ? 'CORPORATE MASTER' : 'FRANCHISE / CHILD WALLET';
-
-  async function createInvite(e: FormEvent) {
-    e.preventDefault();
-    if (!session?.token) return;
-    setFranchiseBusy(true);
-    setFranchiseError('');
-    try {
-      const body: Record<string, unknown> = {
-        contactName: inviteForm.contactName,
-        email: inviteForm.email,
-        phone: inviteForm.phone,
-        businessName: inviteForm.businessName || undefined,
-      };
-      if (inviteForm.commissionRatePercent.trim()) {
-        body.commissionRatePercent = Number(inviteForm.commissionRatePercent);
-        body.commissionType = 'PERCENT_GROSS';
-      }
-      await api('/api/franchises/invites', {
-        method: 'POST',
-        token: session.token,
-        body: JSON.stringify(body),
-      });
-      setInviteForm({ contactName: '', email: '', phone: '', businessName: '', commissionRatePercent: '' });
-      await loadFranchiseData(session.token);
-    } catch (err) {
-      setFranchiseError(err instanceof Error ? err.message : 'Invite failed');
-    } finally {
-      setFranchiseBusy(false);
-    }
-  }
-
-  async function confirmCommission(childPartyId: number) {
-    if (!session?.token) return;
-    setFranchiseBusy(true);
-    setFranchiseError('');
-    try {
-      await api(`/api/franchises/children/${childPartyId}/confirm-commission`, {
-        method: 'POST',
-        token: session.token,
-      });
-      await loadFranchiseData(session.token);
-    } catch (err) {
-      setFranchiseError(err instanceof Error ? err.message : 'Commission lock failed');
-    } finally {
-      setFranchiseBusy(false);
-    }
-  }
-
-  async function loadChildAgentData(childPartyId: number) {
-    if (!session?.token) return;
-    setAgentBusy(true);
-    setAgentError('');
-    setAgentChildId(childPartyId);
-    setAgentBalance(null);
-    setAgentStatement(null);
-    try {
-      const [bal, stmt] = await Promise.all([
-        api<AgentAppPortalResponse>(`/api/franchises/children/${childPartyId}/agent-balance`, {
-          token: session.token,
-        }),
-        api<AgentAppPortalResponse>(`/api/franchises/children/${childPartyId}/agent-mini-statement`, {
-          token: session.token,
-        }),
-      ]);
-      setAgentBalance(bal);
-      setAgentStatement(stmt);
-    } catch (err) {
-      setAgentError(err instanceof Error ? err.message : 'Failed to load AgentApp data');
-    } finally {
-      setAgentBusy(false);
-    }
-  }
-
-  function agentBalanceValue(resp: AgentAppPortalResponse | null): string {
-    if (!resp?.data || typeof resp.data !== 'object' || Array.isArray(resp.data)) return '—';
-    const bal = (resp.data as { balance?: number }).balance;
-    return bal == null ? '—' : String(bal);
-  }
-
-  const statementRows = agentMiniStatementRows(agentStatement?.data);
-
-  async function resendInvite(id: number) {
-    if (!session?.token) return;
-    setFranchiseBusy(true);
-    try {
-      await api(`/api/franchises/invites/${id}/resend`, { method: 'POST', token: session.token });
-      await loadFranchiseData(session.token);
-    } catch (err) {
-      setFranchiseError(err instanceof Error ? err.message : 'Resend failed');
-    } finally {
-      setFranchiseBusy(false);
-    }
-  }
-
-  async function cancelInvite(id: number) {
-    if (!session?.token) return;
-    setFranchiseBusy(true);
-    try {
-      await api(`/api/franchises/invites/${id}/cancel`, { method: 'POST', token: session.token });
-      await loadFranchiseData(session.token);
-    } catch (err) {
-      setFranchiseError(err instanceof Error ? err.message : 'Cancel failed');
-    } finally {
-      setFranchiseBusy(false);
-    }
-  }
-
-  async function copyLink(inv: FranchiseInvite) {
-    try {
-      await navigator.clipboard.writeText(inv.inviteUrl);
-      setCopiedId(inv.id);
-      setTimeout(() => setCopiedId(null), 2000);
-    } catch {
-      setFranchiseError('Could not copy link — select it manually from the invite row.');
-    }
-  }
+  const balStr = agentBalanceValue(balance);
+  const liveBal = balStr !== '—';
+  const hasSeries = buckets.length > 0;
+  const chartLabels = buckets.map((b) => b.label);
 
   return (
-    <div className="page">
-      <div className="container dash">
-        <div className="panel panel--wide animate-in">
-          <div className="panel-header">
-            <div>
-              <div className="badge">{badgeLabel}</div>
-              <h2 style={{ margin: '0 0 0.35rem' }}>
-                Welcome, {party?.fullName || session.fullName || 'user'}
-              </h2>
-              <p className="muted" style={{ margin: 0 }}>
-                {statusHint(status)}
-              </p>
-            </div>
-            <span className={`status status-${status}`}>{status}</span>
-          </div>
+    <div className="portal-page">
+      <PageHeader
+        eyebrow={badgeLabel}
+        title={`Welcome, ${party?.fullName || session.fullName || 'user'}`}
+        subtitle={statusHint(status)}
+        actions={<span className={`status status-${status}`}>{status}</span>}
+      />
 
-          {error && <div className="alert alert-error alert-spaced">{error}</div>}
-          {party?.discrepancyNote && (
-            <div className="alert alert-info alert-spaced">Discrepancy: {party.discrepancyNote}</div>
-          )}
-          {party?.rejectionReason && (
-            <div className="alert alert-error alert-spaced">Rejected: {party.rejectionReason}</div>
-          )}
+      {error && <p className="api-banner">{error}</p>}
+      {party?.discrepancyNote && (
+        <div className="alert alert-info">{party.discrepancyNote}</div>
+      )}
+      {party?.rejectionReason && (
+        <div className="alert alert-error">Rejected: {party.rejectionReason}</div>
+      )}
 
-          {loading ? (
-            <p className="muted" style={{ marginTop: '1.25rem' }}>Loading application…</p>
-          ) : (
+      {loading ? (
+        <p className="muted">Loading…</p>
+      ) : (
+        <>
+          {status === 'ACTIVE' && (
             <>
-              <div className="ops-meta-grid" style={{ marginTop: '1.35rem' }}>
-                <div>
-                  <span className="muted">Business</span>
-                  <strong>{party?.businessName || '—'}</strong>
-                </div>
-                <div>
-                  <span className="muted">Entity type</span>
-                  <strong>{party?.entityType || party?.partyType || session.partyType || '—'}</strong>
-                </div>
-                <div>
-                  <span className="muted">Tracking ID</span>
-                  <strong>{party?.trackingId || '—'}</strong>
-                </div>
-                <div>
-                  <span className="muted">Submitted</span>
-                  <strong>{fmt(party?.submittedAt)}</strong>
-                </div>
-                <div>
-                  <span className="muted">Approved</span>
-                  <strong>{fmt(party?.approvedAt)}</strong>
-                </div>
-                <div>
-                  <span className="muted">Contact</span>
-                  <strong>{party?.email || party?.phone || '—'}</strong>
-                </div>
+              <div className="kpi-row animate-in">
+                <KpiTile
+                  label="Live wallet balance"
+                  value={liveBal ? formatBalanceDisplay(balStr) : '—'}
+                  icon="◉"
+                  hint="AgentApp master account"
+                  trend={closingTrend.length > 1 ? <Sparkline points={closingTrend} /> : undefined}
+                />
+                <KpiTile
+                  label="Money in"
+                  value={hasSeries ? formatMoney(totals.credit) : '—'}
+                  icon="↓"
+                  accent="success"
+                  hint={hasSeries ? `${totals.count} movements on statement` : 'Awaiting statement'}
+                  delta={
+                    hasSeries
+                      ? { text: `${Math.round(totals.creditShare)}% of turnover`, tone: 'up' }
+                      : undefined
+                  }
+                />
+                <KpiTile
+                  label="Money out"
+                  value={hasSeries ? formatMoney(totals.debit) : '—'}
+                  icon="↑"
+                  accent="warning"
+                  hint={hasSeries ? `Fees ${formatMoney(totals.fee)}` : 'Awaiting statement'}
+                  delta={
+                    hasSeries
+                      ? {
+                          text: `${Math.round(100 - totals.creditShare)}% of turnover`,
+                          tone: 'down',
+                        }
+                      : undefined
+                  }
+                />
+                <KpiTile
+                  label="Onboarded franchises"
+                  value={onboardedCount}
+                  icon="▣"
+                  accent="teal"
+                  hint={`${pendingInvites} invite${pendingInvites === 1 ? '' : 's'} pending`}
+                  delta={
+                    avgCommission > 0
+                      ? { text: `avg ${avgCommission.toFixed(2)}%`, tone: 'flat' }
+                      : undefined
+                  }
+                />
               </div>
 
-              {status === 'ACTIVE' && provision && (
-                <div className="dash-kyc animate-in animate-in-delay-1" style={{ marginTop: '1.25rem' }}>
-                  <div className="dash-kyc-head">
-                    <h3 style={{ margin: 0 }}>DFS account</h3>
-                    <span className={`status status-${
-                      provision === 'SUCCESS' ? 'ACTIVE'
-                        : provision === 'FAILED' ? 'REJECTED'
-                          : 'SUBMITTED'
-                    }`}>{provision}</span>
-                  </div>
-                  <p className="muted" style={{ margin: '0.5rem 0 0' }}>{provisionHint(provision)}</p>
-                  <div className="ops-meta-grid" style={{ marginTop: '0.85rem' }}>
-                    <div>
-                      <span className="muted">DFS account ID</span>
-                      <strong>{party?.dfsAccountId || '—'}</strong>
-                    </div>
-                    <div>
-                      <span className="muted">Provisioned</span>
-                      <strong>{fmt(party?.accountProvisionedAt)}</strong>
-                    </div>
-                  </div>
-                  {party?.accountProvisionError && provision !== 'SUCCESS' && (
-                    <div className="alert alert-info alert-spaced" style={{ marginTop: '0.75rem' }}>
-                      {party.accountProvisionError}
-                    </div>
+              <div className="dash-grid animate-in animate-in-delay-1">
+                <ChartCard
+                  title="Money movement"
+                  subtitle="Credits vs debits per day, from the live AgentApp mini-statement"
+                  actions={
+                    <Link className="btn btn-ghost btn-sm" to="/statement">
+                      Statement
+                    </Link>
+                  }
+                >
+                  {hasSeries ? (
+                    <AreaChart
+                      labels={chartLabels}
+                      height={250}
+                      series={[
+                        { name: 'Money in', color: 'var(--accent)', points: buckets.map((b) => b.credit) },
+                        { name: 'Money out', color: 'var(--teal)', points: buckets.map((b) => b.debit) },
+                      ]}
+                    />
+                  ) : (
+                    <ChartEmpty message="No statement movements yet. Charts fill in as soon as AgentApp returns transactions." />
                   )}
-                </div>
-              )}
+                </ChartCard>
 
-              {kycTotal > 0 && (
-                <div className="dash-kyc animate-in animate-in-delay-1">
-                  <div className="dash-kyc-head">
-                    <h3 style={{ margin: 0 }}>Partner mobile KYC</h3>
-                    <span className="muted">{kycDone}/{kycTotal} complete</span>
-                  </div>
-                  <div className="ops-progress large">
-                    <div className="ops-progress-bar">
-                      <span style={{ width: `${kycPct}%` }} />
-                    </div>
-                    <span className="ops-progress-label">{kycPct}%</span>
-                  </div>
-                  <div className="dash-kyc-list">
-                    {(party?.partnerAppUsers || []).map((u) => (
-                      <div className="doc-row" key={u.id}>
-                        <div>
-                          <strong>{u.fullName}</strong>
-                          <div className="muted">{u.phone}</div>
-                        </div>
-                        <span className={`status status-${u.status === 'KYC_COMPLETED' ? 'ACTIVE' : u.status === 'FAILED' ? 'REJECTED' : 'SUBMITTED'}`}>
-                          {u.status}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {canManageFranchises && (
-                <div className="dash-kyc animate-in animate-in-delay-1" style={{ marginTop: '1.5rem' }}>
-                  <div className="dash-kyc-head">
-                    <h3 style={{ margin: 0 }}>Franchise / children</h3>
-                    <span className="muted">{children.length} onboarded · {invites.length} invites</span>
-                  </div>
-                  <p className="muted" style={{ margin: '0.5rem 0 1rem' }}>
-                    Invite a franchise with a secure link. Parent is bound automatically — they never
-                    type your public ID.
+                <ChartCard
+                  title="Earnings"
+                  subtitle="Fees and commission captured on this statement"
+                >
+                  <strong className="kpi-value" style={{ fontSize: '1.9rem' }}>
+                    {hasSeries ? formatMoney(totals.fee) : '—'}
+                  </strong>
+                  <p className="chart-card-sub" style={{ marginBottom: '0.5rem' }}>
+                    {hasSeries
+                      ? `${Math.round(totals.creditShare)}% of turnover came in as credits`
+                      : 'Awaiting statement data'}
                   </p>
-                  {franchiseError && <div className="alert alert-error">{franchiseError}</div>}
+                  <GaugeChart
+                    percent={totals.creditShare}
+                    label="Credit share"
+                    caption={
+                      hasSeries
+                        ? `Turnover ${compactNumber(totals.credit + totals.debit)} across ${totals.count} movements`
+                        : undefined
+                    }
+                  />
+                </ChartCard>
+              </div>
 
-                  <form className="form-grid" onSubmit={createInvite} style={{ marginBottom: '1.25rem' }}>
-                    <div className="form-row">
-                      <label>Contact name</label>
-                      <input
-                        required
-                        value={inviteForm.contactName}
-                        onChange={(e) => setInviteForm({ ...inviteForm, contactName: e.target.value })}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label>Email</label>
-                      <input
-                        required
-                        type="email"
-                        value={inviteForm.email}
-                        onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label>Phone (app user ID)</label>
-                      <input
-                        required
-                        value={inviteForm.phone}
-                        onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
-                        placeholder="03XXXXXXXXX"
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label>Outlet / business name (optional)</label>
-                      <input
-                        value={inviteForm.businessName}
-                        onChange={(e) => setInviteForm({ ...inviteForm, businessName: e.target.value })}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label>Commission % (proposed — locked on approve)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        value={inviteForm.commissionRatePercent}
-                        onChange={(e) => setInviteForm({ ...inviteForm, commissionRatePercent: e.target.value })}
-                        placeholder="e.g. 10"
-                      />
-                    </div>
-                    <div className="actions">
-                      <button className="btn btn-primary" disabled={franchiseBusy} type="submit">
-                        {franchiseBusy ? 'Working…' : 'Send franchise invite'}
-                      </button>
-                    </div>
-                  </form>
+              <div className="dash-grid dash-grid--even animate-in animate-in-delay-2">
+                <ChartCard title="Daily volume" subtitle="In / out amounts per statement day">
+                  {hasSeries ? (
+                    <BarChart
+                      labels={chartLabels}
+                      height={220}
+                      series={[
+                        { name: 'In', color: 'var(--accent)', points: buckets.map((b) => b.credit) },
+                        { name: 'Out', color: 'var(--teal)', points: buckets.map((b) => b.debit) },
+                      ]}
+                    />
+                  ) : (
+                    <ChartEmpty message="Daily volume appears once statement rows are available." />
+                  )}
+                </ChartCard>
 
-                  {invites.length > 0 && (
-                    <div className="dash-kyc-list" style={{ marginBottom: '1.25rem' }}>
-                      <h4 style={{ margin: '0 0 0.5rem' }}>Invites</h4>
-                      {invites.map((inv) => (
-                        <div className="doc-row" key={inv.id} style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
-                          <div style={{ flex: '1 1 200px' }}>
-                            <strong>{inv.contactName}</strong>
-                            <div className="muted">{inv.email} · {inv.phone}</div>
-                            {inv.commissionRatePercent != null && (
-                              <div className="muted">Commission proposed: {inv.commissionRatePercent}%</div>
-                            )}
-                            <div className="muted" style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
-                              {inv.inviteUrl}
-                            </div>
-                          </div>
-                          <span className={`status status-${
-                            inv.status === 'COMPLETED' ? 'ACTIVE'
-                              : inv.status === 'CANCELLED' || inv.status === 'EXPIRED' ? 'REJECTED'
-                                : 'SUBMITTED'
-                          }`}>{inv.status}</span>
-                          <div className="actions" style={{ margin: 0 }}>
-                            <button type="button" className="btn btn-ghost" onClick={() => copyLink(inv)}>
-                              {copiedId === inv.id ? 'Copied' : 'Copy link'}
-                            </button>
-                            {inv.status !== 'COMPLETED' && inv.status !== 'CANCELLED' && (
-                              <>
-                                <button type="button" className="btn btn-ghost" disabled={franchiseBusy} onClick={() => resendInvite(inv.id)}>
-                                  Resend
-                                </button>
-                                <button type="button" className="btn btn-ghost" disabled={franchiseBusy} onClick={() => cancelInvite(inv.id)}>
-                                  Cancel
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
+                <ChartCard
+                  title="Top franchises by commission"
+                  subtitle={
+                    avgCommission > 0
+                      ? `Average locked rate ${avgCommission.toFixed(2)}%`
+                      : 'No commission rates locked yet'
+                  }
+                  actions={
+                    canManageNetwork ? (
+                      <Link className="btn btn-ghost btn-sm" to="/franchises">
+                        Manage
+                      </Link>
+                    ) : undefined
+                  }
+                >
+                  {topFranchises.length > 0 ? (
+                    <div className="rank-list">
+                      <div className="rank-head">
+                        <span>#</span>
+                        <span>Franchise</span>
+                        <span>Share</span>
+                        <span style={{ justifySelf: 'end' }}>Rate</span>
+                      </div>
+                      {topFranchises.map(({ child, percent }, i) => (
+                        <RankRow
+                          key={child.id}
+                          index={i + 1}
+                          name={child.businessName || child.fullName || child.trackingId || '—'}
+                          meta={child.commissionStatus || child.status}
+                          percent={percent}
+                          value={`${(child.commissionRatePercent ?? 0).toFixed(2)}%`}
+                          color={i % 2 === 0 ? 'var(--accent)' : 'var(--teal)'}
+                        />
                       ))}
                     </div>
+                  ) : (
+                    <ChartEmpty message="Lock a commission percentage on the Onboarded page to rank your franchises here." />
                   )}
-
-                  {children.length > 0 && (
-                    <div className="dash-kyc-list">
-                      <h4 style={{ margin: '0 0 0.5rem' }}>Onboarded franchises</h4>
-                      {children.map((c) => (
-                        <div className="doc-row" key={c.id} style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
-                          <div style={{ flex: '1 1 200px' }}>
-                            <strong>{c.businessName || c.fullName}</strong>
-                            <div className="muted">{c.trackingId} · {c.email}</div>
-                            {c.phone && <div className="muted">Mobile {c.phone} · Level {c.levelCode || 'L4'}</div>}
-                            {c.commissionRatePercent != null && (
-                              <div className="muted">
-                                Commission: {c.commissionRatePercent}% ({c.commissionStatus || '—'})
-                              </div>
-                            )}
-                          </div>
-                          <span className={`status status-${c.status || 'DRAFT'}`}>{c.status}</span>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={agentBusy}
-                            onClick={() => loadChildAgentData(c.id)}
-                          >
-                            {agentBusy && agentChildId === c.id ? 'Loading…' : 'Agent balance / statement'}
-                          </button>
-                          {c.commissionStatus === 'PROPOSED' && (
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              disabled={franchiseBusy}
-                              onClick={() => confirmCommission(c.id)}
-                            >
-                              Lock commission
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      {(agentError || agentBalance || agentStatement) && (
-                        <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border, #ddd)' }}>
-                          <h4 style={{ margin: '0 0 0.5rem' }}>
-                            AgentApp — child #{agentChildId}
-                            {agentBalance?.childTrackingId ? ` (${agentBalance.childTrackingId})` : ''}
-                          </h4>
-                          {agentError && <div className="alert alert-error">{agentError}</div>}
-                          {agentBalance && !agentError && (
-                            <div className="doc-row" style={{ marginBottom: '0.5rem' }}>
-                              <div>
-                                <strong>Balance: {agentBalanceValue(agentBalance)}</strong>
-                                <div className="muted">
-                                  {agentBalance.messages || '—'} · code {agentBalance.responsecode || '—'}
-                                  {agentBalance.mobileNumber ? ` · ${agentBalance.mobileNumber}` : ''}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          {agentStatement && !agentError && (
-                            <div>
-                              <div className="muted" style={{ marginBottom: '0.5rem' }}>
-                                Mini-statement · {agentStatement.messages || '—'} · code {agentStatement.responsecode || '—'}
-                                {statementRows.length > 0 ? ` · last ${statementRows.length} txn(s)` : ''}
-                              </div>
-                              {statementRows.length === 0 ? (
-                                <p className="muted">No transactions returned.</p>
-                              ) : (
-                                <div style={{ overflowX: 'auto', border: '1px solid var(--border, #e5e5e5)', borderRadius: 6 }}>
-                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                                    <thead>
-                                      <tr style={{ textAlign: 'left', background: 'var(--surface-2, #f3f3f3)' }}>
-                                        <th style={{ padding: '0.5rem 0.65rem' }}>Date</th>
-                                        <th style={{ padding: '0.5rem 0.65rem' }}>Description</th>
-                                        <th style={{ padding: '0.5rem 0.65rem' }}>Amount</th>
-                                        <th style={{ padding: '0.5rem 0.65rem' }}>Type</th>
-                                        <th style={{ padding: '0.5rem 0.65rem' }}>Closing</th>
-                                        <th style={{ padding: '0.5rem 0.65rem' }}>Ref</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {statementRows.map((row, idx) => (
-                                        <tr key={`${row.transRefnum || 'txn'}-${idx}`} style={{ borderTop: '1px solid var(--border, #eee)' }}>
-                                          <td style={{ padding: '0.5rem 0.65rem', whiteSpace: 'nowrap' }}>
-                                            {fmtDateTime(row.transDate)}
-                                          </td>
-                                          <td style={{ padding: '0.5rem 0.65rem' }}>
-                                            <strong>{row.transDocsDescr || '—'}</strong>
-                                            {(row.toAccountNo || row.fromAccountNo) && (
-                                              <div className="muted" style={{ fontSize: '0.75rem' }}>
-                                                {row.fromAccountNo ? `${row.fromAccountNo}` : ''}
-                                                {row.toAccountNo ? ` → ${row.toAccountNo}` : ''}
-                                              </div>
-                                            )}
-                                          </td>
-                                          <td style={{ padding: '0.5rem 0.65rem', whiteSpace: 'nowrap' }}>
-                                            {row.txnAmt == null ? '—' : Number(row.txnAmt).toFixed(2)}
-                                            {row.feeAmt != null && Number(row.feeAmt) > 0 && (
-                                              <div className="muted" style={{ fontSize: '0.75rem' }}>
-                                                fee {Number(row.feeAmt).toFixed(2)}
-                                              </div>
-                                            )}
-                                          </td>
-                                          <td style={{ padding: '0.5rem 0.65rem' }}>{amountTypeLabel(row.amountType)}</td>
-                                          <td style={{ padding: '0.5rem 0.65rem', whiteSpace: 'nowrap' }}>
-                                            {row.closingBalance == null ? '—' : Number(row.closingBalance).toFixed(2)}
-                                          </td>
-                                          <td style={{ padding: '0.5rem 0.65rem', fontSize: '0.75rem' }} className="muted">
-                                            {row.transRefnum || '—'}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="dash-kyc-list" style={{ marginTop: '1.25rem' }}>
-                    <h4 style={{ margin: '0 0 0.5rem' }}>Commission rates</h4>
-                    <p className="muted" style={{ margin: '0 0 0.75rem' }}>
-                      Percentage only — no amount split in this portal. Locked rates apply to franchise children.
-                    </p>
-                    {children.length === 0 ? (
-                      <p className="muted">No franchise children yet.</p>
-                    ) : (
-                      children.map((c) => (
-                        <div className="doc-row" key={c.id}>
-                          <div>
-                            <strong>{c.businessName || c.fullName || c.trackingId}</strong>
-                            <div className="muted">
-                              {c.commissionRatePercent != null
-                                ? `${c.commissionRatePercent}% (${c.commissionStatus || '—'})`
-                                : 'No commission rate set'}
-                            </div>
-                          </div>
-                          {c.commissionStatus === 'PROPOSED' && (
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              disabled={franchiseBusy}
-                              onClick={() => confirmCommission(c.id)}
-                            >
-                              Lock commission
-                            </button>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div className="actions" style={{ marginTop: '1.5rem' }}>
-                {showApp && (
-                  <Link className="btn btn-primary" to="/onboarding">
-                    {status === 'DRAFT' || status === 'REJECTED' ? 'Continue application' : 'View application'}
-                  </Link>
-                )}
-                <Link className="btn btn-ghost" to="/getting-started">
-                  Getting started
-                </Link>
-                <Link className="btn btn-ghost" to="/profile">
-                  Profile
-                </Link>
+                </ChartCard>
               </div>
             </>
           )}
-        </div>
-      </div>
+
+          <section className="glass-panel animate-in">
+            <div className="panel-header">
+              <div>
+                <h2 className="panel-title">Entity</h2>
+                <p className="muted panel-subtitle">{party?.businessName || '—'}</p>
+              </div>
+            </div>
+            <div className="ops-meta-grid">
+              <div>
+                <span className="muted">Entity type</span>
+                <strong>{party?.entityType || party?.partyType || '—'}</strong>
+              </div>
+              <div>
+                <span className="muted">Tracking ID</span>
+                <strong className="mono">{party?.trackingId || '—'}</strong>
+              </div>
+              <div>
+                <span className="muted">Submitted</span>
+                <strong>{fmtDate(party?.submittedAt)}</strong>
+              </div>
+              <div>
+                <span className="muted">Approved</span>
+                <strong>{fmtDate(party?.approvedAt)}</strong>
+              </div>
+              <div>
+                <span className="muted">Contact</span>
+                <strong>{party?.email || party?.phone || '—'}</strong>
+              </div>
+              <div>
+                <span className="muted">Mobile</span>
+                <strong className="mono">{party?.phone || '—'}</strong>
+              </div>
+            </div>
+          </section>
+
+          {status === 'ACTIVE' && (
+            <section className="glass-panel animate-in animate-in-delay-1">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">Master DFS account</h2>
+                  <p className="muted panel-subtitle">
+                    {provisionHint(provision) || 'Account identity used for AgentApp balance and CMS cards.'}
+                  </p>
+                </div>
+                {provision && (
+                  <span
+                    className={`status status-${
+                      provision === 'SUCCESS' ? 'ACTIVE' : provision === 'FAILED' ? 'REJECTED' : 'SUBMITTED'
+                    }`}
+                  >
+                    {provision}
+                  </span>
+                )}
+              </div>
+              <div className="ops-meta-grid">
+                <div>
+                  <span className="muted">DFS account / relationship ID</span>
+                  <strong className="mono">{party?.dfsAccountId || '—'}</strong>
+                </div>
+                <div>
+                  <span className="muted">Level</span>
+                  <strong>{party?.levelCode || 'L4'}</strong>
+                </div>
+                <div>
+                  <span className="muted">Live balance</span>
+                  <strong>{liveBal ? formatBalanceDisplay(balStr) : '—'}</strong>
+                </div>
+                <div>
+                  <span className="muted">IBAN / QR</span>
+                  <strong className="muted">Pending AgentApp account-detail API</strong>
+                </div>
+                <div>
+                  <span className="muted">Provisioned</span>
+                  <strong>{fmtDate(party?.accountProvisionedAt)}</strong>
+                </div>
+              </div>
+              {party?.accountProvisionError && provision !== 'SUCCESS' && (
+                <div className="alert alert-info" style={{ marginTop: '0.75rem' }}>
+                  {party.accountProvisionError}
+                </div>
+              )}
+              <div className="actions" style={{ marginTop: '1rem' }}>
+                <Link className="btn btn-primary btn-sm" to="/balance">
+                  Open balance
+                </Link>
+                <Link className="btn btn-ghost btn-sm" to="/statement">
+                  Statement
+                </Link>
+                <Link className="btn btn-ghost btn-sm" to="/cards">
+                  Cards
+                </Link>
+              </div>
+            </section>
+          )}
+
+          {canManageNetwork && (
+            <section className="glass-panel animate-in animate-in-delay-2">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">Network</h2>
+                  <p className="muted panel-subtitle">
+                    Invites stay pending until the franchise completes signup; then they move to Onboarded.
+                  </p>
+                </div>
+              </div>
+              <div
+                className="stat-row"
+                style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}
+              >
+                <div className="stat-chip">
+                  <span className="stat-label">Pending invites</span>
+                  <strong style={{ fontSize: '1.4rem' }}>{pendingInvites}</strong>
+                </div>
+                <div className="stat-chip">
+                  <span className="stat-label">Onboarded franchises</span>
+                  <strong style={{ fontSize: '1.4rem' }}>{onboardedCount}</strong>
+                </div>
+              </div>
+              <div className="actions">
+                <Link className="btn btn-primary" to="/invites">
+                  Manage invites
+                </Link>
+                <Link className="btn btn-ghost" to="/franchises">
+                  Onboarded & commission
+                </Link>
+              </div>
+            </section>
+          )}
+
+          {kycTotal > 0 && (
+            <section className="glass-panel animate-in">
+              <div className="dash-kyc-head">
+                <h2 className="panel-title" style={{ margin: 0 }}>
+                  Partner mobile KYC
+                </h2>
+                <span className="muted">
+                  {kycDone}/{kycTotal} complete
+                </span>
+              </div>
+              <div className="ops-progress large">
+                <div className="ops-progress-bar">
+                  <span style={{ width: `${kycPct}%` }} />
+                </div>
+                <span className="ops-progress-label">{kycPct}%</span>
+              </div>
+              <div className="dash-kyc-list">
+                {(party?.partnerAppUsers || []).map((u) => (
+                  <div className="doc-row" key={u.id}>
+                    <div>
+                      <strong>{u.fullName}</strong>
+                      <div className="muted">{u.phone}</div>
+                    </div>
+                    <span
+                      className={`status status-${
+                        u.status === 'KYC_COMPLETED' ? 'ACTIVE' : u.status === 'FAILED' ? 'REJECTED' : 'SUBMITTED'
+                      }`}
+                    >
+                      {u.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <div className="actions" style={{ marginTop: '0.25rem' }}>
+            {showApp && (
+              <Link className="btn btn-primary" to="/onboarding">
+                {status === 'DRAFT' || status === 'REJECTED' ? 'Continue application' : 'View application'}
+              </Link>
+            )}
+            <Link className="btn btn-ghost" to="/profile">
+              Profile
+            </Link>
+          </div>
+        </>
+      )}
     </div>
   );
 }
