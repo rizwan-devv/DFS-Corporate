@@ -12,7 +12,14 @@ const PUBLIC_PATHS = new Set([
   '/verify-otp',
 ]);
 
-const DESIGN_PORTAL_PATHS = new Set(['/balance', '/statement', '/transactions', '/cards']);
+const DESIGN_PORTAL_PATHS = new Set([
+  '/balance',
+  '/statement',
+  '/transactions',
+  '/cards',
+  '/invites',
+  '/franchises',
+]);
 
 function isPublicPath(pathname: string) {
   if (PUBLIC_PATHS.has(pathname)) return true;
@@ -120,6 +127,15 @@ export function Layout() {
                   )}
                   {showMerchantOps && (
                     <>
+                      <p className="portal-nav-label">Network</p>
+                      <NavLink to="/invites" className="portal-link">
+                        <span className="portal-link-icon">✉</span>
+                        Invites
+                      </NavLink>
+                      <NavLink to="/franchises" className="portal-link">
+                        <span className="portal-link-icon">▣</span>
+                        Onboarded
+                      </NavLink>
                       <p className="portal-nav-label">Operations</p>
                       <NavLink to="/approvals" className="portal-link">
                         <span className="portal-link-icon">✓</span>

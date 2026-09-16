@@ -11,6 +11,8 @@ import { OnboardingPage } from './pages/OnboardingPage';
 import { PartnerKycPage } from './pages/PartnerKycPage';
 import { AdminPage } from './pages/AdminPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { InvitesPage } from './pages/InvitesPage';
+import { FranchisesPage } from './pages/FranchisesPage';
 import { BalancePage } from './pages/BalancePage';
 import { StatementPage } from './pages/StatementPage';
 import { TransactionsPage } from './pages/TransactionsPage';
@@ -37,6 +39,8 @@ export default function App() {
               <Route path="/partner-kyc/:token" element={<PartnerKycPage />} />
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/invites" element={<InvitesPage />} />
+              <Route path="/franchises" element={<FranchisesPage />} />
               <Route path="/balance" element={<BalancePage />} />
               <Route path="/statement" element={<StatementPage />} />
               <Route path="/transactions" element={<TransactionsPage />} />

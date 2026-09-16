@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { FinanceSlideshow } from '../components/FinanceSlideshow';
 import { api } from '../lib/api';
@@ -51,9 +52,14 @@ export function TransactionsPage() {
         title="Commission rates"
         subtitle="Percentage agreements only — no transaction amount split in this portal."
         actions={
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()} disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh'}
-          </button>
+          <>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()} disabled={loading}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <Link className="btn btn-ghost btn-sm" to="/franchises">
+              Manage onboarded
+            </Link>
+          </>
         }
       />
 
@@ -61,7 +67,7 @@ export function TransactionsPage() {
         slides={[
           { accent: 'Percent', title: 'Rate agreements', body: 'Parent locks a % for each franchise child.' },
           { accent: 'No split', title: 'No ledger here', body: 'Amount splits are not posted in DFS Corporate.' },
-          { accent: 'Plans', title: 'PROPOSED → LOCKED', body: 'Confirm commission on Dashboard to lock the rate.' },
+          { accent: 'Plans', title: 'PROPOSED → LOCKED', body: 'Confirm commission on Onboarded (Franchises) to lock the rate.' },
         ]}
       />
 
@@ -79,7 +85,7 @@ export function TransactionsPage() {
           </strong>
         </article>
         <article className="stat-tile">
-          <span className="stat-label">Proposed</span>
+          <span className="stat-label">To lock</span>
           <strong className="stat-value">
             {children.filter((c) => c.commissionStatus === 'PROPOSED').length}
           </strong>
@@ -87,48 +93,29 @@ export function TransactionsPage() {
       </div>
 
       <section className="glass-panel animate-in animate-in-delay-2">
-        <div className="panel-header">
-          <div>
-            <h2 className="panel-title">Franchise commission %</h2>
-            <p className="muted panel-subtitle">From locked / proposed plans</p>
-          </div>
-        </div>
-
+        <h2 className="panel-title">Franchise commission %</h2>
+        <p className="muted panel-subtitle">
+          Lock rates on the <Link to="/franchises">Onboarded</Link> page.
+        </p>
         {children.length === 0 ? (
-          <p className="muted">No franchise children found.</p>
+          <p className="muted">No franchise children yet.</p>
         ) : (
-          <div className="txn-list">
-            {children.map((c, i) => (
-              <article className="txn-card" key={c.id} style={{ animationDelay: `${0.05 * i}s` }}>
-                <div className="txn-card-main">
-                  <div className="txn-id mono">{c.trackingId || `#${c.id}`}</div>
-                  <h3>{c.businessName || c.fullName || 'Franchise'}</h3>
-                  <p className="muted">{c.status || '—'}</p>
+          <div className="dash-kyc-list">
+            {children.map((c) => (
+              <div className="doc-row" key={c.id}>
+                <div>
+                  <h3 style={{ margin: 0 }}>{c.businessName || c.fullName || 'Franchise'}</h3>
+                  <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+                    {c.trackingId || '—'} · {c.status || '—'}
+                  </p>
                 </div>
-                <div className="txn-card-meta">
-                  <div>
-                    <span className="stat-label">Rate</span>
-                    <strong className="mono">
-                      {c.commissionRatePercent != null ? `${c.commissionRatePercent}%` : '—'}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="stat-label">Type</span>
-                    <strong className="mono">{c.commissionType || 'PERCENT_GROSS'}</strong>
-                  </div>
-                  <span
-                    className={`chip ${
-                      c.commissionStatus === 'LOCKED'
-                        ? 'chip-success'
-                        : c.commissionStatus === 'PROPOSED'
-                          ? 'chip-warn'
-                          : 'chip-warn'
-                    }`}
-                  >
-                    {c.commissionStatus || 'NONE'}
-                  </span>
+                <div style={{ textAlign: 'right' }}>
+                  <strong>
+                    {c.commissionRatePercent != null ? `${c.commissionRatePercent}%` : '—'}
+                  </strong>
+                  <div className="muted">{c.commissionStatus || '—'}</div>
                 </div>
-              </article>
+              </div>
             ))}
           </div>
         )}
