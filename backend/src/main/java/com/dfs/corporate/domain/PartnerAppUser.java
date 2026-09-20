@@ -119,6 +119,25 @@ public class PartnerAppUser {
     @Column(name = "selfie_uploaded")
     private Boolean selfieUploaded = false;
 
+    /** Phone KYC failure attempts (max 3 before bank visit). */
+    @Column(name = "kyc_fail_count", nullable = false)
+    private Integer kycFailCount = 0;
+
+    @Column(name = "bank_visit_required", nullable = false)
+    private Boolean bankVisitRequired = false;
+
+    @Column(name = "manual_kyc_approve_reason", length = 1000)
+    private String manualKycApproveReason;
+
+    @Column(name = "manual_kyc_approved_by", length = 200)
+    private String manualKycApprovedBy;
+
+    @Column(name = "manual_kyc_approved_at")
+    private Instant manualKycApprovedAt;
+
+    @Column(name = "signature_uploaded", nullable = false)
+    private Boolean signatureUploaded = false;
+
     @Column(name = "invited_at", nullable = false)
     private Instant invitedAt = Instant.now();
 
@@ -194,6 +213,18 @@ public class PartnerAppUser {
     public void setBiometricRef(String biometricRef) { this.biometricRef = biometricRef; }
     public Boolean getSelfieUploaded() { return selfieUploaded; }
     public void setSelfieUploaded(Boolean selfieUploaded) { this.selfieUploaded = selfieUploaded; }
+    public Integer getKycFailCount() { return kycFailCount; }
+    public void setKycFailCount(Integer kycFailCount) { this.kycFailCount = kycFailCount; }
+    public Boolean getBankVisitRequired() { return bankVisitRequired; }
+    public void setBankVisitRequired(Boolean bankVisitRequired) { this.bankVisitRequired = bankVisitRequired; }
+    public String getManualKycApproveReason() { return manualKycApproveReason; }
+    public void setManualKycApproveReason(String manualKycApproveReason) { this.manualKycApproveReason = manualKycApproveReason; }
+    public String getManualKycApprovedBy() { return manualKycApprovedBy; }
+    public void setManualKycApprovedBy(String manualKycApprovedBy) { this.manualKycApprovedBy = manualKycApprovedBy; }
+    public Instant getManualKycApprovedAt() { return manualKycApprovedAt; }
+    public void setManualKycApprovedAt(Instant manualKycApprovedAt) { this.manualKycApprovedAt = manualKycApprovedAt; }
+    public Boolean getSignatureUploaded() { return signatureUploaded; }
+    public void setSignatureUploaded(Boolean signatureUploaded) { this.signatureUploaded = signatureUploaded; }
     public Instant getInvitedAt() { return invitedAt; }
     public Instant getCompletedAt() { return completedAt; }
     public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }

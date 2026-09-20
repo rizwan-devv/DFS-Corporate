@@ -39,6 +39,10 @@ public class AppKycSessionResponse {
     private String dfsAccountId;
     private String provinceId;
     private String cityId;
+    private Boolean signatureUploaded;
+    private Integer kycFailCount;
+    private Integer kycAttemptsRemaining;
+    private Boolean bankVisitRequired;
 
     public String getSessionToken() { return sessionToken; }
     public void setSessionToken(String sessionToken) { this.sessionToken = sessionToken; }
@@ -106,4 +110,12 @@ public class AppKycSessionResponse {
     public void setProvinceId(String provinceId) { this.provinceId = provinceId; }
     public String getCityId() { return cityId; }
     public void setCityId(String cityId) { this.cityId = cityId; }
+    public Boolean getSignatureUploaded() { return signatureUploaded; }
+    public void setSignatureUploaded(Boolean signatureUploaded) { this.signatureUploaded = signatureUploaded; }
+    public Integer getKycFailCount() { return kycFailCount; }
+    public void setKycFailCount(Integer kycFailCount) { this.kycFailCount = kycFailCount; }
+    public Integer getKycAttemptsRemaining() { return kycAttemptsRemaining; }
+    public void setKycAttemptsRemaining(Integer kycAttemptsRemaining) { this.kycAttemptsRemaining = kycAttemptsRemaining; }
+    public Boolean getBankVisitRequired() { return bankVisitRequired; }
+    public void setBankVisitRequired(Boolean bankVisitRequired) { this.bankVisitRequired = bankVisitRequired; }
 }

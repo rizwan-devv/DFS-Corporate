@@ -17,6 +17,7 @@ import { BalancePage } from './pages/BalancePage';
 import { StatementPage } from './pages/StatementPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { CardsPage } from './pages/CardsPage';
+import { TransfersPage } from './pages/TransfersPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PortalUsersPage } from './pages/PortalUsersPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
@@ -45,6 +46,7 @@ export default function App() {
               <Route path="/statement" element={<StatementPage />} />
               <Route path="/transactions" element={<TransactionsPage />} />
               <Route path="/cards" element={<CardsPage />} />
+              <Route path="/transfers" element={<TransfersPage />} />
               <Route path="/portal-users" element={<PortalUsersPage />} />
               <Route path="/approvals" element={<ApprovalsPage />} />
               <Route path="/profile" element={<ProfilePage />} />

@@ -53,4 +53,5 @@ public class PartyDocument {
     public String getReviewNote() { return reviewNote; }
     public void setReviewNote(String reviewNote) { this.reviewNote = reviewNote; }
     public Instant getUploadedAt() { return uploadedAt; }
+    public void setUploadedAt(Instant uploadedAt) { this.uploadedAt = uploadedAt; }
 }

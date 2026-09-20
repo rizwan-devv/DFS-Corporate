@@ -787,9 +787,65 @@ h2 {
 
 .status-DRAFT { background: rgba(148, 163, 184, 0.14); color: #cbd5e1; }
 .status-SUBMITTED { background: rgba(59, 130, 246, 0.16); color: #93c5fd; }
+.status-INCOMPLETE { background: rgba(251, 146, 60, 0.16); color: #fdba74; }
 .status-PENDING_APPROVAL { background: rgba(251, 191, 36, 0.14); color: #fcd34d; }
 .status-ACTIVE { background: rgba(52, 211, 153, 0.14); color: #6ee7b7; }
 .status-REJECTED { background: rgba(248, 113, 113, 0.14); color: #fca5a5; }
+
+.ops-signature-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.ops-signature-grid .ops-thumb {
+  min-height: 72px;
+}
+@media (max-width: 720px) {
+  .ops-signature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.transfer-product-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.transfer-tab {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.transfer-tab.active {
+  background: rgba(74, 144, 226, 0.18);
+  border-color: rgba(74, 144, 226, 0.45);
+  color: #93c5fd;
+}
+.transfer-pre {
+  white-space: pre-wrap;
+  font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.75rem;
+  border-radius: 8px;
+  overflow: auto;
+}
+.transfer-qr {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.transfer-qr img {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
 
 .actions {
   display: flex;

@@ -17,6 +17,7 @@ const DESIGN_PORTAL_PATHS = new Set([
   '/statement',
   '/transactions',
   '/cards',
+  '/transfers',
   '/invites',
   '/franchises',
 ]);
@@ -83,6 +84,10 @@ export function Layout() {
                     <span className="portal-link-icon">▭</span>
                     Cards
                   </NavLink>
+                  <NavLink to="/transfers" className="portal-link">
+                    <span className="portal-link-icon">↗</span>
+                    Transfers
+                  </NavLink>
                 </>
               )}
               {isAdmin && (
@@ -122,6 +127,10 @@ export function Layout() {
                       <NavLink to="/cards" className="portal-link">
                         <span className="portal-link-icon">▭</span>
                         Cards
+                      </NavLink>
+                      <NavLink to="/transfers" className="portal-link">
+                        <span className="portal-link-icon">↗</span>
+                        Transfers
                       </NavLink>
                     </>
                   )}

@@ -187,16 +187,18 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Party not found"));
 
         if (account.getRole() != Role.PLATFORM_ADMIN) {
-            if (party.getStatus() == PartyStatus.PENDING_APPROVAL) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "Your application is pending admin approval");
-            }
             if (party.getStatus() == PartyStatus.DRAFT) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Please complete onboarding first");
             }
             if (party.getStatus() == PartyStatus.REJECTED) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Application rejected: " + party.getRejectionReason());
             }
-            if (account.getStatus() != AccountStatus.ACTIVE || party.getStatus() != PartyStatus.ACTIVE) {
+            // Onboarding in flight: allow portal access to re-upload docs / track KYC
+            boolean onboardingInFlight = party.getStatus() == PartyStatus.SUBMITTED
+                    || party.getStatus() == PartyStatus.PENDING_APPROVAL
+                    || party.getStatus() == PartyStatus.INCOMPLETE;
+            if (!onboardingInFlight
+                    && (account.getStatus() != AccountStatus.ACTIVE || party.getStatus() != PartyStatus.ACTIVE)) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Account is not active");
             }
         }

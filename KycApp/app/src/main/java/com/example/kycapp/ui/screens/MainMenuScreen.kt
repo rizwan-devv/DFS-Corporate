@@ -36,6 +36,7 @@ fun MainMenuScreen(
     onFaceMatchClick: () -> Unit,
     onFingerprintClick: () -> Unit,
     onFingerprintRecordsClick: () -> Unit = {},
+    onSignatureClick: () -> Unit = {},
     onSessionUpdated: (DfsSession) -> Unit = {},
     onSignOut: () -> Unit = {}
 ) {
@@ -44,6 +45,7 @@ fun MainMenuScreen(
     var submitting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val completed = session?.status == "KYC_COMPLETED"
+    val bankVisit = session?.status == "BANK_VISIT_REQUIRED"
 
     DfsScreen {
         DfsAnimatedSection {
@@ -102,8 +104,19 @@ fun MainMenuScreen(
         if (completed) {
             DfsCard {
                 Text(
-                    text = "KYC already submitted to DFS. Backoffice can approve once all partners are complete.",
+                    text = "KYC already submitted to DFS. Backoffice can approve once all partners are complete. Capture signature if not done yet.",
                     color = DfsColors.Success,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        if (bankVisit) {
+            DfsCard {
+                Text(
+                    text = "Phone KYC failed 3 times. Please visit the bank/office. Backoffice can approve your partner KYC with a reason.",
+                    color = DfsColors.Danger,
                     fontSize = 14.sp,
                     lineHeight = 20.sp
                 )
@@ -121,9 +134,11 @@ fun MainMenuScreen(
             DfsMenuButton(text = "Fingerprint Matching", onClick = onFingerprintClick)
             Spacer(modifier = Modifier.height(12.dp))
             DfsMenuButton(text = "All Fingerprint Records", onClick = onFingerprintRecordsClick)
+            Spacer(modifier = Modifier.height(12.dp))
+            DfsMenuButton(text = "Capture signature (end step)", onClick = onSignatureClick)
         }
 
-        if (session != null && !completed) {
+        if (session != null && !completed && !bankVisit) {
             Spacer(modifier = Modifier.height(20.dp))
             DfsPrimaryButton(
                 text = if (submitting) "Submitting…" else "Submit KYC to DFS",
@@ -135,7 +150,7 @@ fun MainMenuScreen(
                         try {
                             val updated = DfsApiClient.complete(session.sessionToken)
                             onSessionUpdated(updated)
-                            message = "Submitted to DFS. Status: ${updated.status}"
+                            message = "Submitted to DFS. Status: ${updated.status}. Next: capture signature."
                         } catch (e: Exception) {
                             error = (e as? DfsApiException)?.message ?: (e.message ?: "Submit failed")
                         } finally {
@@ -147,11 +162,39 @@ fun MainMenuScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Run ID / OCR / face / fingerprint first, then submit. Portal already holds CNIC docs.",
+                text = "Run ID / OCR / face / fingerprint first, then submit. After submit, capture your signature.",
                 color = DfsColors.MutedText,
                 fontSize = 11.sp,
                 lineHeight = 14.sp
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            DfsSecondaryButton(
+                text = "Report KYC failure (e.g. face mismatch)",
+                onClick = {
+                    error = null
+                    message = null
+                    submitting = true
+                    scope.launch {
+                        try {
+                            val updated = DfsApiClient.fail(
+                                session.sessionToken,
+                                "Face did not match ID card / phone KYC verification failed"
+                            )
+                            onSessionUpdated(updated)
+                            message = "KYC fail recorded. Status: ${updated.status}"
+                        } catch (e: Exception) {
+                            error = (e as? DfsApiException)?.message ?: (e.message ?: "Fail report error")
+                        } finally {
+                            submitting = false
+                        }
+                    }
+                }
+            )
+        }
+
+        if (session != null && completed) {
+            Spacer(modifier = Modifier.height(16.dp))
+            DfsPrimaryButton(text = "Capture / re-upload signature", onClick = onSignatureClick)
         }
 
         if (session != null) {

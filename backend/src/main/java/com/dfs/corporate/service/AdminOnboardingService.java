@@ -44,6 +44,7 @@ public class AdminOnboardingService {
     private final FileStorageService fileStorageService;
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
+    private final PartyStatusSyncService partyStatusSyncService;
     private final SecureRandom random = new SecureRandom();
 
     public AdminOnboardingService(PartyRepository partyRepository,
@@ -58,7 +59,8 @@ public class AdminOnboardingService {
                                   PortalUserService portalUserService,
                                   FileStorageService fileStorageService,
                                   PasswordEncoder passwordEncoder,
-                                  MailService mailService) {
+                                  MailService mailService,
+                                  PartyStatusSyncService partyStatusSyncService) {
         this.partyRepository = partyRepository;
         this.accountRepository = accountRepository;
         this.documentRepository = documentRepository;
@@ -72,6 +74,7 @@ public class AdminOnboardingService {
         this.fileStorageService = fileStorageService;
         this.passwordEncoder = passwordEncoder;
         this.mailService = mailService;
+        this.partyStatusSyncService = partyStatusSyncService;
     }
 
     public List<Map<String, Object>> brands() {
@@ -89,10 +92,12 @@ public class AdminOnboardingService {
 
     public List<PartyResponse> pending() {
         List<Party> submitted = partyRepository.findByStatusOrderByCreatedAtDesc(PartyStatus.SUBMITTED);
+        List<Party> incomplete = partyRepository.findByStatusOrderByCreatedAtDesc(PartyStatus.INCOMPLETE);
         List<Party> pending = partyRepository.findByStatusOrderByCreatedAtDesc(PartyStatus.PENDING_APPROVAL);
         List<Party> all = new java.util.ArrayList<>();
-        all.addAll(submitted);
         all.addAll(pending);
+        all.addAll(submitted);
+        all.addAll(incomplete);
         return all.stream().map(this::enrich).toList();
     }
 
@@ -228,8 +233,10 @@ public class AdminOnboardingService {
     public PartyResponse reject(Long id, RejectRequest req, AccountPrincipal admin) {
         Party party = partyRepository.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Party not found"));
-        if (party.getStatus() != PartyStatus.PENDING_APPROVAL && party.getStatus() != PartyStatus.SUBMITTED) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Party must be SUBMITTED or PENDING_APPROVAL");
+        if (party.getStatus() != PartyStatus.PENDING_APPROVAL
+                && party.getStatus() != PartyStatus.SUBMITTED
+                && party.getStatus() != PartyStatus.INCOMPLETE) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Party must be SUBMITTED, INCOMPLETE, or PENDING_APPROVAL");
         }
         Account account = accountRepository.findByPartyId(party.getId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Account missing"));
@@ -267,7 +274,25 @@ public class AdminOnboardingService {
         documentRepository.save(doc);
         Party party = partyRepository.findById(doc.getPartyId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Party not found"));
-        return enrich(party);
+
+        // Doc reject does NOT reject the whole client — system marks INCOMPLETE for re-upload
+        if (!approve) {
+            if (party.getStatus() == PartyStatus.SUBMITTED
+                    || party.getStatus() == PartyStatus.PENDING_APPROVAL
+                    || party.getStatus() == PartyStatus.INCOMPLETE) {
+                party.setStatus(PartyStatus.INCOMPLETE);
+                partyRepository.save(party);
+            }
+            mailService.send(party.getEmail(), "DFS Corporate — Document needs re-upload",
+                    "Hello " + party.getFullName() + ",\n\n"
+                            + "Document \"" + doc.getDocumentCode() + "\" was rejected by backoffice.\n"
+                            + (note != null && !note.isBlank() ? "Note: " + note + "\n\n" : "\n")
+                            + "Please re-upload only this document in My Application. Your full application was not rejected.\n\n"
+                            + "— DFS Corporate");
+        } else {
+            partyStatusSyncService.syncAfterDocumentChange(party.getId());
+        }
+        return enrich(partyRepository.findById(party.getId()).orElse(party));
     }
 
     @Transactional
@@ -310,6 +335,12 @@ public class AdminOnboardingService {
     @Transactional
     public PartnerAppUserResponse markAppKycComplete(Long appUserId) {
         return partnerAppUserService.markKycCompleted(appUserId);
+    }
+
+    @Transactional
+    public PartnerAppUserResponse manualKycApprove(Long appUserId, String reason, AccountPrincipal admin) {
+        return partnerAppUserService.manualKycApprove(appUserId, reason,
+                admin != null ? admin.getUsername() : "BACKOFFICE");
     }
 
     @Transactional
@@ -371,7 +402,9 @@ public class AdminOnboardingService {
                     .count());
         }
         if (party.getDecisionDueAt() != null
-                && (party.getStatus() == PartyStatus.PENDING_APPROVAL || party.getStatus() == PartyStatus.SUBMITTED)) {
+                && (party.getStatus() == PartyStatus.PENDING_APPROVAL
+                || party.getStatus() == PartyStatus.SUBMITTED
+                || party.getStatus() == PartyStatus.INCOMPLETE)) {
             res.setTatOverdue(party.getDecisionDueAt().isBefore(Instant.now()));
         } else {
             res.setTatOverdue(false);

@@ -40,6 +40,8 @@ object Routes {
     // an enroll session finishes) filters to just that person's records.
     const val FINGERPRINT_RECORDS = "fingerprint_records/{name}"
     fun fingerprintRecords(name: String = "") = "fingerprint_records/${encodeName(name)}"
+
+    const val SIGNATURE = "signature"
 }
 
 enum class CaptureMode(val label: String) {

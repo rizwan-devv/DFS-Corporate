@@ -122,4 +122,12 @@ public class AdminController {
     public PartnerAppUserResponse markAppKycComplete(@PathVariable Long id) {
         return adminOnboardingService.markAppKycComplete(id);
     }
+
+    /** After 3 phone KYC fails — bank visit; backoffice completes this partner only with reason. */
+    @PostMapping("/partner-app-users/{id}/manual-kyc-approve")
+    public PartnerAppUserResponse manualKycApprove(@PathVariable Long id,
+                                                   @RequestBody Map<String, String> body,
+                                                   @AuthenticationPrincipal AccountPrincipal admin) {
+        return adminOnboardingService.manualKycApprove(id, body != null ? body.get("reason") : null, admin);
+    }
 }

@@ -33,19 +33,22 @@ public class OnboardingService {
     private final AssociatedPersonRepository associatedPersonRepository;
     private final PartnerAppUserService partnerAppUserService;
     private final FileStorageService fileStorageService;
+    private final PartyStatusSyncService partyStatusSyncService;
 
     public OnboardingService(PartyRepository partyRepository,
                              PartyDocumentRepository documentRepository,
                              RequiredDocumentRepository requiredDocumentRepository,
                              AssociatedPersonRepository associatedPersonRepository,
                              PartnerAppUserService partnerAppUserService,
-                             FileStorageService fileStorageService) {
+                             FileStorageService fileStorageService,
+                             PartyStatusSyncService partyStatusSyncService) {
         this.partyRepository = partyRepository;
         this.documentRepository = documentRepository;
         this.requiredDocumentRepository = requiredDocumentRepository;
         this.associatedPersonRepository = associatedPersonRepository;
         this.partnerAppUserService = partnerAppUserService;
         this.fileStorageService = fileStorageService;
+        this.partyStatusSyncService = partyStatusSyncService;
     }
 
     public PartyResponse me(AccountPrincipal principal) {
@@ -169,26 +172,30 @@ public class OnboardingService {
     @Transactional
     public PartyResponse uploadDocument(AccountPrincipal principal, String documentCode, MultipartFile file) {
         Party party = getParty(principal);
-        assertEditable(party);
+        String code = documentCode.toUpperCase();
+        assertCanUploadDocument(party, code);
         List<RequiredDocument> catalog = requiredDocumentRepository.findByPartyTypeOrderByIdAsc(party.getPartyType());
         boolean known = catalog.stream().anyMatch(r -> r.getDocumentCode().equalsIgnoreCase(documentCode));
         boolean partnerSlot = ConsolidatedKycRules.isPartnerUploadCode(documentCode);
         if (!known && !partnerSlot) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Unknown document code for entity KYC (Annex-C)");
         }
-        String path = fileStorageService.store(party.getId(), documentCode.toUpperCase(), file);
-        PartyDocument doc = documentRepository.findByPartyIdAndDocumentCode(party.getId(), documentCode.toUpperCase())
+        String path = fileStorageService.store(party.getId(), code, file);
+        PartyDocument doc = documentRepository.findByPartyIdAndDocumentCode(party.getId(), code)
                 .orElseGet(PartyDocument::new);
         doc.setPartyId(party.getId());
-        doc.setDocumentCode(documentCode.toUpperCase());
+        doc.setDocumentCode(code);
         doc.setOriginalName(file.getOriginalFilename() != null ? file.getOriginalFilename() : documentCode);
         doc.setStoredPath(path);
         doc.setContentType(file.getContentType());
         doc.setStatus(DocumentStatus.PENDING);
+        doc.setReviewNote(null);
+        doc.setUploadedAt(Instant.now());
         documentRepository.save(doc);
         party.setDraftExpiresAt(Instant.now().plus(30, ChronoUnit.DAYS));
         partyRepository.save(party);
-        return enrich(party);
+        partyStatusSyncService.syncAfterDocumentChange(party.getId());
+        return enrich(partyRepository.findById(party.getId()).orElse(party));
     }
 
     @Transactional
@@ -329,6 +336,12 @@ public class OnboardingService {
     }
 
     private PartyResponse enrich(Party party) {
+        if (party.getStatus() == PartyStatus.SUBMITTED
+                || party.getStatus() == PartyStatus.PENDING_APPROVAL
+                || party.getStatus() == PartyStatus.INCOMPLETE) {
+            party = partyStatusSyncService.sync(party);
+            party = partyRepository.findById(party.getId()).orElse(party);
+        }
         PartyResponse res = PartyResponse.from(party);
         List<PartyDocument> docs = documentRepository.findByPartyIdOrderByUploadedAtDesc(party.getId());
         res.setDocuments(docs.stream().map(PartyResponse.DocumentItem::from).toList());
@@ -446,6 +459,40 @@ public class OnboardingService {
         }
         if (party.getStatus() == PartyStatus.REJECTED) {
             party.setStatus(PartyStatus.DRAFT);
+        }
+    }
+
+    /**
+     * Full profile edit: DRAFT / REJECTED only.
+     * Document re-upload: also INCOMPLETE / SUBMITTED / PENDING_APPROVAL when replacing a REJECTED
+     * doc or uploading a still-missing required code (does not unlock full profile edit).
+     */
+    private void assertCanUploadDocument(Party party, String documentCode) {
+        if (party.getStatus() == PartyStatus.DRAFT || party.getStatus() == PartyStatus.REJECTED) {
+            assertEditable(party);
+            return;
+        }
+        if (party.getStatus() != PartyStatus.INCOMPLETE
+                && party.getStatus() != PartyStatus.SUBMITTED
+                && party.getStatus() != PartyStatus.PENDING_APPROVAL) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Application locked in status " + party.getStatus());
+        }
+        PartyDocument existing = documentRepository.findByPartyIdAndDocumentCode(party.getId(), documentCode)
+                .orElse(null);
+        if (existing != null && existing.getStatus() == DocumentStatus.REJECTED) {
+            return; // re-upload rejected document only
+        }
+        if (existing == null || existing.getStatus() == DocumentStatus.REJECTED) {
+            return; // missing slot
+        }
+        // Allow replace of PENDING after reject cycle already cleared — block APPROVED overwrite unless rejected
+        if (existing.getStatus() == DocumentStatus.APPROVED) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Document already approved — contact backoffice if a change is needed");
+        }
+        if (existing.getStatus() == DocumentStatus.PENDING) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Document already uploaded and awaiting review. Only rejected documents can be re-uploaded.");
         }
     }
 

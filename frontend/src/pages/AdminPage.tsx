@@ -11,6 +11,12 @@ type AppUser = {
   fullName: string;
   status: string;
   appInviteUrl?: string;
+  failureReason?: string;
+  kycFailCount?: number;
+  kycAttemptsRemaining?: number;
+  bankVisitRequired?: boolean;
+  signatureUploaded?: boolean;
+  manualKycApproveReason?: string;
 };
 type Invite = {
   id: number;
@@ -26,6 +32,7 @@ type Doc = {
   originalName: string;
   status: string;
   contentType?: string;
+  reviewNote?: string;
 };
 type Person = { id: number; fullName: string; roleType: string; authorizedToOperate?: boolean; phone?: string; email?: string };
 type Party = {
@@ -69,9 +76,10 @@ type Party = {
 const STATUS_FILTERS = [
   { value: 'PENDING_APPROVAL', label: 'Ready to approve' },
   { value: 'SUBMITTED', label: 'Awaiting app KYC' },
+  { value: 'INCOMPLETE', label: 'Incomplete (re-upload)' },
   { value: 'DRAFT', label: 'Draft' },
   { value: 'ACTIVE', label: 'Active' },
-  { value: 'REJECTED', label: 'Rejected' },
+  { value: 'REJECTED', label: 'Rejected (full app)' },
   { value: 'ALL', label: 'All' },
 ];
 
@@ -136,6 +144,8 @@ export function AdminPage() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [rejectReason, setRejectReason] = useState('');
+  const [manualKycReason, setManualKycReason] = useState('');
+  const [manualKycUserId, setManualKycUserId] = useState<number | null>(null);
   const [discrepancy, setDiscrepancy] = useState('');
   const [viewerDocId, setViewerDocId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -183,9 +193,10 @@ export function AdminPage() {
   const stats = useMemo(() => {
     const pending = queue.filter((p) => p.status === 'PENDING_APPROVAL').length;
     const awaitingKyc = queue.filter((p) => p.status === 'SUBMITTED').length;
+    const incomplete = queue.filter((p) => p.status === 'INCOMPLETE').length;
     const overdue = queue.filter((p) => p.tatOverdue).length;
     const brandsActive = brands.length;
-    return { pending, awaitingKyc, overdue, brandsActive, total: filtered.length };
+    return { pending, awaitingKyc, incomplete, overdue, brandsActive, total: filtered.length };
   }, [queue, filtered, brands]);
 
   if (!session) return <Navigate to="/login" replace />;
@@ -299,7 +310,7 @@ export function AdminPage() {
       await api(`/api/admin/partner-app-users/${appUserId}/mark-kyc-complete`, {
         method: 'POST', token: session!.token,
       });
-      setOk('Marked app KYC complete (stub until mobile app is live)');
+      setOk('Marked app KYC complete (stub — not for bank-visit cases)');
       if (selected) await open(selected.id);
       await refresh();
     } catch (err) {
@@ -307,11 +318,37 @@ export function AdminPage() {
     }
   }
 
+  async function manualKycApprove(appUserId: number) {
+    if (!manualKycReason.trim()) {
+      setError('Manual KYC approve requires a written reason (bank/office visit)');
+      return;
+    }
+    setError(''); setOk('');
+    try {
+      await api(`/api/admin/partner-app-users/${appUserId}/manual-kyc-approve`, {
+        method: 'POST',
+        token: session!.token,
+        body: JSON.stringify({ reason: manualKycReason.trim() }),
+      });
+      setOk('Partner KYC manually approved (bank visit)');
+      setManualKycReason('');
+      setManualKycUserId(null);
+      if (selected) await open(selected.id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Manual approve failed');
+    }
+  }
+
   async function reviewDoc(docId: number, approveDoc: boolean) {
     const path = approveDoc
       ? `/api/admin/documents/${docId}/approve`
       : `/api/admin/documents/${docId}/reject`;
-    await api(path, { method: 'POST', token: session!.token, body: approveDoc ? undefined : JSON.stringify({ note: 'Rejected by backoffice' }) });
+    await api(path, {
+      method: 'POST',
+      token: session!.token,
+      body: approveDoc ? undefined : JSON.stringify({ note: 'Rejected by backoffice — re-upload this document only' }),
+    });
     if (selected) await open(selected.id);
   }
 
@@ -335,6 +372,7 @@ export function AdminPage() {
         <div className="ops-stat-row">
           <div className="ops-stat"><strong>{stats.pending}</strong><span>Ready to approve</span></div>
           <div className="ops-stat"><strong>{stats.awaitingKyc}</strong><span>Awaiting app KYC</span></div>
+          <div className="ops-stat"><strong>{stats.incomplete}</strong><span>Incomplete</span></div>
           <div className="ops-stat"><strong>{stats.overdue}</strong><span>TAT overdue</span></div>
           <div className="ops-stat"><strong>{stats.brandsActive}</strong><span>Brands</span></div>
           <div className="ops-stat"><strong>{stats.total}</strong><span>In view</span></div>
@@ -478,27 +516,96 @@ export function AdminPage() {
                     {selected.partnerKycCompleted}/{selected.partnerKycTotal} completed
                   </span>
                 </div>
-                {(selected.partnerAppUsers || []).map((u) => (
-                  <div className="doc-row" key={u.id}>
-                    <div>
-                      <strong>{u.fullName}</strong>
-                      <div className="muted">{u.phone} · {u.email || '—'} · {u.status}</div>
-                      {u.appInviteUrl && <div className="invite-link">{u.appInviteUrl}</div>}
+                {(selected.partnerAppUsers || []).map((u) => {
+                  const sigDocs = (selected.documents || []).filter((d) =>
+                    d.documentCode === `APP_${u.id}_SIGNATURE` || d.documentCode.endsWith(`_${u.id}_SIGNATURE`)
+                  );
+                  const sigDoc = sigDocs[0]
+                    || (selected.documents || []).find((d) => d.documentCode === `APP_${u.id}_SIGNATURE`);
+                  return (
+                  <div className="doc-row" key={u.id} style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                      <div>
+                        <strong>{u.fullName}</strong>
+                        <div className="muted">{u.phone} · {u.email || '—'} · {u.status}</div>
+                        {u.failureReason && <div className="muted">Fail reason: {u.failureReason}</div>}
+                        {(u.kycFailCount || 0) > 0 && (
+                          <div className="muted">Phone KYC fails: {u.kycFailCount}/3 · remaining: {u.kycAttemptsRemaining ?? 0}</div>
+                        )}
+                        {u.bankVisitRequired && (
+                          <div className="alert alert-info" style={{ marginTop: '0.4rem' }}>
+                            Bank/office visit required — manual approve with reason (this partner only).
+                          </div>
+                        )}
+                        {u.manualKycApproveReason && (
+                          <div className="muted">Manual approve: {u.manualKycApproveReason}</div>
+                        )}
+                        {u.appInviteUrl && <div className="invite-link">{u.appInviteUrl}</div>}
+                      </div>
+                      <div className="actions" style={{ marginTop: 0 }}>
+                        {u.status !== 'KYC_COMPLETED' && !u.bankVisitRequired && u.status !== 'BANK_VISIT_REQUIRED' && (
+                          <>
+                            <button className="btn btn-ghost btn-sm" type="button" onClick={() => void resendAppInvite(u.id)}>
+                              Re-send app invite
+                            </button>
+                            <button className="btn btn-ghost btn-sm" type="button" onClick={() => void markAppKycComplete(u.id)}>
+                              Mark KYC done
+                            </button>
+                          </>
+                        )}
+                        {(u.bankVisitRequired || u.status === 'BANK_VISIT_REQUIRED' || u.status === 'FAILED') && u.status !== 'KYC_COMPLETED' && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            type="button"
+                            onClick={() => { setManualKycUserId(u.id); setManualKycReason(''); }}
+                          >
+                            Manual KYC approve
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="actions" style={{ marginTop: 0 }}>
-                      {u.status !== 'KYC_COMPLETED' && (
-                        <>
-                          <button className="btn btn-ghost btn-sm" type="button" onClick={() => void resendAppInvite(u.id)}>
-                            Re-send app invite
+                    {manualKycUserId === u.id && (
+                      <div className="form-row" style={{ marginTop: '0.5rem' }}>
+                        <textarea
+                          rows={2}
+                          placeholder="Bank visit / verification reason (required)"
+                          value={manualKycReason}
+                          onChange={(e) => setManualKycReason(e.target.value)}
+                        />
+                        <div className="actions" style={{ marginTop: '0.4rem' }}>
+                          <button className="btn btn-primary btn-sm" type="button" onClick={() => void manualKycApprove(u.id)}>
+                            Confirm manual approve
                           </button>
-                          <button className="btn btn-ghost btn-sm" type="button" onClick={() => void markAppKycComplete(u.id)}>
-                            Mark KYC done
+                          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setManualKycUserId(null)}>
+                            Cancel
                           </button>
-                        </>
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div className="muted" style={{ marginBottom: '0.35rem' }}>
+                        Signature (same image ×4){u.signatureUploaded || sigDoc ? '' : ' — not uploaded yet'}
+                      </div>
+                      {sigDoc ? (
+                        <div className="ops-signature-grid">
+                          {[0, 1, 2, 3].map((i) => (
+                            <DocThumb
+                              key={`${sigDoc.id}-${i}`}
+                              doc={sigDoc}
+                              label={`Sig ${i + 1}`}
+                              token={session.token}
+                              onOpen={() => setViewerDocId(sigDoc.id)}
+                              fetchBlob={fetchDocBlob}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>No signature on file for this partner.</p>
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 {(selected.partnerInvites || []).length > 0 && (
                   <p className="muted" style={{ fontSize: '0.8rem' }}>Legacy portal invites (disabled) still listed for history.</p>
                 )}
@@ -536,7 +643,7 @@ export function AdminPage() {
             <div className="ops-block">
               <h4>Documents — review each before approve</h4>
               <p className="muted" style={{ marginTop: 0 }}>
-                Grouped by firm, partner portal uploads, and mobile KYC. View then Approve or Reject — viewing alone does not approve.
+                Rejecting a document does <strong>not</strong> reject the whole client — applicant re-uploads that file only (status → INCOMPLETE).
               </p>
               {buildDocGroups(selected).map((group) => (
                 <div key={group.title} style={{ marginBottom: '1rem' }}>
@@ -589,11 +696,16 @@ export function AdminPage() {
               </button>
             </div>
 
-            {(selected.status === 'PENDING_APPROVAL' || selected.status === 'SUBMITTED') && (
+            {(selected.status === 'PENDING_APPROVAL' || selected.status === 'SUBMITTED' || selected.status === 'INCOMPLETE') && (
               <div className="ops-block">
                 <h4>Decision</h4>
+                {selected.status === 'INCOMPLETE' && (
+                  <p className="muted">
+                    Incomplete: missing or rejected documents. Applicant re-uploads rejected files only — full application is still open.
+                  </p>
+                )}
                 {selected.status === 'SUBMITTED' && (
-                  <p className="muted">Waiting for all partners to complete mobile app KYC before final approve. You can reject now, or mark KYC done (stub) above.</p>
+                  <p className="muted">Waiting for all partners to complete mobile app KYC before final approve. You can reject the full application, or mark KYC done / manual-approve above.</p>
                 )}
                 {selected.status === 'PENDING_APPROVAL' && (
                   <div className="alert alert-info" style={{ marginBottom: '0.75rem' }}>
@@ -606,7 +718,7 @@ export function AdminPage() {
                         {(selected.docsPending ?? 0) === 0 ? ' ✓' : ' — approve/reject each'}
                       </li>
                       <li>Documents rejected: {selected.docsRejected ?? 0}
-                        {(selected.docsRejected ?? 0) === 0 ? ' ✓' : ' — must be re-uploaded'}
+                        {(selected.docsRejected ?? 0) === 0 ? ' ✓' : ' — must be re-uploaded (client stays open)'}
                       </li>
                       <li>Sanctions: {selected.sanctionsStatus || '—'}
                         {selected.sanctionsStatus === 'HIT' ? ' — block' : selected.sanctionsStatus === 'CLEAR' ? ' ✓' : ' (will clear on approve)'}
@@ -620,7 +732,7 @@ export function AdminPage() {
                   </div>
                 )}
                 <div className="form-row">
-                  <label>Rejection reason</label>
+                  <label>Full application reject reason (only if rejecting entire client)</label>
                   <textarea rows={2} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
                 </div>
                 <div className="actions">
@@ -635,7 +747,7 @@ export function AdminPage() {
                       Approve entity
                     </button>
                   )}
-                  <button className="btn btn-danger" type="button" onClick={() => void reject(selected.id)}>Reject</button>
+                  <button className="btn btn-danger" type="button" onClick={() => void reject(selected.id)}>Reject full application</button>
                 </div>
               </div>
             )}
@@ -684,6 +796,7 @@ function DocRow({
       <div>
         <strong>{label}</strong>
         <div className="muted">{doc.documentCode} · {doc.originalName}</div>
+        {doc.reviewNote && <div className="muted">Note: {doc.reviewNote}</div>}
       </div>
       <div className="actions" style={{ marginTop: 0 }}>
         <span className={`status status-${doc.status === 'APPROVED' ? 'ACTIVE' : doc.status === 'REJECTED' ? 'REJECTED' : 'PENDING_APPROVAL'}`}>

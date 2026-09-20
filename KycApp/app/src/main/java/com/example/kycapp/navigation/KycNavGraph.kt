@@ -22,6 +22,7 @@ import com.example.kycapp.ui.screens.FingerprintRecordViewerScreen
 import com.example.kycapp.ui.screens.FingerprintTutorialScreen
 import com.example.kycapp.ui.screens.LoginScreen
 import com.example.kycapp.ui.screens.MainMenuScreen
+import com.example.kycapp.ui.screens.SignatureCaptureScreen
 
 @Composable
 fun KycNavGraph(
@@ -78,6 +79,7 @@ fun KycNavGraph(
                 onFaceMatchClick = { navController.navigate(Routes.FACE_MATCH_INTRO) },
                 onFingerprintClick = { navController.navigate(Routes.FINGERPRINT_INTRO) },
                 onFingerprintRecordsClick = { navController.navigate(Routes.fingerprintRecords()) },
+                onSignatureClick = { navController.navigate(Routes.SIGNATURE) },
                 onSessionUpdated = { updated: DfsSession ->
                     store.save(updated)
                     session = updated
@@ -89,6 +91,27 @@ fun KycNavGraph(
                         popUpTo(Routes.MAIN_MENU) { inclusive = true }
                     }
                 }
+            )
+        }
+
+        composable(Routes.SIGNATURE) {
+            val s = session
+            if (s == null) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.SIGNATURE) { inclusive = true }
+                    }
+                }
+                return@composable
+            }
+            SignatureCaptureScreen(
+                session = s,
+                onDone = { updated ->
+                    store.save(updated)
+                    session = updated
+                    navController.popBackStack()
+                },
+                onBack = { navController.popBackStack() }
             )
         }
 

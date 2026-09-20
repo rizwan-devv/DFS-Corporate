@@ -114,6 +114,8 @@ function statusHint(status?: string) {
       return 'Continue your entity application when ready.';
     case 'SUBMITTED':
       return 'Waiting for partners to finish mobile app KYC.';
+    case 'INCOMPLETE':
+      return 'Documents incomplete or rejected — re-upload only the rejected files in My Application.';
     case 'PENDING_APPROVAL':
       return 'With backoffice for final review (5 working-day TAT).';
     case 'ACTIVE':
@@ -157,7 +159,7 @@ export function DashboardPage() {
   const kycTotal = party?.partnerKycTotal || 0;
   const kycDone = party?.partnerKycCompleted || 0;
   const kycPct = kycTotal > 0 ? Math.round((kycDone / kycTotal) * 100) : 0;
-  const showApp = status === 'DRAFT' || status === 'REJECTED' || status === 'SUBMITTED' || status === 'PENDING_APPROVAL';
+  const showApp = status === 'DRAFT' || status === 'REJECTED' || status === 'SUBMITTED' || status === 'PENDING_APPROVAL' || status === 'INCOMPLETE';
   const badgeLabel = isMaster ? 'CORPORATE MASTER' : 'FRANCHISE / CHILD WALLET';
   const pendingInvites = invites.filter(isPendingInvite).length;
   const onboardedCount = children.length;

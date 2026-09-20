@@ -21,6 +21,15 @@ type AppUser = {
   fullName: string;
   status: string;
   appInviteUrl?: string;
+  bankVisitRequired?: boolean;
+  failureReason?: string;
+};
+type PartyDoc = {
+  id: number;
+  documentCode: string;
+  originalName: string;
+  status: string;
+  reviewNote?: string;
 };
 
 type Party = {
@@ -29,6 +38,7 @@ type Party = {
   trackingId?: string;
   canSubmit: boolean;
   requiredDocuments: RequiredDoc[];
+  documents?: PartyDoc[];
   associatedPersons?: Assoc[];
   partnerAppUsers?: AppUser[];
   partnerKycTotal?: number;
@@ -235,6 +245,11 @@ export function OnboardingPage() {
   }
 
   const editable = party?.status === 'DRAFT' || party?.status === 'REJECTED';
+  const rejectedDocs = (party?.documents || []).filter((d) => d.status === 'REJECTED');
+  const canReupload = party?.status === 'INCOMPLETE'
+    || party?.status === 'SUBMITTED'
+    || party?.status === 'PENDING_APPROVAL'
+    || rejectedDocs.length > 0;
   const partnerMode = needsPartnerRoster(entity.entityType);
   const stepLabels = partnerMode
     ? ['Entity', 'Partners', 'Documents', 'Review']
@@ -437,9 +452,12 @@ export function OnboardingPage() {
             </div>
           )}
 
-          {(party?.status === 'SUBMITTED' || party?.status === 'PENDING_APPROVAL') && (
+          {(party?.status === 'SUBMITTED' || party?.status === 'PENDING_APPROVAL' || party?.status === 'INCOMPLETE') && (
             <div className="alert alert-info" style={{ marginTop: '1.5rem' }}>
               Status <strong>{party.status}</strong>
+              {party.status === 'INCOMPLETE' && (
+                <> — one or more documents need re-upload (your full application was <strong>not</strong> rejected).</>
+              )}
               {party.status === 'SUBMITTED' && <> — waiting for partners to finish <strong>mobile app KYC</strong>.</>}
               {party.status === 'PENDING_APPROVAL' && <> — ready for backoffice final review (5 working-day TAT).</>}
               <br />Tracking <strong>{party.trackingId}</strong>
@@ -449,13 +467,43 @@ export function OnboardingPage() {
                   <br />App KYC: {party.partnerKycCompleted}/{party.partnerKycTotal} complete
                   <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.2rem' }}>
                     {party.partnerAppUsers!.map((u) => (
-                      <li key={u.id}>{u.fullName} · {u.phone} · {u.status}</li>
+                      <li key={u.id}>
+                        {u.fullName} · {u.phone} · {u.status}
+                        {u.bankVisitRequired ? ' · bank visit required' : ''}
+                        {u.failureReason ? ` · ${u.failureReason}` : ''}
+                      </li>
                     ))}
                   </ul>
                 </>
               )}
             </div>
           )}
+
+          {canReupload && rejectedDocs.length > 0 && (
+            <div className="section-block" style={{ marginTop: '1.25rem' }}>
+              <h3>Re-upload rejected documents</h3>
+              <p className="muted">Only these files need to be replaced. Other approved documents stay as-is.</p>
+              {rejectedDocs.map((doc) => (
+                <div className="doc-row" key={doc.id}>
+                  <div>
+                    <strong>{doc.documentCode}</strong>
+                    <div className="muted">
+                      {doc.originalName} · REJECTED
+                      {doc.reviewNote ? ` · ${doc.reviewNote}` : ''}
+                    </div>
+                  </div>
+                  <input
+                    type="file"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void upload(doc.documentCode, f);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
           {party?.status === 'ACTIVE' && (
             <div className="alert alert-ok" style={{ marginTop: '1.5rem' }}>Approved. Login with emailed credentials.</div>
           )}

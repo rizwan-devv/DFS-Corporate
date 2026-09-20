@@ -31,6 +31,7 @@ public class AppKycService {
     public static final String DOC_CNIC_BACK = "CNIC_BACK";
     public static final String DOC_SELFIE = "SELFIE";
     public static final String DOC_VIDEO_READALOUD = "VIDEO_READALOUD";
+    public static final String DOC_SIGNATURE = "SIGNATURE";
     /** 8 non-thumb fingers (KycApp left/right × 4). */
     public static final List<String> DOC_FINGERS = List.of(
             "FINGER_L1", "FINGER_L2", "FINGER_L3", "FINGER_L4",
@@ -122,6 +123,11 @@ public class AppKycService {
         } else {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Provide phone+pin (invite) or email+password (after change)");
+        }
+        if (Boolean.TRUE.equals(user.getBankVisitRequired())
+                || user.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Phone KYC failed 3 times. Please visit the bank/office. Backoffice can approve your partner KYC with a reason.");
         }
         return startSession(user);
     }
@@ -489,6 +495,9 @@ public class AppKycService {
         if (DOC_SELFIE.equals(kind)) {
             user.setSelfieUploaded(true);
         }
+        if (DOC_SIGNATURE.equals(kind)) {
+            user.setSignatureUploaded(true);
+        }
         if (DOC_FINGERS.contains(kind)) {
             user.setBiometricRef("FINGERS-CAPTURED");
         }
@@ -589,11 +598,46 @@ public class AppKycService {
         if (user.getStatus() == PartnerAppKycStatus.KYC_COMPLETED) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "KYC already completed");
         }
+        if (Boolean.TRUE.equals(user.getBankVisitRequired())
+                || user.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Bank visit already required — phone KYC retries are closed");
+        }
+
+        int fails = (user.getKycFailCount() != null ? user.getKycFailCount() : 0) + 1;
+        user.setKycFailCount(fails);
+        String failReason = reason != null && !reason.isBlank() ? reason.trim() : "KYC verification failed";
+        user.setFailureReason(failReason);
+        user.setSessionToken(null);
+
+        Party party = partyRepository.findById(user.getPartyId()).orElse(null);
+        String to = user.getEmail() != null ? user.getEmail() : (party != null ? party.getEmail() : null);
+
+        if (fails >= PartnerAppUserService.MAX_PHONE_KYC_FAILS) {
+            user.setStatus(PartnerAppKycStatus.BANK_VISIT_REQUIRED);
+            user.setBankVisitRequired(true);
+            user.setTempPin(String.valueOf(100000 + new Random().nextInt(900000)));
+            user.setAppInviteToken(UUID.randomUUID().toString().replace("-", ""));
+            user.setMustChangePassword(true);
+            user.setMobileVerified(false);
+            user.setPasswordHash(null);
+            user.setVideoVerificationStatus(VideoVerificationStatus.NONE);
+            user.setVideoKycRef(null);
+            appUserRepository.save(user);
+            if (to != null) {
+                mailService.send(to, "DFS Corporate — Visit bank/office for KYC",
+                        "Hello " + user.getFullName() + ",\n\n"
+                                + "Your phone KYC failed " + fails + " times.\n"
+                                + "Reason: " + failReason + "\n\n"
+                                + "Please visit the bank/office. Backoffice can complete your partner KYC with a written reason.\n\n"
+                                + "— DFS Corporate");
+            }
+            return toSession(user);
+        }
+
         user.setStatus(PartnerAppKycStatus.FAILED);
-        user.setFailureReason(reason != null && !reason.isBlank() ? reason.trim() : "KYC verification failed");
         user.setTempPin(String.valueOf(100000 + new Random().nextInt(900000)));
         user.setAppInviteToken(UUID.randomUUID().toString().replace("-", ""));
-        user.setSessionToken(null);
         user.setMustChangePassword(true);
         user.setMobileVerified(false);
         user.setPasswordHash(null);
@@ -601,13 +645,14 @@ public class AppKycService {
         user.setVideoKycRef(null);
         appUserRepository.save(user);
 
-        Party party = partyRepository.findById(user.getPartyId()).orElse(null);
-        String to = user.getEmail() != null ? user.getEmail() : (party != null ? party.getEmail() : null);
+        int remaining = PartnerAppUserService.MAX_PHONE_KYC_FAILS - fails;
         if (to != null) {
             mailService.send(to, "DFS Corporate — KYC failed, please retry",
                     "Hello " + user.getFullName() + ",\n\n"
                             + "Your KYC could not be completed.\n"
-                            + "Reason: " + user.getFailureReason() + "\n\n"
+                            + "Reason: " + failReason + "\n"
+                            + "Attempts used: " + fails + " of " + PartnerAppUserService.MAX_PHONE_KYC_FAILS
+                            + " (" + remaining + " left).\n\n"
                             + "User ID (phone): " + user.getPhone() + "\n"
                             + "New temporary PIN: " + user.getTempPin() + "\n\n"
                             + "Open the app and try again.\n\n— DFS Corporate");
@@ -615,7 +660,32 @@ public class AppKycService {
         return toSession(user);
     }
 
+    /**
+     * Capture one signature image (camera). Stored once; backoffice shows it as four thumbnails.
+     * Allowed after KYC_COMPLETED so partners can finish the end-of-flow signature step.
+     */
+    @Transactional
+    public AppKycSessionResponse uploadSignature(String sessionToken, MultipartFile signature) {
+        PartnerAppUser user = requireSession(sessionToken);
+        if (signature == null || signature.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "signature file is required");
+        }
+        if (user.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED
+                || Boolean.TRUE.equals(user.getBankVisitRequired())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Bank visit required — signature via phone is closed");
+        }
+        storeDoc(user, DOC_SIGNATURE, signature);
+        user.setSignatureUploaded(true);
+        appUserRepository.save(user);
+        return toSession(user);
+    }
+
     private AppKycSessionResponse startSession(PartnerAppUser user) {
+        if (user.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED
+                || Boolean.TRUE.equals(user.getBankVisitRequired())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Phone KYC failed 3 times. Please visit the bank/office for assisted verification.");
+        }
         if (user.getStatus() == PartnerAppKycStatus.KYC_COMPLETED) {
             user.setSessionToken(UUID.randomUUID().toString().replace("-", ""));
             appUserRepository.save(user);
@@ -625,7 +695,7 @@ public class AppKycService {
             if (Boolean.TRUE.equals(user.getMobileVerified())) {
                 user.setStatus(PartnerAppKycStatus.KYC_IN_PROGRESS);
             }
-            user.setFailureReason(null);
+            // Keep failureReason for display until they progress; clear on successful complete
         }
         user.setSessionToken(UUID.randomUUID().toString().replace("-", ""));
         appUserRepository.save(user);
@@ -652,6 +722,11 @@ public class AppKycService {
         PartnerAppUser user = requireSession(sessionToken);
         if (user.getStatus() == PartnerAppKycStatus.KYC_COMPLETED) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "KYC already completed");
+        }
+        if (user.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED
+                || Boolean.TRUE.equals(user.getBankVisitRequired())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Phone KYC closed after 3 failures — visit bank/office");
         }
         if (user.getStatus() != PartnerAppKycStatus.KYC_IN_PROGRESS
                 && user.getStatus() != PartnerAppKycStatus.INVITED
@@ -709,10 +784,15 @@ public class AppKycService {
         for (String finger : DOC_FINGERS) {
             docs.add(docItem(finger, finger.replace('_', ' '), uploaded.contains(docCode(user.getId(), finger))));
         }
+        boolean signatureOk = Boolean.TRUE.equals(user.getSignatureUploaded())
+                || uploaded.contains(docCode(user.getId(), DOC_SIGNATURE));
+        docs.add(docItem(DOC_SIGNATURE, "Signature", signatureOk));
 
         boolean canSubmit = false;
         try {
             if (user.getStatus() != PartnerAppKycStatus.KYC_COMPLETED
+                    && user.getStatus() != PartnerAppKycStatus.BANK_VISIT_REQUIRED
+                    && !Boolean.TRUE.equals(user.getBankVisitRequired())
                     && !Boolean.TRUE.equals(user.getMustChangePassword())
                     && Boolean.TRUE.equals(user.getMobileVerified())) {
                 validateReady(user);
@@ -741,7 +821,13 @@ public class AppKycService {
         r.setBiometricRef(user.getBiometricRef());
         r.setSelfieUploaded(Boolean.TRUE.equals(user.getSelfieUploaded())
                 || uploaded.contains(docCode(user.getId(), DOC_SELFIE)));
+        r.setSignatureUploaded(signatureOk);
         r.setFailureReason(user.getFailureReason());
+        int fails = user.getKycFailCount() != null ? user.getKycFailCount() : 0;
+        r.setKycFailCount(fails);
+        r.setKycAttemptsRemaining(Math.max(0, PartnerAppUserService.MAX_PHONE_KYC_FAILS - fails));
+        r.setBankVisitRequired(Boolean.TRUE.equals(user.getBankVisitRequired())
+                || user.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED);
         r.setRequiredDocuments(docs);
         r.setCanSubmit(canSubmit);
         r.setCompletedAt(user.getCompletedAt());

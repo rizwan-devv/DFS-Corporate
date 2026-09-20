@@ -151,6 +151,7 @@ public class PartyResponse {
         private DocumentStatus status;
         private Instant uploadedAt;
         private String contentType;
+        private String reviewNote;
 
         public static DocumentItem from(PartyDocument d) {
             DocumentItem i = new DocumentItem();
@@ -160,6 +161,7 @@ public class PartyResponse {
             i.status = d.getStatus();
             i.uploadedAt = d.getUploadedAt();
             i.contentType = d.getContentType();
+            i.reviewNote = d.getReviewNote();
             return i;
         }
         public Long getId() { return id; }
@@ -168,6 +170,7 @@ public class PartyResponse {
         public DocumentStatus getStatus() { return status; }
         public Instant getUploadedAt() { return uploadedAt; }
         public String getContentType() { return contentType; }
+        public String getReviewNote() { return reviewNote; }
     }
 
     public static class RequiredItem {

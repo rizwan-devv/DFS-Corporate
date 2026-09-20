@@ -22,11 +22,14 @@ import java.util.UUID;
 @Service
 public class PartnerAppUserService {
 
+    public static final int MAX_PHONE_KYC_FAILS = 3;
+
     private final PartnerAppUserRepository appUserRepository;
     private final AssociatedPersonRepository associatedPersonRepository;
     private final PartyRepository partyRepository;
     private final MailService mailService;
     private final AccountProvisioningService accountProvisioningService;
+    private final PartyStatusSyncService partyStatusSyncService;
     private final String mobileAppBaseUrl;
     private final SecureRandom random = new SecureRandom();
 
@@ -35,12 +38,14 @@ public class PartnerAppUserService {
                                  PartyRepository partyRepository,
                                  MailService mailService,
                                  @Lazy AccountProvisioningService accountProvisioningService,
+                                 PartyStatusSyncService partyStatusSyncService,
                                  @Value("${app.mobile-app-base-url:https://app.dfscorporate.local/kyc}") String mobileAppBaseUrl) {
         this.appUserRepository = appUserRepository;
         this.associatedPersonRepository = associatedPersonRepository;
         this.partyRepository = partyRepository;
         this.mailService = mailService;
         this.accountProvisioningService = accountProvisioningService;
+        this.partyStatusSyncService = partyStatusSyncService;
         this.mobileAppBaseUrl = mobileAppBaseUrl.endsWith("/")
                 ? mobileAppBaseUrl.substring(0, mobileAppBaseUrl.length() - 1)
                 : mobileAppBaseUrl;
@@ -109,34 +114,76 @@ public class PartnerAppUserService {
     public PartnerAppUserResponse markKycCompleted(Long appUserId) {
         PartnerAppUser user = appUserRepository.findById(appUserId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "App user not found"));
+        if (Boolean.TRUE.equals(user.getBankVisitRequired())
+                || user.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Partner requires bank visit — use manual KYC approve with a written reason");
+        }
         user.setStatus(PartnerAppKycStatus.KYC_COMPLETED);
         user.setCompletedAt(Instant.now());
         user.setMustChangePassword(false);
         user.setMobileVerified(true);
+        user.setFailureReason(null);
         appUserRepository.save(user);
         tryAdvanceParty(user.getPartyId());
         accountProvisioningService.provisionAfterKycComplete(user.getPartyId());
         return toResponse(user);
     }
 
+    /**
+     * After 3 phone KYC failures: backoffice may complete this partner only, with reason (bank visit).
+     */
+    @Transactional
+    public PartnerAppUserResponse manualKycApprove(Long appUserId, String reason, String approvedBy) {
+        if (reason == null || reason.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Manual KYC approve reason is required");
+        }
+        PartnerAppUser user = appUserRepository.findById(appUserId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "App user not found"));
+        if (user.getStatus() == PartnerAppKycStatus.KYC_COMPLETED) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Partner app KYC already completed");
+        }
+        user.setStatus(PartnerAppKycStatus.KYC_COMPLETED);
+        user.setCompletedAt(Instant.now());
+        user.setBankVisitRequired(false);
+        user.setFailureReason(null);
+        user.setMustChangePassword(false);
+        user.setMobileVerified(true);
+        user.setManualKycApproveReason(reason.trim());
+        user.setManualKycApprovedBy(approvedBy != null ? approvedBy : "BACKOFFICE");
+        user.setManualKycApprovedAt(Instant.now());
+        appUserRepository.save(user);
+        tryAdvanceParty(user.getPartyId());
+        accountProvisioningService.provisionAfterKycComplete(user.getPartyId());
+
+        Party party = partyRepository.findById(user.getPartyId()).orElse(null);
+        String to = user.getEmail() != null ? user.getEmail() : (party != null ? party.getEmail() : null);
+        if (to != null) {
+            mailService.send(to, "DFS Corporate — KYC approved at bank/office",
+                    "Hello " + user.getFullName() + ",\n\n"
+                            + "Your partner KYC was completed after bank/office verification.\n"
+                            + "Reason on file: " + user.getManualKycApproveReason() + "\n\n"
+                            + "— DFS Corporate");
+        }
+        return toResponse(user);
+    }
+
     @Transactional
     public void tryAdvanceParty(Long partyId) {
         Party party = partyRepository.findById(partyId).orElse(null);
-        if (party == null || party.getStatus() != PartyStatus.SUBMITTED) return;
-        List<PartnerAppUser> users = appUserRepository.findByPartyIdOrderByIdAsc(partyId);
-        // No app KYC invitees (e.g. sole prop without applicant-is-partner) → ready for backoffice
-        boolean allDone = users.isEmpty()
-                || users.stream().allMatch(u -> u.getStatus() == PartnerAppKycStatus.KYC_COMPLETED);
-        if (allDone) {
-            party.setStatus(PartyStatus.PENDING_APPROVAL);
-            partyRepository.save(party);
+        if (party == null) {
+            return;
+        }
+        // Doc reject / missing → INCOMPLETE; else SUBMITTED or PENDING_APPROVAL
+        if (party.getStatus() == PartyStatus.SUBMITTED
+                || party.getStatus() == PartyStatus.PENDING_APPROVAL
+                || party.getStatus() == PartyStatus.INCOMPLETE) {
+            partyStatusSyncService.sync(party);
         }
     }
 
     public boolean allKycCompleted(Long partyId) {
-        List<PartnerAppUser> users = appUserRepository.findByPartyIdOrderByIdAsc(partyId);
-        if (users.isEmpty()) return true;
-        return users.stream().allMatch(u -> u.getStatus() == PartnerAppKycStatus.KYC_COMPLETED);
+        return partyStatusSyncService.allPartnerKycCompleted(partyId);
     }
 
     private PartnerAppUser upsertUser(Party party, Long personId, String fullName, String phone, String email) {
@@ -187,6 +234,15 @@ public class PartnerAppUserService {
         r.setAppInviteUrl(mobileAppBaseUrl + "?token=" + u.getAppInviteToken());
         r.setInvitedAt(u.getInvitedAt());
         r.setCompletedAt(u.getCompletedAt());
+        r.setFailureReason(u.getFailureReason());
+        r.setKycFailCount(u.getKycFailCount() != null ? u.getKycFailCount() : 0);
+        r.setKycAttemptsRemaining(Math.max(0, MAX_PHONE_KYC_FAILS - (u.getKycFailCount() != null ? u.getKycFailCount() : 0)));
+        r.setBankVisitRequired(Boolean.TRUE.equals(u.getBankVisitRequired())
+                || u.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED);
+        r.setSignatureUploaded(Boolean.TRUE.equals(u.getSignatureUploaded()));
+        r.setManualKycApproveReason(u.getManualKycApproveReason());
+        r.setManualKycApprovedBy(u.getManualKycApprovedBy());
+        r.setManualKycApprovedAt(u.getManualKycApprovedAt());
         return r;
     }
 
