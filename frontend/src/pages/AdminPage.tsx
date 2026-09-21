@@ -338,9 +338,18 @@ export function AdminPage() {
   }
 
   async function clearSanctions(id: number) {
+    const notes = window.prompt('Reason to CLEAR this party (required). This overrides an AML HIT.');
+    if (!notes || !notes.trim()) return;
     await api(`/api/admin/parties/${id}/sanctions`, {
       method: 'POST', token: session!.token,
-      body: JSON.stringify({ status: 'CLEAR', notes: 'Admin cleared UNSC/ATA screening' }),
+      body: JSON.stringify({ status: 'CLEAR', notes: notes.trim() }),
+    });
+    await open(id);
+  }
+
+  async function rescreenSanctions(id: number) {
+    await api(`/api/admin/parties/${id}/sanctions/screen`, {
+      method: 'POST', token: session!.token,
     });
     await open(id);
   }
@@ -904,7 +913,10 @@ export function AdminPage() {
                 />
               </div>
               <div className="ops-drawer-footer-actions">
-                <button className="btn btn-ghost" type="button" onClick={() => void clearSanctions(selected.id)}>
+                <button className="btn btn-ghost" type="button" onClick={() => void rescreenSanctions(selected.id)}>
+                  Re-screen AML
+                </button>
+                <button className="btn btn-ghost" type="button" onClick={() => void clearSanctions(selected.id)} disabled={selected.sanctionsStatus === 'CLEAR'}>
                   Clear sanctions
                 </button>
                 {selected.status === 'PENDING_APPROVAL' && (

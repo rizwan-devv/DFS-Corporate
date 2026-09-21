@@ -147,6 +147,10 @@ public class Party {
     @Column(name = "sanctions_notes", length = 1000)
     private String sanctionsNotes;
 
+    /** Backoffice explicitly CLEARed a HIT/review. Auto-screen will not overwrite until re-screen. */
+    @Column(name = "sanctions_manual_clear", nullable = false)
+    private boolean sanctionsManualClear = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "identity_verification_status", length = 32)
     private IdentityVerificationStatus identityVerificationStatus = IdentityVerificationStatus.PENDING;
@@ -209,6 +213,13 @@ public class Party {
 
     @Column(name = "dfs_account_id", length = 100)
     private String dfsAccountId;
+
+    /**
+     * DFS App APP_USER_ID for the corporate wallet payer.
+     * Required by fundsTransferLocal; not the same as local partner_app_users.id.
+     */
+    @Column(name = "dfs_app_user_id", length = 32)
+    private String dfsAppUserId;
 
     @Column(name = "account_provision_error", length = 1000)
     private String accountProvisionError;
@@ -354,6 +365,8 @@ public class Party {
     public void setSanctionsScreenedAt(Instant sanctionsScreenedAt) { this.sanctionsScreenedAt = sanctionsScreenedAt; }
     public String getSanctionsNotes() { return sanctionsNotes; }
     public void setSanctionsNotes(String sanctionsNotes) { this.sanctionsNotes = sanctionsNotes; }
+    public boolean isSanctionsManualClear() { return sanctionsManualClear; }
+    public void setSanctionsManualClear(boolean sanctionsManualClear) { this.sanctionsManualClear = sanctionsManualClear; }
     public IdentityVerificationStatus getIdentityVerificationStatus() { return identityVerificationStatus; }
     public void setIdentityVerificationStatus(IdentityVerificationStatus identityVerificationStatus) { this.identityVerificationStatus = identityVerificationStatus; }
     public String getIdentityVerificationMethod() { return identityVerificationMethod; }
@@ -396,6 +409,8 @@ public class Party {
     }
     public String getDfsAccountId() { return dfsAccountId; }
     public void setDfsAccountId(String dfsAccountId) { this.dfsAccountId = dfsAccountId; }
+    public String getDfsAppUserId() { return dfsAppUserId; }
+    public void setDfsAppUserId(String dfsAppUserId) { this.dfsAppUserId = dfsAppUserId; }
     public String getAccountProvisionError() { return accountProvisionError; }
     public void setAccountProvisionError(String accountProvisionError) {
         this.accountProvisionError = accountProvisionError;

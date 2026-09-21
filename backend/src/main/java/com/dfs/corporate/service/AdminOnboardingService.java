@@ -45,6 +45,7 @@ public class AdminOnboardingService {
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
     private final PartyStatusSyncService partyStatusSyncService;
+    private final SanctionsScreeningService sanctionsScreeningService;
     private final SecureRandom random = new SecureRandom();
 
     public AdminOnboardingService(PartyRepository partyRepository,
@@ -60,7 +61,8 @@ public class AdminOnboardingService {
                                   FileStorageService fileStorageService,
                                   PasswordEncoder passwordEncoder,
                                   MailService mailService,
-                                  PartyStatusSyncService partyStatusSyncService) {
+                                  PartyStatusSyncService partyStatusSyncService,
+                                  SanctionsScreeningService sanctionsScreeningService) {
         this.partyRepository = partyRepository;
         this.accountRepository = accountRepository;
         this.documentRepository = documentRepository;
@@ -75,6 +77,7 @@ public class AdminOnboardingService {
         this.passwordEncoder = passwordEncoder;
         this.mailService = mailService;
         this.partyStatusSyncService = partyStatusSyncService;
+        this.sanctionsScreeningService = sanctionsScreeningService;
     }
 
     public List<Map<String, Object>> brands() {
@@ -152,13 +155,9 @@ public class AdminOnboardingService {
         if (docs.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Cannot approve: no documents uploaded");
         }
-        if (party.getSanctionsStatus() == ScreeningStatus.HIT) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Cannot approve: sanctions HIT");
-        }
-        if (party.getSanctionsStatus() != ScreeningStatus.CLEAR) {
-            party.setSanctionsStatus(ScreeningStatus.CLEAR);
-            party.setSanctionsNotes("Cleared by admin at approval (Framework §F.4)");
-            party.setSanctionsScreenedAt(Instant.now());
+        if (party.getSanctionsStatus() == ScreeningStatus.HIT
+                || party.getSanctionsStatus() != ScreeningStatus.CLEAR) {
+            sanctionsScreeningService.assertClearForAccountOpen(party);
         }
         if (party.getIdentityVerificationStatus() != IdentityVerificationStatus.BV_DONE
                 && party.getIdentityVerificationStatus() != IdentityVerificationStatus.VERISYS_DONE) {
@@ -334,7 +333,42 @@ public class AdminOnboardingService {
         party.setSanctionsStatus(status);
         party.setSanctionsNotes(notes);
         party.setSanctionsScreenedAt(Instant.now());
+        if (status == ScreeningStatus.CLEAR) {
+            if (notes == null || notes.isBlank()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        "A written reason is required to CLEAR AML/CFT screening");
+            }
+            party.setSanctionsManualClear(true);
+            party.setSanctionsNotes("Backoffice CLEAR: " + notes.trim());
+        } else {
+            party.setSanctionsManualClear(false);
+        }
         return enrich(partyRepository.save(party));
+    }
+
+    @Transactional
+    public PartyResponse rescreenSanctions(Long id) {
+        return enrich(sanctionsScreeningService.screen(id, true));
+    }
+
+    public Map<String, Object> amlSummary() {
+        return sanctionsScreeningService.summary();
+    }
+
+    public List<AmlWatchlistEntry> amlWatchlist() {
+        return sanctionsScreeningService.activeEntries();
+    }
+
+    public Map<String, Object> importAmlCsv(String csv) {
+        int n = sanctionsScreeningService.importCsv(csv, "admin-csv");
+        Map<String, Object> out = new HashMap<>();
+        out.put("imported", n);
+        out.putAll(sanctionsScreeningService.summary());
+        return out;
+    }
+
+    public List<AmlScreenResult> amlResults(Long partyId) {
+        return sanctionsScreeningService.recentForParty(partyId);
     }
 
     @Transactional

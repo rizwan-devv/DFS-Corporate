@@ -23,13 +23,16 @@ public class AccountProvisioningService {
     private final PartyRepository partyRepository;
     private final PartnerAppUserRepository appUserRepository;
     private final DfsAccountClient dfsAccountClient;
+    private final SanctionsScreeningService sanctionsScreeningService;
 
     public AccountProvisioningService(PartyRepository partyRepository,
                                       PartnerAppUserRepository appUserRepository,
-                                      DfsAccountClient dfsAccountClient) {
+                                      DfsAccountClient dfsAccountClient,
+                                      SanctionsScreeningService sanctionsScreeningService) {
         this.partyRepository = partyRepository;
         this.appUserRepository = appUserRepository;
         this.dfsAccountClient = dfsAccountClient;
+        this.sanctionsScreeningService = sanctionsScreeningService;
     }
 
     @Transactional
@@ -88,6 +91,7 @@ public class AccountProvisioningService {
     }
 
     private Party runAttempt(Party party) {
+        sanctionsScreeningService.assertClearForAccountOpen(party);
         party.setAccountProvisionStatus(AccountProvisionStatus.PENDING);
         party.setAccountProvisionError(null);
         party.setAccountProvisionAttempts(

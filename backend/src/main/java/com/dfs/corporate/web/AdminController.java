@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -93,6 +94,29 @@ public class AdminController {
         return adminOnboardingService.setSanctions(id,
                 com.dfs.corporate.domain.ScreeningStatus.valueOf(body.getOrDefault("status", "CLEAR")),
                 body.get("notes"));
+    }
+
+    @PostMapping("/parties/{id}/sanctions/screen")
+    public PartyResponse rescreen(@PathVariable Long id) {
+        return adminOnboardingService.rescreenSanctions(id);
+    }
+
+    @GetMapping("/parties/{id}/sanctions/results")
+    public List<com.dfs.corporate.domain.AmlScreenResult> sanctionResults(@PathVariable Long id) {
+        return adminOnboardingService.amlResults(id);
+    }
+
+    @GetMapping("/aml/watchlist")
+    public Map<String, Object> amlWatchlist() {
+        Map<String, Object> out = new HashMap<>();
+        out.put("summary", adminOnboardingService.amlSummary());
+        out.put("entries", adminOnboardingService.amlWatchlist());
+        return out;
+    }
+
+    @PostMapping(value = "/aml/watchlist/csv", consumes = MediaType.TEXT_PLAIN_VALUE)
+    public Map<String, Object> importAml(@RequestBody String csv) {
+        return adminOnboardingService.importAmlCsv(csv);
     }
 
     @PostMapping("/parties/{id}/identity-verification")

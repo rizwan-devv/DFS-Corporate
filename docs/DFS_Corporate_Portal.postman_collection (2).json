@@ -1,0 +1,258 @@
+{
+  "info": {
+    "name": "DFS - Corporate Portal",
+    "description": "Every token-free /v1/corporate/* endpoint across agentapp, app and transactions.\n\n## Authentication\n\nOne header on every request: X-Portal-Key. Its value is CORPORATE_PORTAL_API_KEY from the server's .env; it is deliberately NOT stored in this file. Set the portalKey variable in a Postman ENVIRONMENT, not in the collection, so the key does not travel when this file is shared.\n\nThe key authorises the caller as the portal. It does not select an account - every request still names its own subject in the payload, exactly as the mobile calls do.\n\n## The MPIN is still required\n\nDropping the app login token does not drop the MPIN. fundsTransferLocal still verifies the CUSTOMER MPIN via app before moving money.\n\n## Not here\n\nThe mobile endpoints (/v1/getbalance, /v1/ibft/bankList, /v1/fundsTransferLocal, ...) are unchanged and still require a bearer token. The portal key gives no access to them.\n\n## Reading responses\n\nBusiness failures return HTTP 200. Always branch on responsecode, never on the HTTP status.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "agentappUrl", "value": "http://46.225.160.93:18001/agentapp", "type": "string", "description": "agentapp base URL including the context path." },
+    { "key": "appUrl", "value": "http://46.225.160.93:18002/app", "type": "string", "description": "app base URL including the context path." },
+    { "key": "txnUrl", "value": "http://46.225.160.93:18009/transactions", "type": "string", "description": "transactions base URL including the context path." },
+    { "key": "portalKey", "value": "", "type": "string", "description": "CORPORATE_PORTAL_API_KEY from the server .env. Leave blank here; set it in a Postman environment." },
+    { "key": "customerMobile", "value": "03006088666", "type": "string", "description": "Payer wallet. A real active customer account used during deployment testing." },
+    { "key": "customerAppUserId", "value": "326", "type": "string", "description": "APP_USER_ID of customerMobile. Required by fundsTransferLocal." },
+    { "key": "beneficiaryMobile", "value": "03000227276", "type": "string", "description": "Beneficiary wallet for same-platform transfers." },
+    { "key": "accountLevelCode", "value": "L1", "type": "string", "description": "Must match the account, or lookups return USER NOT FOUND." },
+    { "key": "nidNo", "value": "3520112345671", "type": "string" },
+    { "key": "mpin", "value": "1234", "type": "string", "description": "Customer MPIN. Never commit a real one." }
+  ],
+  "item": [
+    {
+      "name": "0 - Auth checks",
+      "description": "Run these after any deployment to confirm the endpoints are protected. Both must return 406 Invalid Token.",
+      "item": [
+        {
+          "name": "No portal key - must be rejected",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{txnUrl}}/v1/corporate/ibft/bankList", "host": ["{{txnUrl}}"], "path": ["v1", "corporate", "ibft", "bankList"] },
+            "description": "Expected: {\"responsecode\":\"406\",\"messages\":\"Invalid Token\"}",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {}\n}" }
+          }
+        },
+        {
+          "name": "Wrong portal key - must be rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "not-the-real-key" }
+            ],
+            "url": { "raw": "{{txnUrl}}/v1/corporate/ibft/bankList", "host": ["{{txnUrl}}"], "path": ["v1", "corporate", "ibft", "bankList"] },
+            "description": "Expected: {\"responsecode\":\"406\",\"messages\":\"Invalid Token\"}",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {}\n}" }
+          }
+        },
+        {
+          "name": "Mobile endpoint must reject the portal key",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{txnUrl}}/v1/ibft/bankList", "host": ["{{txnUrl}}"], "path": ["v1", "ibft", "bankList"] },
+            "description": "The portal key must NOT open the mobile APIs. Expected: 406 Invalid Token.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {}\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 - Account (agentapp)",
+      "description": "Balance, statement and MPIN change. getbalance and miniStatment match on mobile AND level together - a mismatched level returns USER NOT FOUND, not an empty result.",
+      "item": [
+        {
+          "name": "Get Balance",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{agentappUrl}}/v1/corporate/getbalance", "host": ["{{agentappUrl}}"], "path": ["v1", "corporate", "getbalance"] },
+            "description": "Mirrors POST /v1/getbalance.\n\nSuccess: {\"responsecode\":\"000\",\"data\":{\"balance\":4681},\"messages\":\"SUCCESS\"}",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"mobileNumber\": \"{{customerMobile}}\",\n    \"accountLevelCode\": \"{{accountLevelCode}}\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "Mini Statement - last nine records",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{agentappUrl}}/v1/corporate/miniStatment", "host": ["{{agentappUrl}}"], "path": ["v1", "corporate", "miniStatment"] },
+            "description": "Omit both dates to get the last nine transactions.\n\nNote the spelling: miniStatment, matching the mobile endpoint.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"mobileNumber\": \"{{customerMobile}}\",\n    \"accountLevelCode\": \"{{accountLevelCode}}\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "Mini Statement - date range",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{agentappUrl}}/v1/corporate/miniStatment", "host": ["{{agentappUrl}}"], "path": ["v1", "corporate", "miniStatment"] },
+            "description": "Both dates together, format yyyy-MM-dd HH:mm:ss, range at most 180 days.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"mobileNumber\": \"{{customerMobile}}\",\n    \"accountLevelCode\": \"{{accountLevelCode}}\",\n    \"fromDate\": \"2026-08-01 00:00:00\",\n    \"toDate\": \"2026-09-21 23:59:59\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "Change MPIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{agentappUrl}}/v1/corporate/changempin", "host": ["{{agentappUrl}}"], "path": ["v1", "corporate", "changempin"] },
+            "description": "newMpin and confirmMpin must match. A wrong currentMpin returns 127 with HTTP 200 - a business outcome, not an error.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"mobileNumber\": \"{{customerMobile}}\",\n    \"currentMpin\": \"{{mpin}}\",\n    \"newMpin\": \"4321\",\n    \"confirmMpin\": \"4321\"\n  }\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Customer MPIN (app)",
+      "description": "Verify a customer MPIN without an app login. fundsTransferLocal calls this for you; it is exposed so the portal can confirm an MPIN before a confirmation screen.",
+      "item": [
+        {
+          "name": "Verify customer MPIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{appUrl}}/v1/corporate/mpinVerification", "host": ["{{appUrl}}"], "path": ["v1", "corporate", "mpinVerification"] },
+            "description": "000 = correct, 127 = wrong MPIN, 125 = no such customer.\n\nThis is the CUSTOMER MPIN held by app - not an agent MPIN.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"mobileNumber\": \"{{customerMobile}}\",\n    \"mpin\": \"{{mpin}}\"\n  }\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - IBFT (transactions)",
+      "description": "Money to another bank. Two steps: titleFetch to resolve and confirm the beneficiary, then advice to move the money. Run bankList first to get a bankImd.",
+      "item": [
+        {
+          "name": "Step 1 - Bank list",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{txnUrl}}/v1/corporate/ibft/bankList", "host": ["{{txnUrl}}"], "path": ["v1", "corporate", "ibft", "bankList"] },
+            "description": "Empty payload, but still a POST - matching its mobile twin.\n\nReturns [{\"bankImd\":\"505895\",\"bankName\":\"...\"}, ...]. Keep the chosen bankImd for both later calls.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {}\n}" }
+          }
+        },
+        {
+          "name": "Step 2 - Title fetch",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{txnUrl}}/v1/corporate/ibft/titleFetch", "host": ["{{txnUrl}}"], "path": ["v1", "corporate", "ibft", "titleFetch"] },
+            "description": "Required: fromAccountNo, fromAccountNid, beneficiaryAccountNo, beneficiaryBankImd.\n\nShow the returned beneficiary title to the customer before committing.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"fromAccountNo\": \"{{customerMobile}}\",\n    \"fromAccountNid\": \"{{nidNo}}\",\n    \"beneficiaryAccountNo\": \"PK36SCBL0000001123456702\",\n    \"beneficiaryBankImd\": \"505895\",\n    \"amount\": \"100\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "Step 3 - Advice (moves money)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{txnUrl}}/v1/corporate/ibft/advice", "host": ["{{txnUrl}}"], "path": ["v1", "corporate", "ibft", "advice"] },
+            "description": "Same fields as titleFetch, with amount now required. purposeOfPayment and transactionReference are optional.\n\nThis executes the transfer.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"fromAccountNo\": \"{{customerMobile}}\",\n    \"fromAccountNid\": \"{{nidNo}}\",\n    \"beneficiaryAccountNo\": \"PK36SCBL0000001123456702\",\n    \"beneficiaryBankImd\": \"505895\",\n    \"amount\": \"100\",\n    \"purposeOfPayment\": \"\",\n    \"transactionReference\": \"\"\n  }\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Bill payment (transactions)",
+      "description": "getbiller gives the utilityCompanyCode. Note the field is utilityCompanyCode, NOT billerCode.",
+      "item": [
+        {
+          "name": "Step 1 - Get billers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Portal-Key", "value": "{{portalKey}}" }],
+            "url": { "raw": "{{txnUrl}}/v1/corporate/getbiller", "host": ["{{txnUrl}}"], "path": ["v1", "corporate", "getbiller"] },
+            "description": "The only GET in this collection, and it still needs the header.\n\nReturns [{\"name\":\"...\",\"code\":\"BSS00001\",\"id\":25}, ...]. The code is utilityCompanyCode below."
+          }
+        },
+        {
+          "name": "Step 2 - Bill inquiry",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{txnUrl}}/v1/corporate/billInquiry", "host": ["{{txnUrl}}"], "path": ["v1", "corporate", "billInquiry"] },
+            "description": "Required: fromAccountNo, utilityCompanyCode, consumerNo.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"fromAccountNo\": \"{{customerMobile}}\",\n    \"utilityCompanyCode\": \"BSS00001\",\n    \"consumerNo\": \"1234567890\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "Step 3 - Bill payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{txnUrl}}/v1/corporate/billPayment", "host": ["{{txnUrl}}"], "path": ["v1", "corporate", "billPayment"] },
+            "description": "Adds fromAccountNid and amount, both required. Amount must be numeric and greater than zero.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"fromAccountNo\": \"{{customerMobile}}\",\n    \"fromAccountNid\": \"{{nidNo}}\",\n    \"utilityCompanyCode\": \"BSS00001\",\n    \"consumerNo\": \"1234567890\",\n    \"amount\": \"100\",\n    \"transactionReference\": \"\"\n  }\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Local funds transfer (transactions)",
+      "description": "Money to another DFS wallet. Two steps: initiateLocalFT to resolve the title and fee, then fundsTransferLocal to move it. The customer MPIN is verified before the money moves.",
+      "item": [
+        {
+          "name": "Step 1 - Initiate local FT",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{txnUrl}}/v1/corporate/initiateLocalFT", "host": ["{{txnUrl}}"], "path": ["v1", "corporate", "initiateLocalFT"] },
+            "description": "Returns the beneficiary title, the fee, the available balance and an authIdResponse.\n\nDo NOT send type=QR from the portal: that branch raises an SMS OTP and needs a mobile login token the portal does not have.",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"mobileNumber\": \"{{customerMobile}}\",\n    \"nidNo\": \"{{nidNo}}\",\n    \"accountNo\": \"{{beneficiaryMobile}}\",\n    \"amount\": \"100\",\n    \"accountType\": \"W\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "Step 2 - Funds transfer local (moves money)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Portal-Key", "value": "{{portalKey}}" }
+            ],
+            "url": { "raw": "{{txnUrl}}/v1/corporate/fundsTransferLocal", "host": ["{{txnUrl}}"], "path": ["v1", "corporate", "fundsTransferLocal"] },
+            "description": "Required: mobileNumber, nidNo, accountNo, accountType, amount, appUserId.\n\nappUserId is the PAYER's APP_USER_ID. It is required by the shared validator and cannot be derived from the portal key - carry it in your own customer record.\n\nThe CUSTOMER MPIN is verified by app before the money moves. A wrong MPIN returns:\n{\"responsecode\":\"113\",\"messages\":\"Wrong Mpin\"}",
+            "body": { "mode": "raw", "options": { "raw": { "language": "json" } }, "raw": "{\n  \"channel\": \"MOB\",\n  \"payload\": {\n    \"mobileNumber\": \"{{customerMobile}}\",\n    \"nidNo\": \"{{nidNo}}\",\n    \"accountNo\": \"{{beneficiaryMobile}}\",\n    \"accountType\": \"W\",\n    \"amount\": \"100\",\n    \"appUserId\": \"{{customerAppUserId}}\",\n    \"mpin\": \"{{mpin}}\",\n    \"transPurposeId\": \"1\",\n    \"narration\": \"\"\n  }\n}" }
+          }
+        }
+      ]
+    }
+  ]
+}

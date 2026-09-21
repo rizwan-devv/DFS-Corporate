@@ -27,15 +27,18 @@ public class PartyStatusSyncService {
     private final PartyDocumentRepository documentRepository;
     private final AssociatedPersonRepository associatedPersonRepository;
     private final PartnerAppUserRepository appUserRepository;
+    private final SanctionsScreeningService sanctionsScreeningService;
 
     public PartyStatusSyncService(PartyRepository partyRepository,
                                   PartyDocumentRepository documentRepository,
                                   AssociatedPersonRepository associatedPersonRepository,
-                                  PartnerAppUserRepository appUserRepository) {
+                                  PartnerAppUserRepository appUserRepository,
+                                  SanctionsScreeningService sanctionsScreeningService) {
         this.partyRepository = partyRepository;
         this.documentRepository = documentRepository;
         this.associatedPersonRepository = associatedPersonRepository;
         this.appUserRepository = appUserRepository;
+        this.sanctionsScreeningService = sanctionsScreeningService;
     }
 
     /**
@@ -69,8 +72,12 @@ public class PartyStatusSyncService {
         }
 
         boolean allKyc = allPartnerKycCompleted(party.getId());
+        if (allKyc) {
+            sanctionsScreeningService.screen(party.getId(), false);
+            party = partyRepository.findById(party.getId()).orElse(party);
+        }
         PartyStatus target = allKyc ? PartyStatus.PENDING_APPROVAL : PartyStatus.SUBMITTED;
-        if (current != target) {
+        if (party.getStatus() != target) {
             party.setStatus(target);
             return partyRepository.save(party);
         }
