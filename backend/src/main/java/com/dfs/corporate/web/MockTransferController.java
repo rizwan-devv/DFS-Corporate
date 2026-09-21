@@ -28,8 +28,11 @@ public class MockTransferController {
     }
 
     @GetMapping
-    public List<MockTransferResponse> list(@AuthenticationPrincipal AccountPrincipal principal) {
-        return mockTransferService.list(principal);
+    public List<MockTransferResponse> list(
+            @AuthenticationPrincipal AccountPrincipal principal,
+            @RequestParam(required = false) String productType
+    ) {
+        return mockTransferService.list(principal, productType);
     }
 
     @GetMapping("/ubp/catalog")

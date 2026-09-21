@@ -19,6 +19,7 @@ const DESIGN_PORTAL_PATHS = new Set([
   '/transactions',
   '/cards',
   '/transfers',
+  '/beneficiaries',
   '/invites',
   '/franchises',
 ]);
@@ -29,6 +30,12 @@ function isPublicPath(pathname: string) {
   return false;
 }
 
+function isDesignPortalPath(pathname: string) {
+  if (DESIGN_PORTAL_PATHS.has(pathname)) return true;
+  if (pathname.startsWith('/transfers/')) return true;
+  return false;
+}
+
 export function Layout() {
   const { session, logout } = useAuth();
   const location = useLocation();
@@ -36,7 +43,7 @@ export function Layout() {
   const isMerchant = !!session && session.role !== 'PLATFORM_ADMIN';
   const isAdmin = session?.role === 'PLATFORM_ADMIN';
   const canStartOnboarding = !session;
-  const designPreview = !session && DESIGN_PORTAL_PATHS.has(location.pathname);
+  const designPreview = !session && isDesignPortalPath(location.pathname);
   const portalMode = (!!session && !isPublicPath(location.pathname)) || designPreview;
   const showMerchantFinance = (isMerchant && session?.partyStatus === 'ACTIVE') || designPreview;
 
@@ -98,6 +105,10 @@ export function Layout() {
                     <span className="portal-link-icon">↗</span>
                     Transfers
                   </NavLink>
+                  <NavLink to="/beneficiaries" className="portal-link">
+                    <span className="portal-link-icon">◎</span>
+                    Beneficiaries
+                  </NavLink>
                 </>
               )}
               {isAdmin && (
@@ -141,6 +152,10 @@ export function Layout() {
                       <NavLink to="/transfers" className="portal-link">
                         <span className="portal-link-icon">↗</span>
                         Transfers
+                      </NavLink>
+                      <NavLink to="/beneficiaries" className="portal-link">
+                        <span className="portal-link-icon">◎</span>
+                        Beneficiaries
                       </NavLink>
                     </>
                   )}

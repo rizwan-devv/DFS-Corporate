@@ -18,6 +18,10 @@ import { StatementPage } from './pages/StatementPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { CardsPage } from './pages/CardsPage';
 import { TransfersPage } from './pages/TransfersPage';
+import { FtTransferPage, IbftTransferPage } from './pages/transfers/AccountRailTransferPage';
+import { UbpTransferPage } from './pages/transfers/UbpTransferPage';
+import { RaastTransferPage } from './pages/transfers/RaastTransferPage';
+import { BeneficiariesPage } from './pages/BeneficiariesPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PortalUsersPage } from './pages/PortalUsersPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
@@ -52,6 +56,11 @@ export default function App() {
               <Route path="/transactions" element={<TransactionsPage />} />
               <Route path="/cards" element={<CardsPage />} />
               <Route path="/transfers" element={<TransfersPage />} />
+              <Route path="/transfers/ft" element={<FtTransferPage />} />
+              <Route path="/transfers/ibft" element={<IbftTransferPage />} />
+              <Route path="/transfers/ubp" element={<UbpTransferPage />} />
+              <Route path="/transfers/raast" element={<RaastTransferPage />} />
+              <Route path="/beneficiaries" element={<BeneficiariesPage />} />
               <Route path="/portal-users" element={<PortalUsersPage />} />
               <Route path="/approvals" element={<ApprovalsPage />} />
               <Route path="/profile" element={<ProfilePage />} />

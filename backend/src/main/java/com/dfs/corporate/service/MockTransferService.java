@@ -44,11 +44,13 @@ public class MockTransferService {
         this.ubpMockCatalog = ubpMockCatalog;
     }
 
-    public List<MockTransferResponse> list(AccountPrincipal principal) {
+    public List<MockTransferResponse> list(AccountPrincipal principal, String productType) {
         requireActiveParty(principal);
-        return transferRepository.findByPartyIdOrderByCreatedAtDesc(principal.getPartyId()).stream()
-                .map(MockTransferResponse::from)
-                .toList();
+        Long partyId = principal.getPartyId();
+        List<MockTransfer> rows = (productType == null || productType.isBlank())
+                ? transferRepository.findByPartyIdOrderByCreatedAtDesc(partyId)
+                : transferRepository.findByPartyIdAndProductTypeOrderByCreatedAtDesc(partyId, parseProduct(productType));
+        return rows.stream().map(MockTransferResponse::from).toList();
     }
 
     public Map<String, Object> ubpCatalog(AccountPrincipal principal) {
