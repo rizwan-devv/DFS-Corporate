@@ -1,7 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
-import { TransferBackBar } from '../../components/TransferBackBar';
 import { BeneficiaryPicker } from '../../components/BeneficiaryPicker';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
@@ -104,7 +103,6 @@ export function RaastTransferPage() {
 
   return (
     <div className="portal-page">
-      <TransferBackBar />
       <PageHeader
         eyebrow="Transfers"
         title="Raast"

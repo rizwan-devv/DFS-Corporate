@@ -1,7 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
-import { TransferBackBar } from '../components/TransferBackBar';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import type { Beneficiary, BeneficiaryRail } from '../lib/transferTypes';
@@ -142,7 +141,6 @@ export function BeneficiariesPage() {
 
   return (
     <div className="portal-page">
-      <TransferBackBar />
       <PageHeader
         eyebrow="Finance"
         title="Beneficiaries"
