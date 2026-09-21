@@ -134,7 +134,7 @@ public class AppKycController {
         return appKycService.markFailed(bearer(authorization), reason);
     }
 
-    /** End-of-flow signature photo (one image; backoffice shows 4 thumbnails). */
+    /** End-of-flow signature photo (one image; backend builds 4-up PNG/JPEG/PDF sheet). */
     @PostMapping(value = "/signature", consumes = "multipart/form-data")
     public AppKycSessionResponse signature(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
                                            @RequestParam("signature") MultipartFile signature) {

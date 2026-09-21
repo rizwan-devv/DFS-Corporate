@@ -26,6 +26,11 @@ public class MockTransferResponse {
     private Integer bulkRowCount;
     private String bulkSummary;
     private String raastQrPayload;
+    private String ubpCategory;
+    private String ubpCompany;
+    private String consumerNumber;
+    private String billingMonth;
+    private String billDueDate;
     private String createdBy;
     private Instant createdAt;
     /** Convenience: SVG data URL for Raast QR mock display */
@@ -51,6 +56,11 @@ public class MockTransferResponse {
         r.bulkRowCount = t.getBulkRowCount();
         r.bulkSummary = t.getBulkSummary();
         r.raastQrPayload = t.getRaastQrPayload();
+        r.ubpCategory = t.getUbpCategory();
+        r.ubpCompany = t.getUbpCompany();
+        r.consumerNumber = t.getConsumerNumber();
+        r.billingMonth = t.getBillingMonth();
+        r.billDueDate = t.getBillDueDate();
         r.createdBy = t.getCreatedBy();
         r.createdAt = t.getCreatedAt();
         if (t.getRaastQrPayload() != null && !t.getRaastQrPayload().isBlank()) {
@@ -107,6 +117,11 @@ public class MockTransferResponse {
     public Integer getBulkRowCount() { return bulkRowCount; }
     public String getBulkSummary() { return bulkSummary; }
     public String getRaastQrPayload() { return raastQrPayload; }
+    public String getUbpCategory() { return ubpCategory; }
+    public String getUbpCompany() { return ubpCompany; }
+    public String getConsumerNumber() { return consumerNumber; }
+    public String getBillingMonth() { return billingMonth; }
+    public String getBillDueDate() { return billDueDate; }
     public String getCreatedBy() { return createdBy; }
     public Instant getCreatedAt() { return createdAt; }
     public String getRaastQrDataUrl() { return raastQrDataUrl; }

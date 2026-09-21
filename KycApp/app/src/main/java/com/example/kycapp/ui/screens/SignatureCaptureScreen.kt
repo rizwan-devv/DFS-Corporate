@@ -48,7 +48,7 @@ import java.io.File
 
 /**
  * End-of-KYC signature capture: open camera, photograph the handwritten signature,
- * upload one image (backoffice shows it as four thumbnails).
+ * upload one image (backend builds a 4-up printable PNG/JPEG/PDF sheet).
  */
 @Composable
 fun SignatureCaptureScreen(

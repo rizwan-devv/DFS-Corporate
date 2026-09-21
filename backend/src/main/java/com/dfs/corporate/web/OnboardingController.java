@@ -1,8 +1,10 @@
 package com.dfs.corporate.web;
 
 import com.dfs.corporate.security.AccountPrincipal;
+import com.dfs.corporate.service.AppKycService;
 import com.dfs.corporate.service.OnboardingService;
 import com.dfs.corporate.web.dto.AssociatedPersonRequest;
+import com.dfs.corporate.web.dto.PartnerAppUserResponse;
 import com.dfs.corporate.web.dto.PartyResponse;
 import com.dfs.corporate.web.dto.ProfileUpdateRequest;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,9 +20,11 @@ import org.springframework.web.multipart.MultipartFile;
 public class OnboardingController {
 
     private final OnboardingService onboardingService;
+    private final AppKycService appKycService;
 
-    public OnboardingController(OnboardingService onboardingService) {
+    public OnboardingController(OnboardingService onboardingService, AppKycService appKycService) {
         this.onboardingService = onboardingService;
+        this.appKycService = appKycService;
     }
 
     @GetMapping("/me")
@@ -58,6 +62,15 @@ public class OnboardingController {
                                 @RequestParam String documentCode,
                                 @RequestParam("file") MultipartFile file) {
         return onboardingService.uploadDocument(principal, documentCode, file);
+    }
+
+    /** Portal: upload partner signature image when not captured in the mobile app. */
+    @PostMapping(value = "/partner-app-users/{id}/signature", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public PartnerAppUserResponse uploadPartnerSignature(
+            @AuthenticationPrincipal AccountPrincipal principal,
+            @PathVariable Long id,
+            @RequestParam("signature") MultipartFile signature) {
+        return appKycService.uploadSignatureForParty(principal.getPartyId(), id, signature);
     }
 
     @PostMapping("/submit")

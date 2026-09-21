@@ -754,6 +754,21 @@ h2 {
   color: #bfdbfe;
 }
 
+.alert-warn {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.38);
+  color: #fde68a;
+}
+
+.dash-doc-miss-list {
+  margin: 0.55rem 0 0.75rem;
+  padding-left: 1.2rem;
+}
+
+.dash-doc-miss-list li {
+  margin: 0.15rem 0;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -799,6 +814,16 @@ h2 {
 }
 .ops-signature-grid .ops-thumb {
   min-height: 72px;
+}
+.ops-signature-sheet .ops-thumb {
+  width: 100%;
+  min-height: 160px;
+  max-width: 320px;
+}
+.ops-signature-sheet .ops-thumb img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 @media (max-width: 720px) {
   .ops-signature-grid {

@@ -34,7 +34,16 @@ function formatBalanceDisplay(raw: string): string {
   return Number.isFinite(n) ? formatMoney(n) : raw;
 }
 
-type AppUser = { id: number; fullName: string; phone: string; status: string };
+type AppUser = {
+  id: number;
+  fullName: string;
+  phone: string;
+  status: string;
+  signatureUploaded?: boolean;
+  bankVisitRequired?: boolean;
+};
+type RequiredDoc = { documentCode: string; documentLabel: string; mandatory: boolean; uploaded: boolean };
+type PartyDoc = { documentCode: string; status: string; reviewNote?: string };
 type Party = {
   status: string;
   partyType: string;
@@ -55,6 +64,8 @@ type Party = {
   partnerKycTotal?: number;
   partnerKycCompleted?: number;
   partnerAppUsers?: AppUser[];
+  requiredDocuments?: RequiredDoc[];
+  documents?: PartyDoc[];
   levelCode?: string;
 };
 
@@ -111,7 +122,7 @@ function bucketByDay(rows: AgentMiniStatementRow[]): DayBucket[] {
 function statusHint(status?: string) {
   switch (status) {
     case 'DRAFT':
-      return 'Continue your entity application when ready.';
+      return 'Upload documents as you get them. Submit stays locked until all required files are in.';
     case 'SUBMITTED':
       return 'Waiting for partners to finish mobile app KYC.';
     case 'INCOMPLETE':
@@ -163,6 +174,19 @@ export function DashboardPage() {
   const badgeLabel = isMaster ? 'CORPORATE MASTER' : 'FRANCHISE / CHILD WALLET';
   const pendingInvites = invites.filter(isPendingInvite).length;
   const onboardedCount = children.length;
+  const mandatoryDocs = (party?.requiredDocuments || []).filter((d) => d.mandatory);
+  const draftDocProgress =
+    status === 'DRAFT' && mandatoryDocs.length > 0
+      ? {
+          total: mandatoryDocs.length,
+          uploaded: mandatoryDocs.filter((d) => d.uploaded).length,
+          missing: mandatoryDocs.filter((d) => !d.uploaded),
+        }
+      : null;
+  const rejectedDocs =
+    status === 'INCOMPLETE' || status === 'SUBMITTED' || status === 'PENDING_APPROVAL'
+      ? (party?.documents || []).filter((d) => d.status === 'REJECTED')
+      : [];
 
   useEffect(() => {
     if (!session?.token || session.role === 'PLATFORM_ADMIN') return;
@@ -277,6 +301,39 @@ export function DashboardPage() {
       )}
       {party?.rejectionReason && (
         <div className="alert alert-error">Rejected: {party.rejectionReason}</div>
+      )}
+      {draftDocProgress && draftDocProgress.missing.length > 0 && (
+        <div className="alert alert-warn">
+          <strong>Documents in progress</strong>
+          {' — '}
+          {draftDocProgress.uploaded} of {draftDocProgress.total} required files uploaded.
+          You can add what you have now; submit opens only when the rest are attached.
+          <ul className="dash-doc-miss-list">
+            {draftDocProgress.missing.map((d) => (
+              <li key={d.documentCode}>{d.documentLabel}</li>
+            ))}
+          </ul>
+          <Link className="btn btn-primary btn-sm" to="/onboarding#documents">
+            Upload documents
+          </Link>
+        </div>
+      )}
+      {rejectedDocs.length > 0 && (
+        <div className="alert alert-error">
+          <strong>Document(s) rejected</strong>
+          {' — re-upload only these files. Your application is still open.'}
+          <ul className="dash-doc-miss-list">
+            {rejectedDocs.map((d) => (
+              <li key={d.documentCode}>
+                {d.documentCode}
+                {d.reviewNote ? ` — ${d.reviewNote}` : ''}
+              </li>
+            ))}
+          </ul>
+          <Link className="btn btn-primary btn-sm" to="/onboarding#documents">
+            Re-upload rejected documents
+          </Link>
+        </div>
       )}
 
       {loading ? (
@@ -591,15 +648,30 @@ export function DashboardPage() {
                   <div className="doc-row" key={u.id}>
                     <div>
                       <strong>{u.fullName}</strong>
-                      <div className="muted">{u.phone}</div>
+                      <div className="muted">
+                        {u.phone}
+                        {u.signatureUploaded ? ' · signature on file' : ' · signature missing'}
+                      </div>
                     </div>
-                    <span
-                      className={`status status-${
-                        u.status === 'KYC_COMPLETED' ? 'ACTIVE' : u.status === 'FAILED' ? 'REJECTED' : 'SUBMITTED'
-                      }`}
-                    >
-                      {u.status}
-                    </span>
+                    <div className="actions" style={{ marginTop: 0, alignItems: 'center' }}>
+                      {!u.signatureUploaded && !u.bankVisitRequired && (
+                        <Link className="btn btn-ghost btn-sm" to={`/signature/${u.id}`}>
+                          Upload signature
+                        </Link>
+                      )}
+                      {u.signatureUploaded && (
+                        <Link className="btn btn-ghost btn-sm" to={`/signature/${u.id}`}>
+                          Replace signature
+                        </Link>
+                      )}
+                      <span
+                        className={`status status-${
+                          u.status === 'KYC_COMPLETED' ? 'ACTIVE' : u.status === 'FAILED' ? 'REJECTED' : 'SUBMITTED'
+                        }`}
+                      >
+                        {u.status}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>

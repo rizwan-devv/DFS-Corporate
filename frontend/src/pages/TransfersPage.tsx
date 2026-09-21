@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { api, apiUrl } from '../lib/api';
@@ -26,13 +26,42 @@ type MockTransfer = {
   bulkSummary?: string;
   raastQrPayload?: string;
   raastQrDataUrl?: string;
+  ubpCategory?: string;
+  ubpCompany?: string;
+  consumerNumber?: string;
+  billingMonth?: string;
+  billDueDate?: string;
   createdAt?: string;
+};
+
+type UbpBiller = { code: string; name: string };
+type UbpCategory = {
+  code: string;
+  label: string;
+  consumerLabel: string;
+  companies: UbpBiller[];
+};
+
+type UbpBill = {
+  customerName?: string;
+  billingMonth?: string;
+  dueDate?: string;
+  dueAmount?: number;
+  companyName?: string;
+  consumerNumber?: string;
+  categoryLabel?: string;
+  message?: string;
 };
 
 const PRODUCTS: { id: Product; label: string; bulk: boolean; blurb: string }[] = [
   { id: 'FT', label: 'FT', bulk: true, blurb: 'Fund transfer (mock)' },
   { id: 'IBFT', label: 'IBFT', bulk: true, blurb: 'Interbank fund transfer (mock)' },
-  { id: 'UBP', label: 'UBP', bulk: true, blurb: 'Utility / bill pay (mock — API later)' },
+  {
+    id: 'UBP',
+    label: 'UBP',
+    bulk: true,
+    blurb: 'Utility Bill Payment — electricity, gas, water, internet, mobile & tickets (Pakistan mock)',
+  },
   { id: 'RAAST', label: 'Raast', bulk: false, blurb: 'Single + QR only (no bulk)' },
 ];
 
@@ -45,6 +74,11 @@ const emptyForm = {
   mobile: '',
   beneficiaryName: '',
   notes: '',
+  ubpCategory: '',
+  ubpCompany: '',
+  consumerNumber: '',
+  billingMonth: '',
+  billDueDate: '',
 };
 
 export function TransfersPage() {
@@ -56,11 +90,18 @@ export function TransfersPage() {
   const [history, setHistory] = useState<MockTransfer[]>([]);
   const [last, setLast] = useState<MockTransfer | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fetchingBill, setFetchingBill] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
+  const [ubpCategories, setUbpCategories] = useState<UbpCategory[]>([]);
+  const [fetchedBill, setFetchedBill] = useState<UbpBill | null>(null);
 
   const meta = PRODUCTS.find((p) => p.id === product)!;
   const bulkAllowed = meta.bulk;
+  const selectedCategory = useMemo(
+    () => ubpCategories.find((c) => c.code === form.ubpCategory) ?? null,
+    [ubpCategories, form.ubpCategory],
+  );
 
   const load = useCallback(async () => {
     if (!session?.token) return;
@@ -72,13 +113,75 @@ export function TransfersPage() {
     }
   }, [session?.token]);
 
+  const loadUbpCatalog = useCallback(async () => {
+    if (!session?.token) return;
+    try {
+      const data = await api<{ categories: UbpCategory[] }>('/api/transfers/mock/ubp/catalog', {
+        token: session.token,
+      });
+      setUbpCategories(data.categories || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load UBP catalog');
+    }
+  }, [session?.token]);
+
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
+    if (product === 'UBP') void loadUbpCatalog();
+  }, [product, loadUbpCatalog]);
+
+  useEffect(() => {
     if (!bulkAllowed && tab === 'bulk') setTab('single');
   }, [bulkAllowed, tab]);
+
+  useEffect(() => {
+    setFetchedBill(null);
+    setForm((f) => ({
+      ...f,
+      ubpCompany: '',
+      consumerNumber: '',
+      amount: '',
+      billingMonth: '',
+      billDueDate: '',
+      beneficiaryName: '',
+    }));
+  }, [form.ubpCategory]);
+
+  async function fetchBill() {
+    if (!session?.token) return;
+    setError('');
+    setOk('');
+    setFetchingBill(true);
+    try {
+      const bill = await api<UbpBill>('/api/transfers/mock/ubp/fetch', {
+        method: 'POST',
+        token: session.token,
+        body: JSON.stringify({
+          ubpCategory: form.ubpCategory,
+          ubpCompany: form.ubpCompany,
+          consumerNumber: form.consumerNumber,
+        }),
+      });
+      setFetchedBill(bill);
+      setForm((f) => ({
+        ...f,
+        amount: bill.dueAmount != null ? String(bill.dueAmount) : f.amount,
+        billingMonth: bill.billingMonth || '',
+        billDueDate: bill.dueDate || '',
+        beneficiaryName: bill.customerName || '',
+        mobile: f.ubpCategory === 'MOBILE' ? f.consumerNumber : f.mobile,
+      }));
+      setOk(`Mock bill fetched — ${bill.customerName || 'customer'} · due PKR ${bill.dueAmount}`);
+    } catch (err) {
+      setFetchedBill(null);
+      setError(err instanceof Error ? err.message : 'Fetch bill failed');
+    } finally {
+      setFetchingBill(false);
+    }
+  }
 
   async function submitSingle(e: FormEvent) {
     e.preventDefault();
@@ -89,27 +192,42 @@ export function TransfersPage() {
     try {
       const amount = Number(form.amount);
       if (!Number.isFinite(amount) || amount <= 0) {
-        throw new Error('Enter a valid amount');
+        throw new Error('Enter a valid amount (PKR)');
       }
-      const body = {
-        productType: product,
-        accountNumber: form.accountNumber || undefined,
-        ipin: form.ipin || undefined,
-        bankName: form.bankName || undefined,
-        amount,
-        cnic: form.cnic || undefined,
-        mobile: form.mobile || undefined,
-        beneficiaryName: form.beneficiaryName || undefined,
-        notes: form.notes || undefined,
-      };
+      const body =
+        product === 'UBP'
+          ? {
+              productType: product,
+              amount,
+              ubpCategory: form.ubpCategory || undefined,
+              ubpCompany: form.ubpCompany || undefined,
+              consumerNumber: form.consumerNumber || undefined,
+              billingMonth: form.billingMonth || undefined,
+              billDueDate: form.billDueDate || undefined,
+              mobile: form.mobile || (form.ubpCategory === 'MOBILE' ? form.consumerNumber : undefined),
+              beneficiaryName: form.beneficiaryName || undefined,
+              notes: form.notes || undefined,
+            }
+          : {
+              productType: product,
+              accountNumber: form.accountNumber || undefined,
+              ipin: form.ipin || undefined,
+              bankName: form.bankName || undefined,
+              amount,
+              cnic: form.cnic || undefined,
+              mobile: form.mobile || undefined,
+              beneficiaryName: form.beneficiaryName || undefined,
+              notes: form.notes || undefined,
+            };
       const res = await api<MockTransfer>('/api/transfers/mock/single', {
         method: 'POST',
         token: session.token,
         body: JSON.stringify(body),
       });
       setLast(res);
-      setOk(`Mock ${product} success — ${res.mockTxnRef}`);
+      setOk(`Mock ${product === 'UBP' ? 'UBP payment' : product} success — ${res.mockTxnRef}`);
       setForm(emptyForm);
+      setFetchedBill(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Mock transfer failed');
@@ -151,7 +269,8 @@ export function TransfersPage() {
     if (!session?.token) return;
     void (async () => {
       try {
-        const res = await fetch(apiUrl('/api/transfers/mock/template.csv'), {
+        const qs = product === 'UBP' ? '?productType=UBP' : '';
+        const res = await fetch(apiUrl(`/api/transfers/mock/template.csv${qs}`), {
           headers: { Authorization: `Bearer ${session.token}` },
         });
         if (!res.ok) throw new Error('Template download failed');
@@ -159,7 +278,7 @@ export function TransfersPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'dfs-bulk-transfer-template.csv';
+        a.download = product === 'UBP' ? 'dfs-ubp-bulk-template.csv' : 'dfs-bulk-transfer-template.csv';
         a.click();
         URL.revokeObjectURL(url);
       } catch (err) {
@@ -182,7 +301,7 @@ export function TransfersPage() {
       <PageHeader
         eyebrow="Finance · Mock"
         title="Transfers"
-        subtitle="Portal mocks for FT, IBFT, UBP (single + CSV bulk) and Raast (single + QR). Not connected to live AgentApp."
+        subtitle="Portal mocks for FT, IBFT, UBP (Pakistan bill pay) and Raast. Not connected to live AgentApp."
         actions={
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()}>
             Refresh history
@@ -191,7 +310,7 @@ export function TransfersPage() {
       />
 
       <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
-        <strong>Mock mode</strong> — no money moves. Bulk uses CSV (Excel → Save As CSV). Raast has no bulk.
+        <strong>Mock mode</strong> — no money moves. UBP uses Pakistan billers (LESCO, SNGPL, Jazz, PTCL, Railways…). Bulk uses CSV.
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
@@ -204,9 +323,13 @@ export function TransfersPage() {
             type="button"
             role="tab"
             className={`transfer-tab ${product === p.id ? 'active' : ''}`}
-            onClick={() => setProduct(p.id)}
+            onClick={() => {
+              setProduct(p.id);
+              setFetchedBill(null);
+              setForm(emptyForm);
+            }}
           >
-            {p.label}
+            {p.id === 'UBP' ? 'UBP · Bills' : p.label}
           </button>
         ))}
       </div>
@@ -235,68 +358,190 @@ export function TransfersPage() {
       <div className="panel panel--wide" style={{ marginTop: '1.25rem' }}>
         {tab === 'single' ? (
           <form className="form-grid" onSubmit={submitSingle}>
-            <h3 className="form-section-title">{product} — single (mock)</h3>
-            {product !== 'RAAST' && (
+            <h3 className="form-section-title">
+              {product === 'UBP' ? 'Utility Bill Payment — single (mock)' : `${product} — single (mock)`}
+            </h3>
+
+            {product === 'UBP' ? (
               <>
                 <div className="form-row">
-                  <label>Account number</label>
+                  <label>Bill category</label>
+                  <select
+                    required
+                    value={form.ubpCategory}
+                    onChange={(e) => setForm({ ...form, ubpCategory: e.target.value })}
+                  >
+                    <option value="">Select category</option>
+                    {ubpCategories.map((c) => (
+                      <option key={c.code} value={c.code}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label>Company / biller</label>
+                  <select
+                    required
+                    disabled={!selectedCategory}
+                    value={form.ubpCompany}
+                    onChange={(e) => {
+                      setFetchedBill(null);
+                      setForm({ ...form, ubpCompany: e.target.value });
+                    }}
+                  >
+                    <option value="">Select company</option>
+                    {(selectedCategory?.companies || []).map((b) => (
+                      <option key={b.code} value={b.code}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-row">
+                  <label>{selectedCategory?.consumerLabel || 'Consumer / reference number'}</label>
                   <input
                     required
-                    value={form.accountNumber}
-                    onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
+                    placeholder={form.ubpCategory === 'MOBILE' ? '03XXXXXXXXX' : 'Consumer / bill number'}
+                    value={form.consumerNumber}
+                    onChange={(e) => {
+                      setFetchedBill(null);
+                      setForm({ ...form, consumerNumber: e.target.value });
+                    }}
+                  />
+                </div>
+                <div className="actions" style={{ marginTop: 0 }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={fetchingBill || !form.ubpCategory || !form.ubpCompany || !form.consumerNumber}
+                    onClick={() => void fetchBill()}
+                  >
+                    {fetchingBill ? 'Fetching…' : 'Fetch bill (mock)'}
+                  </button>
+                </div>
+                {fetchedBill && (
+                  <div className="alert alert-info" style={{ margin: '0.5rem 0 0' }}>
+                    <strong>{fetchedBill.customerName}</strong>
+                    {' · '}
+                    {fetchedBill.categoryLabel} / {fetchedBill.companyName}
+                    <br />
+                    Bill month {fetchedBill.billingMonth} · Due {fetchedBill.dueDate} ·{' '}
+                    <strong>PKR {fetchedBill.dueAmount}</strong>
+                    <div className="muted" style={{ marginTop: '0.25rem' }}>{fetchedBill.message}</div>
+                  </div>
+                )}
+                <div className="form-row">
+                  <label>Amount (PKR)</label>
+                  <input
+                    required
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={form.amount}
+                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  />
+                </div>
+                {(form.ubpCategory === 'ELECTRICITY' || form.ubpCategory === 'GAS' || form.ubpCategory === 'WATER') && (
+                  <div className="form-row">
+                    <label>Billing month</label>
+                    <input
+                      value={form.billingMonth}
+                      onChange={(e) => setForm({ ...form, billingMonth: e.target.value })}
+                      placeholder="e.g. Aug 2026"
+                    />
+                  </div>
+                )}
+                {(form.ubpCategory === 'TICKETS' || form.ubpCategory === 'EDUCATION') && (
+                  <div className="form-row">
+                    <label>{form.ubpCategory === 'TICKETS' ? 'Passenger / booking name' : 'Student name'}</label>
+                    <input
+                      value={form.beneficiaryName}
+                      onChange={(e) => setForm({ ...form, beneficiaryName: e.target.value })}
+                    />
+                  </div>
+                )}
+                {form.ubpCategory !== 'MOBILE' && (
+                  <div className="form-row">
+                    <label>Mobile (optional)</label>
+                    <input
+                      value={form.mobile}
+                      onChange={(e) => setForm({ ...form, mobile: e.target.value })}
+                      placeholder="03XXXXXXXXX"
+                    />
+                  </div>
+                )}
+                <div className="form-row">
+                  <label>Notes</label>
+                  <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                </div>
+              </>
+            ) : (
+              <>
+                {product !== 'RAAST' && (
+                  <>
+                    <div className="form-row">
+                      <label>Account number</label>
+                      <input
+                        required
+                        value={form.accountNumber}
+                        onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-row">
+                      <label>IPIN</label>
+                      <input value={form.ipin} onChange={(e) => setForm({ ...form, ipin: e.target.value })} />
+                    </div>
+                    <div className="form-row">
+                      <label>Bank name</label>
+                      <input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} />
+                    </div>
+                  </>
+                )}
+                <div className="form-row">
+                  <label>Amount (PKR)</label>
+                  <input
+                    required
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={form.amount}
+                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
                   />
                 </div>
                 <div className="form-row">
-                  <label>IPIN</label>
-                  <input value={form.ipin} onChange={(e) => setForm({ ...form, ipin: e.target.value })} />
+                  <label>CNIC</label>
+                  <input value={form.cnic} onChange={(e) => setForm({ ...form, cnic: e.target.value })} />
                 </div>
                 <div className="form-row">
-                  <label>Bank name</label>
-                  <input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} />
+                  <label>Mobile</label>
+                  <input value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} />
+                </div>
+                <div className="form-row">
+                  <label>Beneficiary name</label>
+                  <input
+                    value={form.beneficiaryName}
+                    onChange={(e) => setForm({ ...form, beneficiaryName: e.target.value })}
+                  />
+                </div>
+                <div className="form-row">
+                  <label>Notes</label>
+                  <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
                 </div>
               </>
             )}
-            <div className="form-row">
-              <label>Amount</label>
-              <input
-                required
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              />
-            </div>
-            <div className="form-row">
-              <label>CNIC</label>
-              <input value={form.cnic} onChange={(e) => setForm({ ...form, cnic: e.target.value })} />
-            </div>
-            <div className="form-row">
-              <label>Mobile</label>
-              <input value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} />
-            </div>
-            <div className="form-row">
-              <label>Beneficiary name</label>
-              <input
-                value={form.beneficiaryName}
-                onChange={(e) => setForm({ ...form, beneficiaryName: e.target.value })}
-              />
-            </div>
-            <div className="form-row">
-              <label>Notes</label>
-              <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-            </div>
+
             <div className="actions">
               <button className="btn btn-primary" type="submit" disabled={loading}>
-                {loading ? 'Submitting…' : `Submit mock ${product}`}
+                {loading ? 'Submitting…' : product === 'UBP' ? 'Pay bill (mock)' : `Submit mock ${product}`}
               </button>
             </div>
           </form>
         ) : (
           <form className="form-grid" onSubmit={submitBulk}>
-            <h3 className="form-section-title">{product} — bulk CSV (mock)</h3>
+            <h3 className="form-section-title">
+              {product === 'UBP' ? 'UBP — bulk CSV (mock)' : `${product} — bulk CSV (mock)`}
+            </h3>
             <p className="muted">
-              Columns: account_number, ipin, bank_name, amount, cnic, mobile
+              {product === 'UBP'
+                ? 'Columns: category, company, consumer_number, amount, mobile, notes'
+                : 'Columns: account_number, ipin, bank_name, amount, cnic, mobile'}
             </p>
             <div className="actions" style={{ marginTop: 0 }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={downloadTemplate}>
@@ -324,9 +569,18 @@ export function TransfersPage() {
         <div className="panel panel--wide" style={{ marginTop: '1.25rem' }}>
           <h3>Last mock result</h3>
           <p>
-            <span className={`status status-ACTIVE`}>{last.status}</span>{' '}
+            <span className="status status-ACTIVE">{last.status}</span>{' '}
             <strong>{last.mockTxnRef}</strong> · {last.productType} · {last.mode}
           </p>
+          {last.productType === 'UBP' && (
+            <p className="muted">
+              {last.ubpCategory || '—'} / {last.ubpCompany || '—'}
+              {last.consumerNumber ? ` · ${last.consumerNumber}` : ''}
+              {last.billingMonth ? ` · ${last.billingMonth}` : ''}
+              {last.amount != null ? ` · PKR ${last.amount}` : ''}
+              {last.beneficiaryName ? ` · ${last.beneficiaryName}` : ''}
+            </p>
+          )}
           {last.bulkSummary && <pre className="transfer-pre">{last.bulkSummary}</pre>}
           {last.raastQrDataUrl && (
             <div className="transfer-qr">
@@ -343,10 +597,22 @@ export function TransfersPage() {
         {history.map((t) => (
           <div className="doc-row" key={t.id}>
             <div>
-              <strong>{t.productType}</strong> · {t.mode} · {t.mockTxnRef}
+              <strong>{t.productType === 'UBP' ? 'UBP · Bill' : t.productType}</strong> · {t.mode} · {t.mockTxnRef}
               <div className="muted">
                 {t.amount != null ? `PKR ${t.amount}` : '—'}
-                {t.accountNumber ? ` · ${t.accountNumber}` : ''}
+                {t.productType === 'UBP'
+                  ? [
+                      t.ubpCategory,
+                      t.ubpCompany,
+                      t.consumerNumber,
+                      t.billingMonth,
+                    ]
+                      .filter(Boolean)
+                      .map((x) => ` · ${x}`)
+                      .join('')
+                  : t.accountNumber
+                    ? ` · ${t.accountNumber}`
+                    : ''}
                 {t.bulkRowCount != null ? ` · ${t.bulkRowCount} rows` : ''}
                 {t.createdAt ? ` · ${new Date(t.createdAt).toLocaleString()}` : ''}
               </div>

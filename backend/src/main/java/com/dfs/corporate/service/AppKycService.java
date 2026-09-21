@@ -32,6 +32,9 @@ public class AppKycService {
     public static final String DOC_SELFIE = "SELFIE";
     public static final String DOC_VIDEO_READALOUD = "VIDEO_READALOUD";
     public static final String DOC_SIGNATURE = "SIGNATURE";
+    public static final String DOC_SIGNATURE_SHEET_PNG = "SIGNATURE_SHEET_PNG";
+    public static final String DOC_SIGNATURE_SHEET_JPEG = "SIGNATURE_SHEET_JPEG";
+    public static final String DOC_SIGNATURE_SHEET_PDF = "SIGNATURE_SHEET_PDF";
     /** 8 non-thumb fingers (KycApp left/right × 4). */
     public static final List<String> DOC_FINGERS = List.of(
             "FINGER_L1", "FINGER_L2", "FINGER_L3", "FINGER_L4",
@@ -58,6 +61,7 @@ public class AppKycService {
     private final PartyDocumentRepository documentRepository;
     private final VideoChallengeRepository videoChallengeRepository;
     private final FileStorageService fileStorageService;
+    private final SignatureSheetService signatureSheetService;
     private final VideoScriptService videoScriptService;
     private final PartnerAppUserService partnerAppUserService;
     private final AccountProvisioningService accountProvisioningService;
@@ -72,6 +76,7 @@ public class AppKycService {
                          PartyDocumentRepository documentRepository,
                          VideoChallengeRepository videoChallengeRepository,
                          FileStorageService fileStorageService,
+                         SignatureSheetService signatureSheetService,
                          VideoScriptService videoScriptService,
                          PartnerAppUserService partnerAppUserService,
                          AccountProvisioningService accountProvisioningService,
@@ -85,6 +90,7 @@ public class AppKycService {
         this.documentRepository = documentRepository;
         this.videoChallengeRepository = videoChallengeRepository;
         this.fileStorageService = fileStorageService;
+        this.signatureSheetService = signatureSheetService;
         this.videoScriptService = videoScriptService;
         this.partnerAppUserService = partnerAppUserService;
         this.accountProvisioningService = accountProvisioningService;
@@ -661,23 +667,89 @@ public class AppKycService {
     }
 
     /**
-     * Capture one signature image (camera). Stored once; backoffice shows it as four thumbnails.
-     * Allowed after KYC_COMPLETED so partners can finish the end-of-flow signature step.
+     * Capture one signature image. Stored once; backend tiles it into a 4-up printable
+     * PNG / JPEG / PDF sheet. Allowed after KYC so partners can finish the end-of-flow step.
      */
     @Transactional
     public AppKycSessionResponse uploadSignature(String sessionToken, MultipartFile signature) {
         PartnerAppUser user = requireSession(sessionToken);
+        persistSignature(user, signature);
+        return toSession(user);
+    }
+
+    /**
+     * Portal path: party owner uploads a partner signature image when the app step was skipped.
+     */
+    @Transactional
+    public PartnerAppUserResponse uploadSignatureForParty(Long partyId, Long appUserId, MultipartFile signature) {
+        PartnerAppUser user = appUserRepository.findById(appUserId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Partner app user not found"));
+        if (!partyId.equals(user.getPartyId())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Partner does not belong to this party");
+        }
+        persistSignature(user, signature);
+        return partnerAppUserService.toResponse(user);
+    }
+
+    private void persistSignature(PartnerAppUser user, MultipartFile signature) {
         if (signature == null || signature.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "signature file is required");
         }
         if (user.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED
                 || Boolean.TRUE.equals(user.getBankVisitRequired())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Bank visit required — signature via phone is closed");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Bank visit required — signature upload is closed");
         }
-        storeDoc(user, DOC_SIGNATURE, signature);
+        byte[] bytes;
+        try {
+            bytes = signature.getBytes();
+        } catch (java.io.IOException e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Could not read signature file");
+        }
+        String originalName = signature.getOriginalFilename() != null
+                ? signature.getOriginalFilename() : "signature.jpg";
+        String contentType = signature.getContentType() != null
+                ? signature.getContentType() : "image/jpeg";
+
+        String code = docCode(user.getId(), DOC_SIGNATURE);
+        String path = fileStorageService.storeBytes(user.getPartyId(), code, bytes,
+                extensionOf(originalName, ".jpg"));
+        upsertDoc(user.getPartyId(), code, originalName, path, contentType, DocumentStatus.PENDING);
+
+        SignatureSheetService.Sheets sheets = signatureSheetService.createFromImageBytes(bytes);
+        storeSheet(user, DOC_SIGNATURE_SHEET_PNG, "signature-sheet.png", "image/png", sheets.png());
+        storeSheet(user, DOC_SIGNATURE_SHEET_JPEG, "signature-sheet.jpg", "image/jpeg", sheets.jpeg());
+        storeSheet(user, DOC_SIGNATURE_SHEET_PDF, "signature-sheet.pdf", "application/pdf", sheets.pdf());
+
         user.setSignatureUploaded(true);
         appUserRepository.save(user);
-        return toSession(user);
+    }
+
+    private void storeSheet(PartnerAppUser user, String kind, String fileName, String contentType, byte[] bytes) {
+        String code = docCode(user.getId(), kind);
+        String ext = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf('.')) : "";
+        String path = fileStorageService.storeBytes(user.getPartyId(), code, bytes, ext);
+        // Derivatives are generated — auto-approve so they do not block party approve.
+        upsertDoc(user.getPartyId(), code, fileName, path, contentType, DocumentStatus.APPROVED);
+    }
+
+    private void upsertDoc(Long partyId, String code, String originalName, String path,
+                           String contentType, DocumentStatus status) {
+        PartyDocument doc = documentRepository.findByPartyIdAndDocumentCode(partyId, code)
+                .orElseGet(PartyDocument::new);
+        doc.setPartyId(partyId);
+        doc.setDocumentCode(code);
+        doc.setOriginalName(originalName);
+        doc.setStoredPath(path);
+        doc.setContentType(contentType);
+        doc.setStatus(status);
+        doc.setReviewNote(null);
+        doc.setUploadedAt(Instant.now());
+        documentRepository.save(doc);
+    }
+
+    private static String extensionOf(String name, String fallback) {
+        if (name == null || !name.contains(".")) return fallback;
+        return name.substring(name.lastIndexOf('.'));
     }
 
     private AppKycSessionResponse startSession(PartnerAppUser user) {

@@ -223,7 +223,7 @@ public class PartnerAppUserService {
                         + "— DFS Corporate");
     }
 
-    private PartnerAppUserResponse toResponse(PartnerAppUser u) {
+    public PartnerAppUserResponse toResponse(PartnerAppUser u) {
         PartnerAppUserResponse r = new PartnerAppUserResponse();
         r.setId(u.getId());
         r.setAssociatedPersonId(u.getAssociatedPersonId());

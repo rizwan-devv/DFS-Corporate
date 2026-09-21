@@ -9,7 +9,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
 @Service
@@ -27,12 +26,25 @@ public class FileStorageService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "File is required");
         }
         try {
+            return storeBytes(partyId, documentCode, file.getBytes(), extension(file.getOriginalFilename()));
+        } catch (IOException e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store file");
+        }
+    }
+
+    public String storeBytes(Long partyId, String documentCode, byte[] bytes, String extension) {
+        if (bytes == null || bytes.length == 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "File is required");
+        }
+        try {
             Path dir = root.resolve("party-" + partyId);
             Files.createDirectories(dir);
-            String ext = extension(file.getOriginalFilename());
+            String ext = extension == null || extension.isBlank()
+                    ? ""
+                    : (extension.startsWith(".") ? extension : "." + extension);
             String filename = documentCode + "-" + UUID.randomUUID() + ext;
             Path target = dir.resolve(filename);
-            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            Files.write(target, bytes);
             return target.toString();
         } catch (IOException e) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store file");

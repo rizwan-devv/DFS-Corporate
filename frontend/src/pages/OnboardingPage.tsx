@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 
@@ -23,6 +23,7 @@ type AppUser = {
   appInviteUrl?: string;
   bankVisitRequired?: boolean;
   failureReason?: string;
+  signatureUploaded?: boolean;
 };
 type PartyDoc = {
   id: number;
@@ -91,6 +92,7 @@ function isOwnerEntity(entityType?: string) {
 
 export function OnboardingPage() {
   const { session } = useAuth();
+  const location = useLocation();
   const [party, setParty] = useState<Party | null>(null);
   const [entityTypes, setEntityTypes] = useState<Option[]>([]);
   const [error, setError] = useState('');
@@ -163,6 +165,16 @@ export function OnboardingPage() {
     }
     load().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
   }, [load]);
+
+  useEffect(() => {
+    if (location.hash === '#documents') {
+      setStep(3);
+      const t = window.setTimeout(() => {
+        document.getElementById('documents')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+      return () => window.clearTimeout(t);
+    }
+  }, [location.hash, party?.status, party?.documents]);
 
   if (!session) return <Navigate to="/login" replace />;
   if (session.role === 'PLATFORM_ADMIN') return <Navigate to="/admin" replace />;
@@ -250,6 +262,9 @@ export function OnboardingPage() {
     || party?.status === 'SUBMITTED'
     || party?.status === 'PENDING_APPROVAL'
     || rejectedDocs.length > 0;
+  const mandatoryDocs = (party?.requiredDocuments || []).filter((d) => d.mandatory);
+  const mandatoryUploaded = mandatoryDocs.filter((d) => d.uploaded).length;
+  const missingMandatory = mandatoryDocs.filter((d) => !d.uploaded);
   const partnerMode = needsPartnerRoster(entity.entityType);
   const stepLabels = partnerMode
     ? ['Entity', 'Partners', 'Documents', 'Review']
@@ -290,6 +305,14 @@ export function OnboardingPage() {
           )}
           {party?.rejectionReason && (
             <div className="alert alert-error alert-spaced">Rejected: {party.rejectionReason}</div>
+          )}
+          {editable && party?.status === 'DRAFT' && missingMandatory.length > 0 && (
+            <div className="alert alert-warn alert-spaced">
+              <strong>Upload as you go</strong>
+              {' — '}
+              {mandatoryUploaded} of {mandatoryDocs.length} required documents on file.
+              Add what you have now; submit stays locked until the rest are uploaded.
+            </div>
           )}
 
           {editable && step === 1 && (
@@ -412,24 +435,33 @@ export function OnboardingPage() {
           )}
 
           {editable && step >= 3 && step < 5 && (
-            <div className="section-block">
+            <div className="section-block" id="documents">
               <h3>Documents {partnerMode ? '(firm + partner CNIC/agreement)' : '(Annex-C)'}</h3>
               <p className="muted">
-                {partnerMode
-                  ? 'Upload firm deed/authority docs and each partner\'s CNIC front/back + agreement yourself.'
-                  : 'Upload required entity documents.'}
+                Upload whatever you have now and come back later. Submit is only enabled when every required file is attached.
+                {mandatoryDocs.length > 0 && (
+                  <>
+                    {' '}Required: <strong>{mandatoryUploaded}/{mandatoryDocs.length}</strong> uploaded.
+                  </>
+                )}
               </p>
               {(party?.requiredDocuments || []).map((doc) => (
                 <div className="doc-row" key={doc.documentCode}>
                   <div>
                     <strong>{doc.documentLabel}</strong>
-                    <div className="muted">{doc.documentCode} {doc.mandatory ? '· required' : '· optional'} {doc.uploaded ? '· uploaded' : ''}</div>
+                    <div className="muted">
+                      {doc.documentCode}
+                      {doc.mandatory ? ' · required' : ' · optional'}
+                      {doc.uploaded ? ' · uploaded' : doc.mandatory ? ' · still needed' : ' · not yet'}
+                    </div>
                   </div>
                   <input type="file" onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(doc.documentCode, f); }} />
                 </div>
               ))}
               <div className="actions">
-                <button className="btn btn-ghost" type="button" onClick={() => setStep(4)}>Continue to review</button>
+                <button className="btn btn-ghost" type="button" onClick={() => setStep(4)}>
+                  Continue to review
+                </button>
               </div>
             </div>
           )}
@@ -438,7 +470,7 @@ export function OnboardingPage() {
             <div className="section-block form-grid">
               <h3>Review &amp; submit</h3>
               <p className="muted">
-                Confirm entity details and documents are complete, then submit. Partners will finish KYC in the mobile app after submit.
+                You can review now even if some files are still missing. Submit stays disabled until every required document is uploaded.
               </p>
               <div className="actions">
                 <button className="btn btn-ghost" type="button" onClick={() => setStep(3)}>Back to documents</button>
@@ -471,6 +503,13 @@ export function OnboardingPage() {
                         {u.fullName} · {u.phone} · {u.status}
                         {u.bankVisitRequired ? ' · bank visit required' : ''}
                         {u.failureReason ? ` · ${u.failureReason}` : ''}
+                        {u.signatureUploaded ? ' · signature on file' : ' · signature missing'}
+                        {!u.signatureUploaded && !u.bankVisitRequired && (
+                          <>
+                            {' · '}
+                            <Link to={`/signature/${u.id}`}>Upload signature</Link>
+                          </>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -480,7 +519,7 @@ export function OnboardingPage() {
           )}
 
           {canReupload && rejectedDocs.length > 0 && (
-            <div className="section-block" style={{ marginTop: '1.25rem' }}>
+            <div className="section-block" id="documents" style={{ marginTop: '1.25rem' }}>
               <h3>Re-upload rejected documents</h3>
               <p className="muted">Only these files need to be replaced. Other approved documents stay as-is.</p>
               {rejectedDocs.map((doc) => (

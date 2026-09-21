@@ -19,6 +19,13 @@ public class MockTransferSingleRequest {
     private String beneficiaryName;
     private String notes;
 
+    /** UBP (Pakistan utility bill pay) */
+    private String ubpCategory;
+    private String ubpCompany;
+    private String consumerNumber;
+    private String billingMonth;
+    private String billDueDate;
+
     public String getProductType() { return productType; }
     public void setProductType(String productType) { this.productType = productType; }
     public String getAccountNumber() { return accountNumber; }
@@ -37,4 +44,14 @@ public class MockTransferSingleRequest {
     public void setBeneficiaryName(String beneficiaryName) { this.beneficiaryName = beneficiaryName; }
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
+    public String getUbpCategory() { return ubpCategory; }
+    public void setUbpCategory(String ubpCategory) { this.ubpCategory = ubpCategory; }
+    public String getUbpCompany() { return ubpCompany; }
+    public void setUbpCompany(String ubpCompany) { this.ubpCompany = ubpCompany; }
+    public String getConsumerNumber() { return consumerNumber; }
+    public void setConsumerNumber(String consumerNumber) { this.consumerNumber = consumerNumber; }
+    public String getBillingMonth() { return billingMonth; }
+    public void setBillingMonth(String billingMonth) { this.billingMonth = billingMonth; }
+    public String getBillDueDate() { return billDueDate; }
+    public void setBillDueDate(String billDueDate) { this.billDueDate = billDueDate; }
 }

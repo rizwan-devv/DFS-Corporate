@@ -21,6 +21,7 @@ import { TransfersPage } from './pages/TransfersPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PortalUsersPage } from './pages/PortalUsersPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
+import { SignaturePage } from './pages/SignaturePage';
 import { ThemeProvider } from './theme/ThemeContext';
 
 export default function App() {
@@ -40,6 +41,7 @@ export default function App() {
               <Route path="/partner-kyc/:token" element={<PartnerKycPage />} />
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/signature/:appUserId" element={<SignaturePage />} />
               <Route path="/invites" element={<InvitesPage />} />
               <Route path="/franchises" element={<FranchisesPage />} />
               <Route path="/balance" element={<BalancePage />} />

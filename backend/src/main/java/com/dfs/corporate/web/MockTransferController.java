@@ -4,6 +4,7 @@ import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.service.MockTransferService;
 import com.dfs.corporate.web.dto.MockTransferResponse;
 import com.dfs.corporate.web.dto.MockTransferSingleRequest;
+import com.dfs.corporate.web.dto.MockUbpFetchRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -31,6 +32,17 @@ public class MockTransferController {
         return mockTransferService.list(principal);
     }
 
+    @GetMapping("/ubp/catalog")
+    public Map<String, Object> ubpCatalog(@AuthenticationPrincipal AccountPrincipal principal) {
+        return mockTransferService.ubpCatalog(principal);
+    }
+
+    @PostMapping("/ubp/fetch")
+    public Map<String, Object> ubpFetch(@AuthenticationPrincipal AccountPrincipal principal,
+                                        @Valid @RequestBody MockUbpFetchRequest req) {
+        return mockTransferService.fetchUbpBill(principal, req);
+    }
+
     @PostMapping("/single")
     public MockTransferResponse single(@AuthenticationPrincipal AccountPrincipal principal,
                                        @Valid @RequestBody MockTransferSingleRequest req) {
@@ -45,10 +57,13 @@ public class MockTransferController {
     }
 
     @GetMapping("/template.csv")
-    public ResponseEntity<byte[]> template() {
-        byte[] body = mockTransferService.csvTemplate().getBytes(StandardCharsets.UTF_8);
+    public ResponseEntity<byte[]> template(@RequestParam(required = false) String productType) {
+        String fileName = "UBP".equalsIgnoreCase(productType)
+                ? "dfs-ubp-bulk-template.csv"
+                : "dfs-bulk-transfer-template.csv";
+        byte[] body = mockTransferService.csvTemplate(productType).getBytes(StandardCharsets.UTF_8);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"dfs-bulk-transfer-template.csv\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .body(body);
     }
@@ -60,6 +75,7 @@ public class MockTransferController {
                 "message", "Portal mock transfers — not connected to live AgentApp rails",
                 "products", List.of("FT", "IBFT", "UBP", "RAAST"),
                 "bulkProducts", List.of("FT", "IBFT", "UBP"),
+                "ubp", "Pakistan utility bill payment mock (electricity, gas, internet, tickets, …)",
                 "raastBulk", false
         );
     }

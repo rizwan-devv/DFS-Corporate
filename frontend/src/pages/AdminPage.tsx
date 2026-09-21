@@ -85,8 +85,8 @@ const STATUS_FILTERS = [
 
 function isPreviewable(doc: Doc) {
   const ct = (doc.contentType || '').toLowerCase();
-  if (ct.startsWith('image/') || ct.startsWith('video/')) return true;
-  return /\.(jpe?g|png|gif|webp|mp4|webm|mov|3gp)$/i.test(doc.originalName || '');
+  if (ct.startsWith('image/') || ct.startsWith('video/') || ct === 'application/pdf') return true;
+  return /\.(jpe?g|png|gif|webp|mp4|webm|mov|3gp|pdf)$/i.test(doc.originalName || '');
 }
 
 function humanizeDocKind(code: string): string {
@@ -517,11 +517,12 @@ export function AdminPage() {
                   </span>
                 </div>
                 {(selected.partnerAppUsers || []).map((u) => {
-                  const sigDocs = (selected.documents || []).filter((d) =>
-                    d.documentCode === `APP_${u.id}_SIGNATURE` || d.documentCode.endsWith(`_${u.id}_SIGNATURE`)
-                  );
-                  const sigDoc = sigDocs[0]
-                    || (selected.documents || []).find((d) => d.documentCode === `APP_${u.id}_SIGNATURE`);
+                  const docs = selected.documents || [];
+                  const sigDoc = docs.find((d) => d.documentCode === `APP_${u.id}_SIGNATURE`);
+                  const sheetPng = docs.find((d) => d.documentCode === `APP_${u.id}_SIGNATURE_SHEET_PNG`);
+                  const sheetJpeg = docs.find((d) => d.documentCode === `APP_${u.id}_SIGNATURE_SHEET_JPEG`);
+                  const sheetPdf = docs.find((d) => d.documentCode === `APP_${u.id}_SIGNATURE_SHEET_PDF`);
+                  const sheetPreview = sheetPng || sheetJpeg;
                   return (
                   <div className="doc-row" key={u.id} style={{ flexDirection: 'column', alignItems: 'stretch' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
@@ -584,21 +585,73 @@ export function AdminPage() {
                     )}
                     <div style={{ marginTop: '0.75rem' }}>
                       <div className="muted" style={{ marginBottom: '0.35rem' }}>
-                        Signature (same image ×4){u.signatureUploaded || sigDoc ? '' : ' — not uploaded yet'}
+                        Signature sheet (1 image ×4){u.signatureUploaded || sigDoc ? '' : ' — not uploaded yet'}
                       </div>
-                      {sigDoc ? (
-                        <div className="ops-signature-grid">
-                          {[0, 1, 2, 3].map((i) => (
-                            <DocThumb
-                              key={`${sigDoc.id}-${i}`}
-                              doc={sigDoc}
-                              label={`Sig ${i + 1}`}
-                              token={session.token}
-                              onOpen={() => setViewerDocId(sigDoc.id)}
-                              fetchBlob={fetchDocBlob}
-                            />
-                          ))}
-                        </div>
+                      {sheetPreview || sigDoc ? (
+                        <>
+                          {sheetPreview ? (
+                            <div className="ops-signature-sheet">
+                              <DocThumb
+                                doc={sheetPreview}
+                                label="4-up sheet"
+                                token={session.token}
+                                onOpen={() => setViewerDocId(sheetPreview.id)}
+                                fetchBlob={fetchDocBlob}
+                              />
+                            </div>
+                          ) : sigDoc ? (
+                            <div className="ops-signature-grid">
+                              {[0, 1, 2, 3].map((i) => (
+                                <DocThumb
+                                  key={`${sigDoc.id}-${i}`}
+                                  doc={sigDoc}
+                                  label={`Sig ${i + 1}`}
+                                  token={session.token}
+                                  onOpen={() => setViewerDocId(sigDoc.id)}
+                                  fetchBlob={fetchDocBlob}
+                                />
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="actions" style={{ marginTop: '0.5rem' }}>
+                            {sheetPdf && (
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                type="button"
+                                onClick={() => setViewerDocId(sheetPdf.id)}
+                              >
+                                Printable PDF
+                              </button>
+                            )}
+                            {sheetPng && (
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                type="button"
+                                onClick={() => setViewerDocId(sheetPng.id)}
+                              >
+                                PNG sheet
+                              </button>
+                            )}
+                            {sheetJpeg && (
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                type="button"
+                                onClick={() => setViewerDocId(sheetJpeg.id)}
+                              >
+                                JPEG sheet
+                              </button>
+                            )}
+                            {sigDoc && (
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                type="button"
+                                onClick={() => setViewerDocId(sigDoc.id)}
+                              >
+                                Original image
+                              </button>
+                            )}
+                          </div>
+                        </>
                       ) : (
                         <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>No signature on file for this partner.</p>
                       )}

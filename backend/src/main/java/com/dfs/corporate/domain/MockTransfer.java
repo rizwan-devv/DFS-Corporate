@@ -68,6 +68,21 @@ public class MockTransfer {
     @Column(name = "raast_qr_payload", length = 1000)
     private String raastQrPayload;
 
+    @Column(name = "ubp_category", length = 40)
+    private String ubpCategory;
+
+    @Column(name = "ubp_company", length = 120)
+    private String ubpCompany;
+
+    @Column(name = "consumer_number", length = 64)
+    private String consumerNumber;
+
+    @Column(name = "billing_month", length = 20)
+    private String billingMonth;
+
+    @Column(name = "bill_due_date", length = 40)
+    private String billDueDate;
+
     @Column(name = "created_by", length = 200)
     private String createdBy;
 
@@ -111,6 +126,16 @@ public class MockTransfer {
     public void setBulkSummary(String bulkSummary) { this.bulkSummary = bulkSummary; }
     public String getRaastQrPayload() { return raastQrPayload; }
     public void setRaastQrPayload(String raastQrPayload) { this.raastQrPayload = raastQrPayload; }
+    public String getUbpCategory() { return ubpCategory; }
+    public void setUbpCategory(String ubpCategory) { this.ubpCategory = ubpCategory; }
+    public String getUbpCompany() { return ubpCompany; }
+    public void setUbpCompany(String ubpCompany) { this.ubpCompany = ubpCompany; }
+    public String getConsumerNumber() { return consumerNumber; }
+    public void setConsumerNumber(String consumerNumber) { this.consumerNumber = consumerNumber; }
+    public String getBillingMonth() { return billingMonth; }
+    public void setBillingMonth(String billingMonth) { this.billingMonth = billingMonth; }
+    public String getBillDueDate() { return billDueDate; }
+    public void setBillDueDate(String billDueDate) { this.billDueDate = billDueDate; }
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
     public Instant getCreatedAt() { return createdAt; }
