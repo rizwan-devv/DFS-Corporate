@@ -240,6 +240,8 @@ public class PartnerAppUserService {
         r.setBankVisitRequired(Boolean.TRUE.equals(u.getBankVisitRequired())
                 || u.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED);
         r.setSignatureUploaded(Boolean.TRUE.equals(u.getSignatureUploaded()));
+        r.setCnicNumber(u.getCnicNumber());
+        r.setCnicFullName(u.getCnicFullName());
         r.setManualKycApproveReason(u.getManualKycApproveReason());
         r.setManualKycApprovedBy(u.getManualKycApprovedBy());
         r.setManualKycApprovedAt(u.getManualKycApprovedAt());

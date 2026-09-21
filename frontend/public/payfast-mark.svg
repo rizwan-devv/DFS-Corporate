@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Payfast mark">
+  <defs>
+    <linearGradient id="pf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00B67A"/>
+      <stop offset="100%" stop-color="#00457C"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#pf)"/>
+  <path fill="#fff" d="M18 20h18.5c6.4 0 10.8 3.6 10.8 9.2 0 5.8-4.5 9.4-11.2 9.4H26.2V44H18V20zm8.2 12.2h9.1c2.7 0 4.3-1.4 4.3-3.5s-1.5-3.4-4.2-3.4h-9.2v6.9z"/>
+</svg>

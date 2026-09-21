@@ -17,6 +17,16 @@ function Icon({ mode }: { mode: ThemeMode }) {
       </svg>
     );
   }
+  if (mode === 'payfast') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="3" y="5" width="18" height="14" rx="3" stroke="currentColor" strokeWidth="2" />
+        <path d="M3 10h18" stroke="currentColor" strokeWidth="2" />
+        <circle cx="8" cy="15" r="1.4" fill="currentColor" />
+        <path d="M12 14.5h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
       <path d="M3 20h18" />

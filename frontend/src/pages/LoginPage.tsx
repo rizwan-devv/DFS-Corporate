@@ -24,6 +24,7 @@ export function LoginPage() {
         partyType: string;
         partyPublicId: string;
         fullName: string;
+        firstLogin?: boolean;
       }>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
@@ -36,8 +37,17 @@ export function LoginPage() {
         partyType: res.partyType,
         partyPublicId: res.partyPublicId,
         fullName: res.fullName,
+        firstLogin: !!res.firstLogin,
       });
-      navigate(res.role === 'PLATFORM_ADMIN' ? '/admin' : '/dashboard');
+      if (res.role === 'PLATFORM_ADMIN') {
+        navigate('/admin');
+      } else if (res.firstLogin) {
+        navigate('/change-password');
+      } else if (res.partyStatus === 'DRAFT' || res.partyStatus === 'REJECTED') {
+        navigate('/onboarding');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -46,12 +56,22 @@ export function LoginPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page page--auth">
       <div className="container">
         <div className="panel panel--auth">
+          <div className="auth-brand">
+            <div className="brand-mark" aria-hidden><span /></div>
+            <div>
+              <div className="brand-text">DFS CORPORATE</div>
+              <div className="portal-brand-sub">DFS Connect</div>
+            </div>
+          </div>
           <div className="badge">SECURE ACCESS</div>
           <h2 className="panel-title">Login</h2>
-          <p className="muted">Use credentials received after admin approval.</p>
+          <p className="muted">
+            After you submit your application, use the temporary password emailed to you.
+            You will be asked to change it on first login.
+          </p>
           {error && <div className="alert alert-error">{error}</div>}
           <form className="form-grid" onSubmit={onSubmit}>
             <div className="form-row">

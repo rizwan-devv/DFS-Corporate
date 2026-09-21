@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
@@ -10,6 +10,7 @@ const PUBLIC_PATHS = new Set([
   '/login',
   '/franchise-onboard',
   '/verify-otp',
+  '/change-password',
 ]);
 
 const DESIGN_PORTAL_PATHS = new Set([
@@ -38,6 +39,15 @@ export function Layout() {
   const designPreview = !session && DESIGN_PORTAL_PATHS.has(location.pathname);
   const portalMode = (!!session && !isPublicPath(location.pathname)) || designPreview;
   const showMerchantFinance = (isMerchant && session?.partyStatus === 'ACTIVE') || designPreview;
+
+  if (
+    session
+    && session.role !== 'PLATFORM_ADMIN'
+    && session.firstLogin
+    && location.pathname !== '/change-password'
+  ) {
+    return <Navigate to="/change-password" replace />;
+  }
   const showMerchantOps =
     isMerchant && session?.partyStatus === 'ACTIVE' && session?.partyType === 'MERCHANT';
 
@@ -60,7 +70,7 @@ export function Layout() {
               </div>
               <div className="portal-brand-text">
                 <span className="brand-text">{opsMode ? 'DFS BACKOFFICE' : 'DFS CORPORATE'}</span>
-                <span className="portal-brand-sub">{designPreview ? 'Design Preview' : 'Aurora Portal'}</span>
+                <span className="portal-brand-sub">{designPreview ? 'Design Preview' : 'DFS Connect'}</span>
               </div>
             </Link>
 
@@ -220,7 +230,10 @@ export function Layout() {
                 <div className="brand-mark">
                   <span />
                 </div>
-                <span className="brand-text">DFS CORPORATE</span>
+                <div className="portal-brand-text">
+                  <span className="brand-text">DFS CORPORATE</span>
+                  <span className="portal-brand-sub">DFS Connect</span>
+                </div>
               </Link>
               <nav className="nav-links" aria-label="Main">
                 <NavLink to="/" end>

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FSD — DFS Corporate Portal</title>
+  <link rel="stylesheet" href="assets/client-docs.css" />
+</head>
+<body>
+
+<section class="cover">
+  <div class="cover-brand">
+    <div class="cover-mark">DFS</div>
+    <div class="cover-brand-text">DFS Corporate Portal</div>
+  </div>
+  <div class="cover-main">
+    <div class="cover-doc-type">Functional Specification Document</div>
+    <h1>Functional Specification Document</h1>
+    <p class="subtitle">Actors, screens, APIs, data, workflows, and integrations for Bank / EMI IT and delivery review.</p>
+    <dl class="cover-meta">
+      <div><dt>Document ID</dt><dd>DFS-CP-FSD-001</dd></div>
+      <div><dt>Version</dt><dd>1.0 — Draft for Client Review</dd></div>
+      <div><dt>Audience</dt><dd>Bank / EMI Client (IT · Ops · Delivery)</dd></div>
+      <div><dt>Date</dt><dd>17 September 2026</dd></div>
+      <div><dt>Product</dt><dd>DFS Corporate Portal</dd></div>
+      <div><dt>Classification</dt><dd>Client Confidential</dd></div>
+    </dl>
+  </div>
+  <div class="cover-footer">
+    <span>Related: BRD DFS-CP-BRD-001 · Product Document DFS-CP-PD-001</span>
+    <span>© DFS Corporate Portal</span>
+  </div>
+</section>
+
+<main class="doc">
+  <div class="running-header">
+    <strong>DFS Corporate Portal</strong>
+    <span>FSD · DFS-CP-FSD-001 · v1.0</span>
+  </div>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#s1">Purpose &amp; scope</a></li>
+      <li><a href="#s2">System context</a></li>
+      <li><a href="#s3">Actors, roles &amp; permissions</a></li>
+      <li><a href="#s4">Functional modules</a></li>
+      <li><a href="#s5">End-to-end workflows</a></li>
+      <li><a href="#s6">Data specification</a></li>
+      <li><a href="#s7">Integrations</a></li>
+      <li><a href="#s8">Non-functional specification</a></li>
+      <li><a href="#s9">Screen inventory</a></li>
+      <li><a href="#s10">Error &amp; status handling</a></li>
+      <li><a href="#s11">Traceability</a></li>
+      <li><a href="#s12">Open functional items</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="s1"><span class="section-num">1.</span> Purpose &amp; scope</h2>
+  <p class="lead">This FSD specifies how DFS Corporate Portal behaves: actors, roles, screens, APIs, data, workflows, integrations, and non-functional characteristics.</p>
+  <p><strong>In scope:</strong> Web portal, platform admin, partner mobile KYC APIs, franchise flows, portal approvals, DFS/CMS integrations.<br />
+  <strong>Out of scope:</strong> Source listing, internal class design, vendor commercial contracts (<span class="badge tbd">TBD</span>).</p>
+
+  <h2 id="s2"><span class="section-num">2.</span> System context</h2>
+  <div class="flow">┌──────────────────────┐     JWT      ┌─────────────────────────────┐
+│ DFS Corporate Portal │─────────────▶│ DFS Corporate API           │
+│ (React web)          │              │ Spring Boot · port 8090     │
+└──────────────────────┘              └──────────────┬──────────────┘
+┌──────────────────────┐  session     │              │
+│ Partner KYC Mobile   │──────────────┤              ├─ MySQL + Flyway
+│ (Capacitor)          │  /app-kyc    │              ├─ File uploads
+└──────────────────────┘              │              ├─ DFS Account API
+┌──────────────────────┐              │              ├─ AgentApp Portal API
+│ Platform Admin UI    │──────────────┘              └─ CMS Card APIs
+└──────────────────────┘</div>
+  <table>
+    <thead><tr><th>Layer</th><th>Technology</th></tr></thead>
+    <tbody>
+      <tr><td>Web portal</td><td>Vite, React 19, TypeScript, React Router</td></tr>
+      <tr><td>Mobile KYC</td><td>Vite + React + Capacitor (<code>com.dfscorporate.kyc</code>)</td></tr>
+      <tr><td>API</td><td>Spring Boot 3.3, Java 21, Spring Security, JWT, JPA</td></tr>
+      <tr><td>Database</td><td>MySQL 8 (default), Flyway</td></tr>
+      <tr><td>Files</td><td>Local disk upload directory (Docker volume)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s3"><span class="section-num">3.</span> Actors, roles &amp; permissions</h2>
+  <h3>3.1 Account roles</h3>
+  <table>
+    <thead><tr><th>Role</th><th>Description</th><th>Access</th></tr></thead>
+    <tbody>
+      <tr><td><code>PLATFORM_ADMIN</code></td><td>Platform back-office</td><td><code>/admin</code>, <code>/api/admin/**</code></td></tr>
+      <tr><td><code>PARTY_USER</code></td><td>Corporate party user</td><td>Portal APIs scoped to party</td></tr>
+    </tbody>
+  </table>
+  <h3>3.2 Portal workflow roles</h3>
+  <table>
+    <thead><tr><th>Role</th><th>Capability</th></tr></thead>
+    <tbody>
+      <tr><td><code>PARTY_ADMIN</code></td><td>Manage portal users; elevated within party</td></tr>
+      <tr><td><code>MAKER</code></td><td>Create approval requests</td></tr>
+      <tr><td><code>CHECKER</code></td><td>First review</td></tr>
+      <tr><td><code>APPROVER</code></td><td>Second review (skippable if checker also Approver)</td></tr>
+      <tr><td><code>RELEASER</code></td><td>Final release</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Sequence:</strong> MAKER → CHECKER → APPROVER → RELEASER → DONE<br />
+  <strong>Types:</strong> GENERIC, PAYMENT, BULK_PAYMENT, COMMISSION_CHANGE</p>
+  <div class="callout tbd"><strong>TBD:</strong> Payment execution rails — approval types exist; end-to-end payment settlement is not specified as live.</div>
+  <h3>3.3 Party types &amp; UI gating</h3>
+  <table>
+    <thead><tr><th>Type / area</th><th>Rule</th></tr></thead>
+    <tbody>
+      <tr><td><code>MERCHANT</code></td><td>Self-signup</td></tr>
+      <tr><td><code>SUB_MERCHANT</code></td><td>Franchise invite from parent</td></tr>
+      <tr><td>Finance screens</td><td>Party <code>ACTIVE</code> (Merchant)</td></tr>
+      <tr><td>Network / ops</td><td><code>MERCHANT</code> + <code>ACTIVE</code></td></tr>
+      <tr><td>Admin</td><td><code>PLATFORM_ADMIN</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s4"><span class="section-num">4.</span> Functional modules</h2>
+
+  <h3>4.1 Public &amp; authentication</h3>
+  <table>
+    <thead><tr><th>Method</th><th>Path</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>POST</td><td><code>/api/auth/signup</code></td><td>Merchant signup</td></tr>
+      <tr><td>POST</td><td><code>/api/auth/verify-otp</code></td><td>Email OTP</td></tr>
+      <tr><td>POST</td><td><code>/api/auth/login</code></td><td>JWT (~24h default)</td></tr>
+      <tr><td>GET</td><td><code>/api/party-types</code>, entity-types, id-document-types</td><td>Reference LOVs</td></tr>
+      <tr><td>GET</td><td><code>/api/party-types/{type}/documents</code></td><td>Required docs matrix</td></tr>
+      <tr><td>GET</td><td><code>/api/public/franchise-invite/{token}</code></td><td>Validate invite</td></tr>
+    </tbody>
+  </table>
+
+  <h3>4.2 Entity onboarding wizard</h3>
+  <p><strong>Route:</strong> <code>/onboarding</code> · <strong>Steps:</strong> Entity → Partners (conditional) → Documents → Review / Submit</p>
+  <table>
+    <thead><tr><th>Capability</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td>Entity CDD</td><td>Legal name, type, incorporation, NTN/tax, FATCA/CRS, addresses, purpose, T&amp;Cs</td></tr>
+      <tr><td>Geo evidence</td><td>IP + browser geolocation when permitted</td></tr>
+      <tr><td>Partners</td><td>Partnership/LLP roster</td></tr>
+      <tr><td>Documents</td><td>Multipart Annex-C uploads</td></tr>
+      <tr><td>Submit</td><td>Tracking ID; 5 working-day due; status progression</td></tr>
+      <tr><td>Statuses</td><td>DRAFT → SUBMITTED / PENDING_APPROVAL → ACTIVE | REJECTED (SUSPENDED supported)</td></tr>
+      <tr><td>Draft window</td><td>30 days</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Entity types:</strong> SOLE_PROPRIETORSHIP, SMALL_BUSINESS, PARTNERSHIP, LLP</p>
+  <table>
+    <thead><tr><th>Entity</th><th>Typical mandatory evidence</th></tr></thead>
+    <tbody>
+      <tr><td>Sole / Small</td><td>Owner ID front/back/photo + alternative business evidence</td></tr>
+      <tr><td>Partnership</td><td>Deed, authority, registration cert (unless unregistered)</td></tr>
+      <tr><td>LLP</td><td>Deed, SECP certificate, authority</td></tr>
+      <tr><td>Sub-merchant</td><td>Parent authority + authorised ID pack</td></tr>
+    </tbody>
+  </table>
+
+  <h3>4.3 Partner mobile KYC</h3>
+  <p>Deep link: <code>dfscorporate://kyc?token=…</code> · API prefix: <code>/api/public/app-kyc</code></p>
+  <table>
+    <thead><tr><th>Step</th><th>Action</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Login / invite</td><td>Session</td></tr>
+      <tr><td>2</td><td>OTP send / verify</td><td>Verified; LOVs; video script</td></tr>
+      <tr><td>3</td><td>Change password</td><td>Temp PIN → password</td></tr>
+      <tr><td>4</td><td>Video challenge / verification</td><td>Video evidence</td></tr>
+      <tr><td>5</td><td>Submit multipart media</td><td>KYC_COMPLETED</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Media:</strong> CNIC_FRONT, CNIC_BACK, SELFIE, FINGER_L1–L4, FINGER_R1–R4 · CNIC without dashes (13 digits).</p>
+  <div class="callout">Portal = business documents. Mobile app = personal KYC. Secondary web partner KYC (<code>/partner-kyc/:token</code>) remains available.</div>
+
+  <h3>4.4 Platform administration</h3>
+  <p><strong>Route:</strong> <code>/admin</code> · <strong>Role:</strong> PLATFORM_ADMIN</p>
+  <table>
+    <thead><tr><th>Function</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Queues</td><td>Pending / all parties with Tracking ID &amp; TAT</td></tr>
+      <tr><td>Party detail</td><td>Profile, persons, docs, IP/geo, risk, screening, identity</td></tr>
+      <tr><td>Sanctions / identity</td><td>Manual CLEAR / HIT; manual / waived identity</td></tr>
+      <tr><td>Documents</td><td>Approve / reject / download</td></tr>
+      <tr><td>Decision</td><td>Approve (ACTIVE + credentials) / Reject (reason)</td></tr>
+      <tr><td>Provision</td><td>Retry DFS corporateonboarding</td></tr>
+      <tr><td>Discrepancy</td><td>Notes to applicant</td></tr>
+    </tbody>
+  </table>
+
+  <h3>4.5 Post-activation Merchant portal</h3>
+  <table>
+    <thead><tr><th>Route</th><th>Function</th><th>Integration</th></tr></thead>
+    <tbody>
+      <tr><td><code>/dashboard</code></td><td>Status, KYC, provision, KPIs</td><td>Composite</td></tr>
+      <tr><td><code>/balance</code></td><td>Agent balance</td><td>Portal API</td></tr>
+      <tr><td><code>/statement</code></td><td>Mini-statement</td><td>Portal API</td></tr>
+      <tr><td><code>/transactions</code></td><td>Franchise / commission view</td><td>Franchise services</td></tr>
+      <tr><td><code>/cards</code></td><td>Card search / inquiry / status</td><td>CMS</td></tr>
+      <tr><td><code>/invites</code></td><td>Franchise invites</td><td>Franchise APIs</td></tr>
+      <tr><td><code>/franchises</code></td><td>Network, commission confirm, child views</td><td>Franchise + Portal</td></tr>
+      <tr><td><code>/approvals</code></td><td>Create &amp; decide requests</td><td>Workflow APIs</td></tr>
+      <tr><td><code>/portal-users</code></td><td>Users &amp; portal roles</td><td>Portal user APIs</td></tr>
+      <tr><td><code>/profile</code></td><td>Party profile</td><td>Onboarding me</td></tr>
+    </tbody>
+  </table>
+
+  <h3>4.6 Franchise / commission</h3>
+  <p>Parent sets proposed commission % → child onboards as SUB_MERCHANT → parent locks commission plan. Ledger amount tables removed in later schema; <strong>% plans</strong> remain. Settlement engine: <span class="badge tbd">TBD</span>.</p>
+
+  <h2 id="s5"><span class="section-num">5.</span> End-to-end workflows</h2>
+  <h3>5.1 Merchant onboarding → provision</h3>
+  <div class="flow">MERCHANT signup → OTP → /onboarding (Entity → Partners → Docs)
+  → Submit (Tracking ID, decision_due_at)
+  → Partner app invites → each App KYC → KYC_COMPLETED
+  → PENDING_APPROVAL → Admin review → Approve
+  → ACTIVE + credentials → DFS corporateonboarding (if enabled)
+  → accountProvisionStatus SUCCESS | FAILED | PENDING</div>
+  <h3>5.2 Sub-merchant</h3>
+  <div class="flow">Parent /invites → token → /franchise-onboard → SUB_MERCHANT signup
+  → OTP → onboarding (+ PARENT_AUTH) → KYC → Admin → ACTIVE → provision
+  → Parent confirms commission plan</div>
+  <h3>5.3 Approval workflow</h3>
+  <div class="flow">PARTY_ADMIN assigns roles → MAKER creates approval_request
+  → CHECKER → APPROVER (may skip) → RELEASER → APPROVED/REJECTED
+  → Actions stored on approval_actions</div>
+
+  <h2 id="s6"><span class="section-num">6.</span> Data specification (logical)</h2>
+  <table>
+    <thead><tr><th>Entity</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>parties</code></td><td>Corporate applicant / activated customer</td></tr>
+      <tr><td><code>accounts</code></td><td>Login users (multi-user per party)</td></tr>
+      <tr><td><code>account_portal_roles</code></td><td>Maker–checker roles</td></tr>
+      <tr><td><code>otp_codes</code></td><td>OTP challenges</td></tr>
+      <tr><td><code>required_documents</code> / <code>party_documents</code></td><td>Matrix + uploads</td></tr>
+      <tr><td><code>associated_persons</code></td><td>Partners / related persons</td></tr>
+      <tr><td><code>partner_invites</code></td><td>Legacy web partner KYC tokens</td></tr>
+      <tr><td><code>partner_app_users</code></td><td>Mobile KYC users &amp; session</td></tr>
+      <tr><td><code>video_challenges</code></td><td>Read-aloud video challenges</td></tr>
+      <tr><td><code>franchise_invites</code> / <code>franchise_commission_plans</code></td><td>Invites + locked % plans</td></tr>
+      <tr><td><code>approval_requests</code> / <code>approval_actions</code></td><td>Workflow</td></tr>
+      <tr><td><code>brands</code></td><td>Soft multi-tenant brand</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s7"><span class="section-num">7.</span> Integrations</h2>
+  <table>
+    <thead><tr><th>Integration</th><th>Flag / key</th><th>Functions</th></tr></thead>
+    <tbody>
+      <tr><td>DFS Account API</td><td><code>DFS_ACCOUNT_API_ENABLED</code></td><td>corporateonboarding, LOVs, segments</td></tr>
+      <tr><td>AgentApp Portal API</td><td><code>DFS_PORTAL_API_ENABLED</code> + portal key</td><td>Balance, mini-statement, change MPIN</td></tr>
+      <tr><td>CMS Card APIs</td><td><code>DFS_CMS_API_ENABLED</code></td><td>Search / status / inquiry / LOVs</td></tr>
+      <tr><td>Email</td><td><code>MAIL_ENABLED</code></td><td>OTP, invites, credentials</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tbd"><strong>TBD:</strong> Environment URLs and credentials per client environment.</div>
+
+  <h2 id="s8"><span class="section-num">8.</span> Non-functional specification</h2>
+  <table>
+    <thead><tr><th>Area</th><th>Specification</th></tr></thead>
+    <tbody>
+      <tr><td>Auth</td><td>Stateless JWT; BCrypt for stored passwords</td></tr>
+      <tr><td>App KYC session</td><td>Separate session tokens on partner app users</td></tr>
+      <tr><td>Uploads</td><td>Configurable large multipart limits</td></tr>
+      <tr><td>Health</td><td><code>/actuator/health</code></td></tr>
+      <tr><td>Sensitive handling</td><td>Partner password plain until DFS provision (integration constraint) — harden in production security review <span class="badge tbd">TBD</span></td></tr>
+      <tr><td>Multi-tenancy</td><td><code>brand_id</code> soft tenancy — hard isolation <span class="badge tbd">TBD</span></td></tr>
+      <tr><td>Retention / encryption at rest</td><td><span class="badge tbd">TBD</span></td></tr>
+      <tr><td>Availability SLA</td><td><span class="badge tbd">TBD</span></td></tr>
+      <tr><td>Accessibility / i18n</td><td>Not formally certified — <span class="badge tbd">TBD</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s9"><span class="section-num">9.</span> Screen inventory (web)</h2>
+  <table>
+    <thead><tr><th>Route</th><th>Screen</th><th>Auth</th></tr></thead>
+    <tbody>
+      <tr><td><code>/</code></td><td>Home</td><td>Public</td></tr>
+      <tr><td><code>/getting-started</code></td><td>Getting started</td><td>Public</td></tr>
+      <tr><td><code>/signup</code></td><td>Merchant signup</td><td>Public</td></tr>
+      <tr><td><code>/franchise-onboard</code></td><td>Franchise signup</td><td>Public (token)</td></tr>
+      <tr><td><code>/verify-otp</code></td><td>OTP verify</td><td>Public</td></tr>
+      <tr><td><code>/login</code></td><td>Login</td><td>Public</td></tr>
+      <tr><td><code>/onboarding</code></td><td>KYC wizard</td><td>Party user</td></tr>
+      <tr><td><code>/partner-kyc/:token</code></td><td>Web partner KYC</td><td>Token</td></tr>
+      <tr><td><code>/admin</code></td><td>Back-office</td><td>Platform admin</td></tr>
+      <tr><td><code>/dashboard</code></td><td>Dashboard</td><td>Authenticated</td></tr>
+      <tr><td><code>/balance</code>, <code>/statement</code>, <code>/transactions</code>, <code>/cards</code></td><td>Finance</td><td>ACTIVE</td></tr>
+      <tr><td><code>/invites</code>, <code>/franchises</code>, <code>/approvals</code>, <code>/portal-users</code></td><td>Network / ops</td><td>MERCHANT ACTIVE</td></tr>
+      <tr><td><code>/profile</code></td><td>Profile</td><td>Authenticated</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s10"><span class="section-num">10.</span> Error &amp; status handling</h2>
+  <table>
+    <thead><tr><th>Situation</th><th>Expected behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>Invalid OTP</td><td>Reject; allow resend per policy</td></tr>
+      <tr><td>Incomplete Annex-C pack</td><td>Block submit with validation</td></tr>
+      <tr><td>Partners incomplete</td><td>Do not enter PENDING_APPROVAL until app KYCs complete</td></tr>
+      <tr><td>Admin reject</td><td>REJECTED; reason to applicant</td></tr>
+      <tr><td>Provision failure</td><td>May remain ACTIVE; provision FAILED; admin retry</td></tr>
+      <tr><td>Portal/CMS disabled</td><td>Controlled unavailable — no silent success</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s11"><span class="section-num">11.</span> Traceability (BRD → FSD)</h2>
+  <table>
+    <thead><tr><th>BRD ID</th><th>FSD coverage</th></tr></thead>
+    <tbody>
+      <tr><td>BR-ONB-*</td><td>§4.1–4.3, §5.1–5.2</td></tr>
+      <tr><td>BR-CMP-*</td><td>§4.4</td></tr>
+      <tr><td>BR-PRT-*</td><td>§4.5–4.6, §5.3</td></tr>
+      <tr><td>BR-NFR-*</td><td>§8</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s12"><span class="section-num">12.</span> Open functional items</h2>
+  <ol>
+    <li>Live NADRA BV/Verisys replace manual identity path — <span class="badge tbd">TBD</span></li>
+    <li>Automated sanctions vendor replace manual CLEAR — <span class="badge tbd">TBD</span></li>
+    <li>Payment / bulk-payment approval execution — <span class="badge tbd">TBD</span></li>
+    <li>Formal retention, purge, encryption standards — <span class="badge tbd">TBD</span></li>
+    <li>Hard multi-brand isolation if required — <span class="badge tbd">TBD</span></li>
+    <li>Production notification channel policy — <span class="badge tbd">TBD</span></li>
+    <li>UAT scripts &amp; regulatory evidence pack — <span class="badge tbd">TBD</span></li>
+  </ol>
+
+  <p class="footer-note">End of FSD — DFS-CP-FSD-001 · DFS Corporate Portal</p>
+</main>
+</body>
+</html>

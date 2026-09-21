@@ -22,9 +22,14 @@ const slides = [
     accent: 'Finance',
   },
   {
-    title: 'Dual-tone Aurora',
+    title: 'Dual-tone DFS Connect',
     body: 'Light and dark themes with ambient gradients tuned for long operator sessions.',
     accent: 'Design',
+  },
+  {
+    title: 'Payfast brand mode',
+    body: 'Navy sidebar, growth-green CTAs, and soft cool panels — Payfast colours as a fourth theme.',
+    accent: 'Payfast',
   },
   {
     title: 'Secure reveal',

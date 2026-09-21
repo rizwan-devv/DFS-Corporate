@@ -1,13 +1,16 @@
 package com.dfs.corporate.web;
 
 import com.dfs.corporate.domain.PartyType;
+import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.service.AuthService;
 import com.dfs.corporate.service.OnboardingService;
+import com.dfs.corporate.web.dto.ChangePasswordRequest;
 import com.dfs.corporate.web.dto.LoginRequest;
 import com.dfs.corporate.web.dto.SignupRequest;
 import com.dfs.corporate.web.dto.VerifyOtpRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
@@ -76,5 +79,12 @@ public class AuthController {
     @PostMapping("/auth/login")
     public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginRequest req) {
         return ResponseEntity.ok(authService.login(req));
+    }
+
+    @PostMapping("/auth/change-password")
+    public ResponseEntity<Map<String, Object>> changePassword(
+            @AuthenticationPrincipal AccountPrincipal principal,
+            @Valid @RequestBody ChangePasswordRequest req) {
+        return ResponseEntity.ok(authService.changePassword(principal, req));
     }
 }

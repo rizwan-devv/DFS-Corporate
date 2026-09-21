@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BRD — DFS Corporate Portal</title>
+  <link rel="stylesheet" href="assets/client-docs.css" />
+</head>
+<body>
+
+<section class="cover">
+  <div class="cover-brand">
+    <div class="cover-mark">DFS</div>
+    <div class="cover-brand-text">DFS Corporate Portal</div>
+  </div>
+  <div class="cover-main">
+    <div class="cover-doc-type">Business Requirements Document</div>
+    <h1>Business Requirements Document</h1>
+    <p class="subtitle">Corporate entity onboarding and day-2 portal capabilities for Bank / EMI clients.</p>
+    <dl class="cover-meta">
+      <div><dt>Document ID</dt><dd>DFS-CP-BRD-001</dd></div>
+      <div><dt>Version</dt><dd>1.0 — Draft for Client Review</dd></div>
+      <div><dt>Audience</dt><dd>Bank / EMI Client</dd></div>
+      <div><dt>Date</dt><dd>17 September 2026</dd></div>
+      <div><dt>Product</dt><dd>DFS Corporate Portal</dd></div>
+      <div><dt>Classification</dt><dd>Client Confidential</dd></div>
+    </dl>
+  </div>
+  <div class="cover-footer">
+    <span>Related: FSD DFS-CP-FSD-001 · Product Document DFS-CP-PD-001</span>
+    <span>© DFS Corporate Portal</span>
+  </div>
+</section>
+
+<main class="doc">
+  <div class="running-header">
+    <strong>DFS Corporate Portal</strong>
+    <span>BRD · DFS-CP-BRD-001 · v1.0</span>
+  </div>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#s1">Executive summary</a></li>
+      <li><a href="#s2">Business context &amp; problem statement</a></li>
+      <li><a href="#s3">Goals &amp; success criteria</a></li>
+      <li><a href="#s4">Stakeholders &amp; users</a></li>
+      <li><a href="#s5">Scope</a></li>
+      <li><a href="#s6">Business requirements</a></li>
+      <li><a href="#s7">Business processes</a></li>
+      <li><a href="#s8">Regulatory &amp; compliance mapping</a></li>
+      <li><a href="#s9">Assumptions &amp; dependencies</a></li>
+      <li><a href="#s10">Risks &amp; open questions</a></li>
+      <li><a href="#s11">Timeline &amp; commercial</a></li>
+      <li><a href="#s12">Glossary</a></li>
+      <li><a href="#s13">Approvals</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="s1"><span class="section-num">1.</span> Executive summary</h2>
+  <p class="lead">DFS Corporate Portal is a standalone digital channel for corporate / entity customer onboarding and day-2 operations in an EMI / DFS environment.</p>
+  <p>It enables remote entity KYC aligned to the <strong>SBP Consolidated Customer Onboarding Framework</strong>, admin compliance review, corporate account provisioning into the DFS Agent platform, and post-activation services (balance, statement, cards, franchise network, maker–checker approvals).</p>
+  <div class="callout tbd">
+    <strong>Compliance note / TBD:</strong> This release is framework-shaped and operational for digital entity onboarding. Live NADRA Biometric/Verisys and automated sanctions-list vendor integrations are stubbed / manual. Full production compliance go-live is <strong>TBD</strong> pending client and vendor wiring.
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi"><div class="label">Decision TAT</div><div class="value">5 working days</div></div>
+    <div class="kpi"><div class="label">Entity types</div><div class="value">Annex-C 1–4</div></div>
+    <div class="kpi"><div class="label">Draft window</div><div class="value">30 days</div></div>
+  </div>
+
+  <h2 id="s2"><span class="section-num">2.</span> Business context &amp; problem statement</h2>
+  <h3>2.1 Context</h3>
+  <p>Banks and EMIs must onboard legal entities through remote digital channels under SBP frameworks, with documented CDD, Annex-C evidence, sanctions/identity controls, TAT, and auditability. After activation, corporates need a controlled portal for finance visibility and franchise / sub-merchant network management with dual-control workflows.</p>
+  <h3>2.2 Problem</h3>
+  <table>
+    <thead><tr><th>Pain</th><th>Impact</th></tr></thead>
+    <tbody>
+      <tr><td>Manual / paper-heavy corporate onboarding</td><td>Slow TAT, inconsistent packs, high ops cost</td></tr>
+      <tr><td>Fragmented partner / beneficial-person KYC</td><td>Incomplete files, compliance risk</td></tr>
+      <tr><td>Weak digital audit trail (IP, geo, decisions)</td><td>Harder supervision &amp; dispute handling</td></tr>
+      <tr><td>No unified post-activation corporate portal</td><td>Tools fragmented across balance / cards / network</td></tr>
+      <tr><td>Insufficient maker–checker for sensitive actions</td><td>Operational &amp; fraud control gaps</td></tr>
+    </tbody>
+  </table>
+  <h3>2.3 Solution summary</h3>
+  <ol>
+    <li>Capture entity CDD + Annex-C documents</li>
+    <li>Collect partner personal KYC via mobile app where required</li>
+    <li>Route cases to platform admin for screening &amp; decision</li>
+    <li>Provision DFS corporate / agent accounts on approval</li>
+    <li>Offer activated merchants balance, statement, cards, franchise invites, and approval workflows</li>
+  </ol>
+
+  <h2 id="s3"><span class="section-num">3.</span> Goals &amp; success criteria</h2>
+  <h3>3.1 Business goals</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Goal</th></tr></thead>
+    <tbody>
+      <tr><td>BG-01</td><td>Digitize corporate entity onboarding for Merchant and Sub-merchant parties</td></tr>
+      <tr><td>BG-02</td><td>Align data &amp; document capture to SBP Framework §E / Annex-C (entity types 1–4)</td></tr>
+      <tr><td>BG-03</td><td>Enforce measurable decision TAT (5 working days) with Tracking ID</td></tr>
+      <tr><td>BG-04</td><td>Enable admin sanctions / identity / document decisioning before activation</td></tr>
+      <tr><td>BG-05</td><td>Provision corporate accounts into DFS Agent stack after approval</td></tr>
+      <tr><td>BG-06</td><td>Deliver post-activation self-service (balance, mini-statement, cards)</td></tr>
+      <tr><td>BG-07</td><td>Support franchise / sub-merchant network with commission plans</td></tr>
+      <tr><td>BG-08</td><td>Provide portal maker–checker–approver–releaser dual control</td></tr>
+    </tbody>
+  </table>
+  <h3>3.2 Success criteria</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Criterion</th><th>Measure</th></tr></thead>
+    <tbody>
+      <tr><td>SC-01</td><td>Signup → OTP → KYC → submit</td><td>Tracking ID; PENDING_APPROVAL when partner KYCs complete</td></tr>
+      <tr><td>SC-02</td><td>Admin approve / reject</td><td>ACTIVE or REJECTED; credentials on approve</td></tr>
+      <tr><td>SC-03</td><td>Partnership / LLP partner mobile KYC</td><td>All partners KYC_COMPLETED</td></tr>
+      <tr><td>SC-04</td><td>DFS provision on approve</td><td>SUCCESS / FAILED / PENDING visible</td></tr>
+      <tr><td>SC-05</td><td>Balance &amp; mini-statement</td><td>Portal API data when enabled</td></tr>
+      <tr><td>SC-06</td><td>Franchise invites &amp; commission %</td><td>Invite + plan lifecycle</td></tr>
+      <tr><td>SC-07</td><td>Portal role gates</td><td>Workflow steps enforced</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tbd"><strong>TBD:</strong> Commercial KPIs (conversion, fee income, SLA penalties) — client commercial model not in product.</div>
+
+  <h2 id="s4"><span class="section-num">4.</span> Stakeholders &amp; users</h2>
+  <table>
+    <thead><tr><th>Stakeholder</th><th>Interest</th></tr></thead>
+    <tbody>
+      <tr><td>Bank / EMI business</td><td>Corporate acquisition, network growth</td></tr>
+      <tr><td>Compliance / AML</td><td>CDD quality, screening, EDD, audit</td></tr>
+      <tr><td>Operations / back-office</td><td>Queue throughput, discrepancy handling</td></tr>
+      <tr><td>Corporate Merchant</td><td>Onboard once; manage franchises &amp; finance views</td></tr>
+      <tr><td>Corporate Sub-merchant</td><td>Onboard under parent; operate account</td></tr>
+      <tr><td>Partners (Partnership / LLP)</td><td>Complete personal KYC via mobile</td></tr>
+      <tr><td>Platform Admin</td><td>Approve / reject, provision retry</td></tr>
+      <tr><td>IT / Integration</td><td>DFS Account, Portal, CMS APIs, security</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s5"><span class="section-num">5.</span> Scope</h2>
+  <h3>5.1 In scope <span class="badge">Current release</span></h3>
+  <div class="callout in">
+    Merchant self-signup &amp; OTP · Franchise / Sub-merchant invites · Entity types Sole Prop, Small Business, Partnership, LLP · Entity CDD + IP/geo · Annex-C uploads · Partner mobile KYC (OTP, video, CNIC, biometrics) · Admin queue &amp; decisioning · Post-activation dashboard, balance, statement, cards, franchises, portal users, maker–checker · Soft multi-brand support
+  </div>
+  <h3>5.2 Out of scope</h3>
+  <table>
+    <thead><tr><th>Item</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Natural-person retail wallet onboarding (Framework §D)</td><td><span class="badge out">Out</span></td></tr>
+      <tr><td>Live NADRA BV / Verisys APIs</td><td><span class="badge tbd">Stub / TBD</span></td></tr>
+      <tr><td>Automated UNSC/ATA sanctions vendor</td><td><span class="badge tbd">Manual / TBD</span></td></tr>
+      <tr><td>Full payment rails / e-money limit enforcement</td><td><span class="badge out">Out</span></td></tr>
+      <tr><td>EMI licensing, capital, FPT for the EMI itself</td><td><span class="badge out">Out</span></td></tr>
+      <tr><td>Pricing, tariffs, billing engine</td><td><span class="badge tbd">TBD</span></td></tr>
+      <tr><td>Hard multi-tenant isolation beyond brand_id</td><td><span class="badge tbd">TBD</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s6"><span class="section-num">6.</span> Business requirements</h2>
+  <h3>6.1 Onboarding &amp; KYC</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Requirement</th><th class="center">Priority</th></tr></thead>
+    <tbody>
+      <tr><td>BR-ONB-01</td><td>Corporate Merchant signup with email OTP</td><td class="center">Must</td></tr>
+      <tr><td>BR-ONB-02</td><td>Entity CDD for Annex-C types 1–4 only</td><td class="center">Must</td></tr>
+      <tr><td>BR-ONB-03</td><td>Annex-C document packs by entity type</td><td class="center">Must</td></tr>
+      <tr><td>BR-ONB-04</td><td>Partnership/LLP partner roster + mobile KYC before pending approval</td><td class="center">Must</td></tr>
+      <tr><td>BR-ONB-05</td><td>Sole Prop / Small Business: applicant as owner; mobile KYC</td><td class="center">Must</td></tr>
+      <tr><td>BR-ONB-06</td><td>Tracking ID + 5 working-day decision due date on submit</td><td class="center">Must</td></tr>
+      <tr><td>BR-ONB-07</td><td>Draft resumable for 30 days</td><td class="center">Must</td></tr>
+      <tr><td>BR-ONB-08</td><td>Capture IP and optional browser geolocation</td><td class="center">Must</td></tr>
+      <tr><td>BR-ONB-09</td><td>HIGH risk supports EDD notes / video KYC reference</td><td class="center">Should</td></tr>
+      <tr><td>BR-ONB-10</td><td>Sub-merchant bound to parent via franchise invite</td><td class="center">Must</td></tr>
+    </tbody>
+  </table>
+  <h3>6.2 Compliance &amp; admin</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Requirement</th><th class="center">Priority</th></tr></thead>
+    <tbody>
+      <tr><td>BR-CMP-01</td><td>Admin pending queue with Tracking ID and TAT due date</td><td class="center">Must</td></tr>
+      <tr><td>BR-CMP-02</td><td>Manual sanctions CLEAR / HIT path</td><td class="center">Must</td></tr>
+      <tr><td>BR-CMP-03</td><td>Identity verification status (manual / waived until BV live)</td><td class="center">Must</td></tr>
+      <tr><td>BR-CMP-04</td><td>Approve or reject with written reason</td><td class="center">Must</td></tr>
+      <tr><td>BR-CMP-05</td><td>Per-document approve / reject / download</td><td class="center">Must</td></tr>
+      <tr><td>BR-CMP-06</td><td>Discrepancy notes to applicant</td><td class="center">Should</td></tr>
+      <tr><td>BR-CMP-07</td><td>On approve: ACTIVE + credentials communicated</td><td class="center">Must</td></tr>
+      <tr><td>BR-CMP-08</td><td>DFS corporate provisioning when integration enabled</td><td class="center">Must</td></tr>
+    </tbody>
+  </table>
+  <h3>6.3 Post-activation portal</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Requirement</th><th class="center">Priority</th></tr></thead>
+    <tbody>
+      <tr><td>BR-PRT-01</td><td>ACTIVE dashboard with KYC / provision / finance snapshot</td><td class="center">Must</td></tr>
+      <tr><td>BR-PRT-02</td><td>Agent balance &amp; mini-statement via Portal API when enabled</td><td class="center">Must</td></tr>
+      <tr><td>BR-PRT-03</td><td>Franchise invites and commission % plans</td><td class="center">Must</td></tr>
+      <tr><td>BR-PRT-04</td><td>Child network visibility (balance/statement where enabled)</td><td class="center">Should</td></tr>
+      <tr><td>BR-PRT-05</td><td>CMS card search / inquiry when enabled</td><td class="center">Should</td></tr>
+      <tr><td>BR-PRT-06</td><td>Invite portal users; assign Maker/Checker/Approver/Releaser</td><td class="center">Must</td></tr>
+      <tr><td>BR-PRT-07</td><td>Enforce MAKER → CHECKER → APPROVER → RELEASER sequence</td><td class="center">Must</td></tr>
+    </tbody>
+  </table>
+  <h3>6.4 Non-functional (business view)</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Requirement</th><th class="center">Priority</th></tr></thead>
+    <tbody>
+      <tr><td>BR-NFR-01</td><td>JWT authentication; platform admin role separation</td><td class="center">Must</td></tr>
+      <tr><td>BR-NFR-02</td><td>Large KYC media upload support</td><td class="center">Must</td></tr>
+      <tr><td>BR-NFR-03</td><td>Email notifications when mail enabled</td><td class="center">Must</td></tr>
+      <tr><td>BR-NFR-04</td><td>Availability / RTO / RPO / retention / encryption-at-rest</td><td class="center"><span class="badge tbd">TBD</span></td></tr>
+      <tr><td>BR-NFR-05</td><td>Production SLA matrix</td><td class="center"><span class="badge tbd">TBD</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s7"><span class="section-num">7.</span> Business processes</h2>
+  <h3>7.1 Corporate Merchant onboarding</h3>
+  <div class="flow">Signup → Email OTP → Login → Entity CDD → Partners (if required) → Annex-C docs
+  → Submit (Tracking ID + TAT) → Partner mobile KYCs complete
+  → PENDING_APPROVAL → Admin review → Approve / Reject
+  → ACTIVE + credentials → DFS provision (if enabled)</div>
+  <h3>7.2 Franchise / Sub-merchant</h3>
+  <div class="flow">Parent Merchant creates invite (+ commission %) → Child opens invite link
+  → Signup as SUB_MERCHANT → OTP → Onboarding (incl. parent authority docs)
+  → Same KYC / admin / provision path → Parent confirms commission plan</div>
+  <h3>7.3 Partner mobile KYC</h3>
+  <div class="flow">Invite (phone + temp PIN) → App login → OTP → Change password
+  → Video challenge/verification → Submit CNIC + selfie + fingerprints
+  → KYC_COMPLETED</div>
+  <h3>7.4 Maker–checker</h3>
+  <div class="flow">PARTY_ADMIN assigns roles → MAKER creates request
+  → CHECKER → APPROVER (optional skip if checker also Approver) → RELEASER → Done</div>
+
+  <h2 id="s8"><span class="section-num">8.</span> Regulatory &amp; compliance mapping</h2>
+  <p>Primary reference: <strong>SBP Consolidated Customer Onboarding Framework</strong>.</p>
+  <table>
+    <thead><tr><th>Framework</th><th>Business intent</th><th>Delivery state</th></tr></thead>
+    <tbody>
+      <tr><td>§B Applicability</td><td>EMI / digital RE remote channel</td><td>Digital portal</td></tr>
+      <tr><td>§C Remote onboarding</td><td>Web + mobile KYC</td><td>Implemented</td></tr>
+      <tr><td>§E Entity opening</td><td>Entity fields + persons</td><td>Types 1–4</td></tr>
+      <tr><td>Annex-C</td><td>Document packs</td><td>Implemented</td></tr>
+      <tr><td>§F.1 Identity</td><td>Identity status workflow</td><td>Manual / waived — <span class="badge tbd">BV TBD</span></td></tr>
+      <tr><td>§F.3 Location</td><td>IP + geo</td><td>Implemented</td></tr>
+      <tr><td>§F.4 Sanctions</td><td>Screening status workflow</td><td>Manual CLEAR — <span class="badge tbd">Vendor TBD</span></td></tr>
+      <tr><td>§G EDD</td><td>Risk rating + notes / video</td><td>Partial</td></tr>
+      <tr><td>§I TAT</td><td>5 working days + Tracking ID</td><td>Due date captured; ops enforcement <span class="badge tbd">TBD</span></td></tr>
+      <tr><td>§J Facilitation</td><td>30-day draft resume</td><td>Implemented</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s9"><span class="section-num">9.</span> Assumptions &amp; dependencies</h2>
+  <table>
+    <thead><tr><th>ID</th><th>Assumption / dependency</th></tr></thead>
+    <tbody>
+      <tr><td>AS-01</td><td>Client operates as EMI / DFS provider authorised to onboard corporate entities</td></tr>
+      <tr><td>AS-02</td><td>DFS Account, AgentApp Portal, and CMS APIs available in target environments</td></tr>
+      <tr><td>AS-03</td><td>Email (or approved notification channel) available in production</td></tr>
+      <tr><td>AS-04</td><td>Client provides branding, legal entity name, and customer T&amp;Cs — <span class="badge tbd">TBD</span></td></tr>
+      <tr><td>AS-05</td><td>Client compliance signs off stub vs live screening/BV before go-live — <span class="badge tbd">TBD</span></td></tr>
+      <tr><td>AS-06</td><td>Commission commercial terms configured operationally (no billing engine) — <span class="badge tbd">TBD</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s10"><span class="section-num">10.</span> Risks &amp; open questions</h2>
+  <table>
+    <thead><tr><th>ID</th><th>Item</th><th>Type</th></tr></thead>
+    <tbody>
+      <tr><td>RQ-01</td><td>Final legal product name / logos for Bank co-brand</td><td><span class="badge tbd">TBD</span></td></tr>
+      <tr><td>RQ-02</td><td>Production NADRA / Verisys vendor contract &amp; SLA</td><td><span class="badge tbd">TBD</span></td></tr>
+      <tr><td>RQ-03</td><td>Automated sanctions list vendor</td><td><span class="badge tbd">TBD</span></td></tr>
+      <tr><td>RQ-04</td><td>Data retention, purge, encryption-at-rest standards</td><td><span class="badge tbd">TBD</span></td></tr>
+      <tr><td>RQ-05</td><td>Whether payment approval types execute real payments later</td><td><span class="badge tbd">TBD</span></td></tr>
+      <tr><td>RQ-06</td><td>UAT exit criteria &amp; regulatory examination pack</td><td><span class="badge tbd">TBD</span></td></tr>
+      <tr><td>RQ-07</td><td>Support model, environments, DR</td><td><span class="badge tbd">TBD</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s11"><span class="section-num">11.</span> Timeline &amp; commercial</h2>
+  <div class="callout tbd">
+    <strong>TBD with client PMO / commercial:</strong> Implementation phases, licence / subscription / transaction fees, and commission sharing schedule. Product stores commission <em>percentage plans</em> only.
+  </div>
+
+  <h2 id="s12"><span class="section-num">12.</span> Glossary</h2>
+  <table>
+    <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>DFS</td><td>Digital Financial Services / Agent platform integration layer</td></tr>
+      <tr><td>EMI</td><td>Electronic Money Institution</td></tr>
+      <tr><td>CDD / EDD</td><td>Customer / Enhanced Due Diligence</td></tr>
+      <tr><td>Annex-C</td><td>SBP document checklist for entity types</td></tr>
+      <tr><td>Merchant / Sub-merchant</td><td>Parent / child corporate party</td></tr>
+      <tr><td>Tracking ID</td><td>Unique case reference after submission</td></tr>
+      <tr><td>TAT</td><td>Turnaround time for onboarding decision</td></tr>
+      <tr><td>Maker–Checker</td><td>Dual-control approval workflow</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s13"><span class="section-num">13.</span> Approvals</h2>
+  <p>To be completed by Bank / EMI stakeholders.</p>
+  <div class="sig-grid">
+    <div class="sig-box"><strong>Client business sponsor</strong>Name / Signature / Date</div>
+    <div class="sig-box"><strong>Client compliance</strong>Name / Signature / Date</div>
+    <div class="sig-box"><strong>Product owner</strong>Name / Signature / Date</div>
+    <div class="sig-box"><strong>Delivery lead</strong>Name / Signature / Date</div>
+  </div>
+
+  <p class="footer-note">This BRD is the business baseline for DFS Corporate Portal. Detailed behaviours are in FSD DFS-CP-FSD-001. Product positioning is in Product Document DFS-CP-PD-001. — End of BRD</p>
+</main>
+</body>
+</html>

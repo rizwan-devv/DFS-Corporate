@@ -168,10 +168,15 @@ public class AdminOnboardingService {
         Account account = accountRepository.findByPartyId(party.getId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Account missing"));
 
-        String rawPassword = generatePassword();
-        account.setPasswordHash(passwordEncoder.encode(rawPassword));
+        boolean hadPassword = account.getPasswordHash() != null && !account.getPasswordHash().isBlank();
+        String rawPassword = null;
+        if (!hadPassword) {
+            // Legacy parties submitted before credentials-on-submit
+            rawPassword = generatePassword();
+            account.setPasswordHash(passwordEncoder.encode(rawPassword));
+            account.setFirstLogin(true);
+        }
         account.setStatus(AccountStatus.ACTIVE);
-        account.setFirstLogin(true);
         accountRepository.save(account);
 
         party.setStatus(PartyStatus.ACTIVE);
@@ -189,38 +194,63 @@ public class AdminOnboardingService {
             franchiseCommissionService.lockForChild(party.getId(), admin.getAccountId(), "BACKOFFICE");
         }
 
-        mailService.send(party.getEmail(), "DFS Corporate — Account Approved",
-                """
-                Hello %s,
+        if (hadPassword) {
+            mailService.send(party.getEmail(), "DFS Corporate — Account Approved",
+                    """
+                    Hello %s,
 
-                Your DFS Corporate application (%s) has been approved.
+                    Your DFS Corporate application (%s) has been approved.
 
-                Portal login (web :8060):
-                  Email: %s
-                  Temporary password: %s
-                Use the portal to view your approved application — change password on first login.
+                    Continue using your existing portal login (email + the password you set after submit).
 
-                Agent / mobile app: use your phone number + the password you set during mobile KYC
-                (change-password step), NOT this portal password.
+                    Agent / mobile app: use your phone number + the password you set during mobile KYC
+                    (change-password step), NOT a new portal password.
 
-                DFS backend account provision: %s%s
+                    DFS backend account provision: %s%s
 
-                — DFS Corporate
-                """.formatted(
-                        party.getFullName(),
-                        party.getPartyType(),
-                        party.getEmail(),
-                        rawPassword,
-                        party.getAccountProvisionStatus(),
-                        party.getDfsAccountId() != null ? (" / ID: " + party.getDfsAccountId()) : ""));
+                    — DFS Corporate
+                    """.formatted(
+                            party.getFullName(),
+                            party.getTrackingId() != null ? party.getTrackingId() : party.getPartyType(),
+                            party.getAccountProvisionStatus(),
+                            party.getDfsAccountId() != null ? (" / ID: " + party.getDfsAccountId()) : ""));
+        } else {
+            mailService.send(party.getEmail(), "DFS Corporate — Account Approved",
+                    """
+                    Hello %s,
+
+                    Your DFS Corporate application (%s) has been approved.
+
+                    Portal login (web :8060):
+                      Email: %s
+                      Temporary password: %s
+                    Change password on first login.
+
+                    Agent / mobile app: use your phone number + the password you set during mobile KYC
+                    (change-password step), NOT this portal password.
+
+                    DFS backend account provision: %s%s
+
+                    — DFS Corporate
+                    """.formatted(
+                            party.getFullName(),
+                            party.getPartyType(),
+                            party.getEmail(),
+                            rawPassword,
+                            party.getAccountProvisionStatus(),
+                            party.getDfsAccountId() != null ? (" / ID: " + party.getDfsAccountId()) : ""));
+        }
 
         Map<String, Object> res = new HashMap<>();
         res.put("party", enrich(party));
-        res.put("temporaryPassword", rawPassword);
+        if (rawPassword != null) {
+            res.put("temporaryPassword", rawPassword);
+        }
         res.put("accountProvisionStatus", party.getAccountProvisionStatus());
         res.put("dfsAccountId", party.getDfsAccountId());
-        res.put("message", "Approved. Credentials emailed. DFS account provision: "
-                + party.getAccountProvisionStatus());
+        res.put("message", hadPassword
+                ? "Approved. Existing portal password kept. DFS account provision: " + party.getAccountProvisionStatus()
+                : "Approved. Credentials emailed. DFS account provision: " + party.getAccountProvisionStatus());
         return res;
     }
 
@@ -287,7 +317,9 @@ public class AdminOnboardingService {
                     "Hello " + party.getFullName() + ",\n\n"
                             + "Document \"" + doc.getDocumentCode() + "\" was rejected by backoffice.\n"
                             + (note != null && !note.isBlank() ? "Note: " + note + "\n\n" : "\n")
-                            + "Please re-upload only this document in My Application. Your full application was not rejected.\n\n"
+                            + "Login to the portal with the email + password from your submit email "
+                            + "(change it on first login if you have not yet).\n"
+                            + "Open My Application and re-upload only this document. Your full application was not rejected.\n\n"
                             + "— DFS Corporate");
         } else {
             partyStatusSyncService.syncAfterDocumentChange(party.getId());

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, apiUrl } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 
@@ -16,6 +16,8 @@ type AppUser = {
   kycAttemptsRemaining?: number;
   bankVisitRequired?: boolean;
   signatureUploaded?: boolean;
+  cnicNumber?: string;
+  cnicFullName?: string;
   manualKycApproveReason?: string;
 };
 type Invite = {
@@ -51,7 +53,6 @@ type Party = {
   brandName?: string;
   sanctionsStatus?: string;
   identityVerificationStatus?: string;
-  riskRating?: string;
   eddRequired?: boolean;
   decisionDueAt?: string;
   submittedAt?: string;
@@ -133,8 +134,37 @@ function kycPct(p: Party) {
   return Math.round(((p.partnerKycCompleted || 0) / total) * 100);
 }
 
+function formatTat(iso?: string) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function statusLabel(status: string) {
+  return status.replace(/_/g, ' ');
+}
+
+function CloseIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="2.75" />
+    </svg>
+  );
+}
+
 export function AdminPage() {
   const { session } = useAuth();
+  const navigate = useNavigate();
+  const { partyId: partyIdParam } = useParams();
+  const reviewPartyId = partyIdParam ? Number(partyIdParam) : null;
   const [brands, setBrands] = useState<Brand[]>([]);
   const [brandId, setBrandId] = useState<number | 'ALL'>('ALL');
   const [status, setStatus] = useState('PENDING_APPROVAL');
@@ -195,9 +225,50 @@ export function AdminPage() {
     const awaitingKyc = queue.filter((p) => p.status === 'SUBMITTED').length;
     const incomplete = queue.filter((p) => p.status === 'INCOMPLETE').length;
     const overdue = queue.filter((p) => p.tatOverdue).length;
-    const brandsActive = brands.length;
-    return { pending, awaitingKyc, incomplete, overdue, brandsActive, total: filtered.length };
-  }, [queue, filtered, brands]);
+    return { pending, awaitingKyc, incomplete, overdue, total: filtered.length };
+  }, [queue, filtered]);
+
+  const fetchDocBlob = useCallback(async (docId: number): Promise<string> => {
+    if (!session?.token) throw new Error('Not signed in');
+    const res = await fetch(apiUrl(`/api/admin/documents/${docId}/file`), {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+    if (!res.ok) throw new Error('Could not load document');
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  }, [session?.token]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (viewerDocId != null) {
+        setViewerDocId(null);
+        return;
+      }
+      navigate('/admin');
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selected, viewerDocId, navigate]);
+
+  useEffect(() => {
+    if (selected) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [selected?.id]);
+
+  useEffect(() => {
+    if (session?.role !== 'PLATFORM_ADMIN') return;
+    if (reviewPartyId == null || Number.isNaN(reviewPartyId)) {
+      setSelected(null);
+      setViewerDocId(null);
+      return;
+    }
+    void open(reviewPartyId).catch((err) => {
+      setError(err instanceof Error ? err.message : 'Failed to open case');
+      navigate('/admin', { replace: true });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open on route party id only
+  }, [session?.role, reviewPartyId]);
 
   if (!session) return <Navigate to="/login" replace />;
   if (session.role !== 'PLATFORM_ADMIN') return <Navigate to="/" replace />;
@@ -210,6 +281,16 @@ export function AdminPage() {
     setDiscrepancy(data.discrepancyNote || '');
   }
 
+  function goQueue() {
+    setSelected(null);
+    setViewerDocId(null);
+    navigate('/admin');
+  }
+
+  function goReview(id: number) {
+    navigate(`/admin/review/${id}`);
+  }
+
   async function approve(id: number) {
     setError(''); setOk('');
     try {
@@ -218,7 +299,7 @@ export function AdminPage() {
         { method: 'POST', token: session!.token },
       );
       setOk(`${res.message} Temp password: ${res.temporaryPassword}`);
-      setSelected(null);
+      goQueue();
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Approve failed');
@@ -248,7 +329,8 @@ export function AdminPage() {
         body: JSON.stringify({ reason: rejectReason }),
       });
       setOk('Application rejected');
-      setSelected(null); setRejectReason('');
+      setRejectReason('');
+      goQueue();
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Reject failed');
@@ -352,32 +434,32 @@ export function AdminPage() {
     if (selected) await open(selected.id);
   }
 
-  async function fetchDocBlob(docId: number): Promise<string> {
-    const res = await fetch(apiUrl(`/api/admin/documents/${docId}/file`), {
-      headers: { Authorization: `Bearer ${session!.token}` },
-    });
-    if (!res.ok) throw new Error('Could not load document');
-    const blob = await res.blob();
-    return URL.createObjectURL(blob);
-  }
+  const canDecide =
+    !!selected &&
+    (selected.status === 'PENDING_APPROVAL' ||
+      selected.status === 'SUBMITTED' ||
+      selected.status === 'INCOMPLETE');
+
+  const onReviewPage = reviewPartyId != null && !Number.isNaN(reviewPartyId);
 
   return (
     <div className="ops-shell">
-      <div className="ops-topbar">
+      {!onReviewPage && (
+      <>
+      <header className="ops-topbar">
         <div>
-          <div className="ops-eyebrow">BACKOFFICE · MULTI-BRAND</div>
-          <h1 className="ops-title">Entity KYC Operations</h1>
-          <p className="muted ops-sub">Wide ops console · filters · partner KYC progress · document review</p>
+          <div className="ops-eyebrow">APPROVER CONSOLE · DFS CONNECT</div>
+          <h1 className="ops-title">KYC review queue</h1>
+          <p className="muted ops-sub">Click a merchant to open Review Merchant</p>
         </div>
-        <div className="ops-stat-row">
-          <div className="ops-stat"><strong>{stats.pending}</strong><span>Ready to approve</span></div>
-          <div className="ops-stat"><strong>{stats.awaitingKyc}</strong><span>Awaiting app KYC</span></div>
+        <div className="ops-stat-row" aria-label="Queue summary">
+          <div className="ops-stat"><strong>{stats.pending}</strong><span>Ready</span></div>
+          <div className="ops-stat"><strong>{stats.awaitingKyc}</strong><span>App KYC</span></div>
           <div className="ops-stat"><strong>{stats.incomplete}</strong><span>Incomplete</span></div>
-          <div className="ops-stat"><strong>{stats.overdue}</strong><span>TAT overdue</span></div>
-          <div className="ops-stat"><strong>{stats.brandsActive}</strong><span>Brands</span></div>
+          <div className="ops-stat"><strong>{stats.overdue}</strong><span>Overdue</span></div>
           <div className="ops-stat"><strong>{stats.total}</strong><span>In view</span></div>
         </div>
-      </div>
+      </header>
 
       {error && <div className="alert alert-error">{error}</div>}
       {ok && <div className="alert alert-ok">{ok}</div>}
@@ -411,7 +493,7 @@ export function AdminPage() {
           </select>
           <label className="ops-check">
             <input type="checkbox" checked={tatOnly} onChange={(e) => setTatOnly(e.target.checked)} />
-            TAT overdue only
+            TAT overdue
           </label>
           <button className="btn btn-ghost btn-sm" type="button" disabled={loading} onClick={() => void refresh()}>
             {loading ? 'Refreshing…' : 'Refresh'}
@@ -419,103 +501,154 @@ export function AdminPage() {
         </div>
       </div>
 
-      <div className={`ops-grid ${selected ? 'has-detail' : ''}`}>
-        <section className="ops-queue panel panel--full">
+      <section className="ops-queue panel panel--full">
+        <div className="ops-queue-head">
           <h3 className="ops-section-title">Application queue</h3>
-          <div className="ops-table-wrap">
-            <table className="table ops-table">
-              <thead>
+          <span className="muted ops-queue-count">{filtered.length} case{filtered.length === 1 ? '' : 's'}</span>
+        </div>
+        <div className="ops-table-wrap">
+          <table className="table ops-table">
+            <thead>
+              <tr>
+                <th>Tracking</th>
+                <th>Business</th>
+                <th>Status</th>
+                <th>KYC</th>
+                <th>TAT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
                 <tr>
-                  <th>Tracking</th>
-                  <th>Brand</th>
-                  <th>Business</th>
-                  <th>Entity</th>
-                  <th>Status</th>
-                  <th>Partner KYC</th>
-                  <th>TAT due</th>
-                  <th />
+                  <td colSpan={5} className="ops-empty muted">No applications for this filter</td>
                 </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="muted">No applications for this filter</td></tr>
-                )}
-                {filtered.map((p) => {
-                  const pct = kycPct(p);
-                  return (
-                    <tr
-                      key={p.id}
-                      className={selected?.id === p.id ? 'ops-row-active' : ''}
-                      onClick={() => void open(p.id)}
-                    >
-                      <td>
-                        <strong>{p.trackingId || p.publicId.slice(0, 8)}</strong>
+              )}
+              {filtered.map((p) => {
+                const pct = kycPct(p);
+                return (
+                  <tr
+                    key={p.id}
+                    className="ops-row-click"
+                    onClick={() => goReview(p.id)}
+                  >
+                    <td>
+                      <div className="ops-track-cell">
+                        <strong className="ops-mono">{p.trackingId || p.publicId.slice(0, 8)}</strong>
                         {p.tatOverdue && <span className="ops-pill danger">OVERDUE</span>}
-                      </td>
-                      <td><span className="ops-pill muted-pill">{p.brandCode || '—'}</span></td>
-                      <td>
-                        <div>{p.businessName || p.fullName}</div>
-                        <div className="muted" style={{ fontSize: '0.78rem' }}>{p.email}</div>
-                      </td>
-                      <td>{p.entityType || p.partyType}</td>
-                      <td><span className={`status status-${p.status}`}>{p.status}</span></td>
-                      <td>
-                        {pct == null ? (
-                          <span className="muted">—</span>
-                        ) : (
-                          <div className="ops-progress" title={`${p.partnerKycCompleted}/${p.partnerKycTotal}`}>
-                            <div className="ops-progress-bar"><span style={{ width: `${pct}%` }} /></div>
-                            <span className="ops-progress-label">{p.partnerKycCompleted}/{p.partnerKycTotal}</span>
-                          </div>
-                        )}
-                      </td>
-                      <td>{p.decisionDueAt ? new Date(p.decisionDueAt).toLocaleDateString() : '—'}</td>
-                      <td>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={(e) => { e.stopPropagation(); void open(p.id); }}>
-                          Open
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                      </div>
+                      {p.brandCode && <span className="ops-pill muted-pill">{p.brandCode}</span>}
+                    </td>
+                    <td>
+                      <div className="ops-biz-name">{p.businessName || p.fullName}</div>
+                      <div className="ops-biz-meta muted">
+                        {[p.entityType || p.partyType, p.email].filter(Boolean).join(' · ')}
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`status status-${p.status}`}>{statusLabel(p.status)}</span>
+                    </td>
+                    <td>
+                      {pct == null ? (
+                        <span className="muted">—</span>
+                      ) : (
+                        <div className="ops-progress" title={`${p.partnerKycCompleted}/${p.partnerKycTotal}`}>
+                          <div className="ops-progress-bar"><span style={{ width: `${pct}%` }} /></div>
+                          <span className="ops-progress-label">{p.partnerKycCompleted}/{p.partnerKycTotal}</span>
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <span className={p.tatOverdue ? 'ops-tat overdue' : 'ops-tat'}>
+                        {formatTat(p.decisionDueAt)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      </>
+      )}
 
-        {selected && (
-          <aside className="ops-detail panel panel--full">
-            <div className="ops-detail-head">
-              <div>
-                <div className="badge">{selected.brandName || selected.brandCode || 'Brand'}</div>
-                <h3 style={{ margin: '0.35rem 0' }}>{selected.businessName || selected.fullName}</h3>
-                <p className="muted" style={{ margin: 0 }}>
-                  {selected.trackingId} · {selected.email} · {selected.phone || '—'}
-                </p>
+      {error && onReviewPage && <div className="alert alert-error">{error}</div>}
+      {ok && onReviewPage && <div className="alert alert-ok">{ok}</div>}
+
+      {onReviewPage && selected && (
+        <div className="ops-case-page">
+          <header className="ops-case-bar">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={goQueue}
+            >
+              ← Back to queue
+            </button>
+            <div className="ops-case-bar-main">
+              <div className="ops-case-kicker">
+                <span className="ops-eyebrow">REVIEW MERCHANT</span>
+                <span className="ops-pill muted-pill">{selected.brandName || selected.brandCode || 'Brand'}</span>
+                <span className="ops-mono muted">{selected.trackingId || selected.publicId.slice(0, 8)}</span>
               </div>
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => setSelected(null)}>Close</button>
+              <h1 className="ops-case-title">Review Merchant</h1>
+              <h2 className="ops-case-merchant">{selected.businessName || selected.fullName}</h2>
+              <p className="muted ops-case-sub">
+                {[selected.email, selected.phone, selected.entityType || selected.partyType]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
             </div>
+            <button
+              type="button"
+              className="ops-drawer-close"
+              aria-label="Close case"
+              onClick={goQueue}
+            >
+              <CloseIcon />
+              <span>Close</span>
+            </button>
+          </header>
 
-            <div className="ops-meta-grid">
-              <div><span className="muted">Entity</span><strong>{selected.entityType || '—'}</strong></div>
-              <div><span className="muted">Status</span><strong className={`status status-${selected.status}`}>{selected.status}</strong></div>
-              <div><span className="muted">Sanctions</span><strong>{selected.sanctionsStatus || '—'}</strong></div>
-              <div><span className="muted">Identity</span><strong>{selected.identityVerificationStatus || '—'}</strong></div>
-              <div><span className="muted">Risk</span><strong>{selected.riskRating || '—'}</strong></div>
-              <div><span className="muted">IP / Geo</span><strong>{selected.clientIp || '—'} / {selected.geoLocation || '—'}</strong></div>
+          <div className="ops-meta-strip">
+            <div>
+              <span className="muted">Status</span>
+              <strong className={`status status-${selected.status}`}>{statusLabel(selected.status)}</strong>
             </div>
+            <div>
+              <span className="muted">Sanctions</span>
+              <strong>{selected.sanctionsStatus || '—'}</strong>
+            </div>
+            <div>
+              <span className="muted">Identity</span>
+              <strong>{selected.identityVerificationStatus || '—'}</strong>
+            </div>
+            <div>
+              <span className="muted">TAT due</span>
+              <strong className={selected.tatOverdue ? 'ops-tat overdue' : undefined}>
+                {formatTat(selected.decisionDueAt)}
+              </strong>
+            </div>
+            <div>
+              <span className="muted">IP / Geo</span>
+              <strong>{selected.clientIp || '—'}{selected.geoLocation ? ` · ${selected.geoLocation}` : ''}</strong>
+            </div>
+          </div>
 
-            {(selected.partnerKycTotal || 0) > 0 && (
-              <div className="ops-block">
-                <h4>Partner mobile app KYC</h4>
+          {(selected.partnerKycTotal || 0) > 0 && (
+            <section className="ops-drawer-section">
+              <div className="ops-drawer-section-head">
+                <h3>Partners &amp; signatures</h3>
                 <div className="ops-progress large">
                   <div className="ops-progress-bar">
                     <span style={{ width: `${kycPct(selected) || 0}%` }} />
                   </div>
                   <span className="ops-progress-label">
-                    {selected.partnerKycCompleted}/{selected.partnerKycTotal} completed
+                    {selected.partnerKycCompleted}/{selected.partnerKycTotal} KYC
                   </span>
                 </div>
+              </div>
+              <div className="ops-partner-grid">
                 {(selected.partnerAppUsers || []).map((u) => {
                   const docs = selected.documents || [];
                   const sigDoc = docs.find((d) => d.documentCode === `APP_${u.id}_SIGNATURE`);
@@ -524,344 +657,395 @@ export function AdminPage() {
                   const sheetPdf = docs.find((d) => d.documentCode === `APP_${u.id}_SIGNATURE_SHEET_PDF`);
                   const sheetPreview = sheetPng || sheetJpeg;
                   return (
-                  <div className="doc-row" key={u.id} style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                      <div>
-                        <strong>{u.fullName}</strong>
-                        <div className="muted">{u.phone} · {u.email || '—'} · {u.status}</div>
-                        {u.failureReason && <div className="muted">Fail reason: {u.failureReason}</div>}
-                        {(u.kycFailCount || 0) > 0 && (
-                          <div className="muted">Phone KYC fails: {u.kycFailCount}/3 · remaining: {u.kycAttemptsRemaining ?? 0}</div>
-                        )}
-                        {u.bankVisitRequired && (
-                          <div className="alert alert-info" style={{ marginTop: '0.4rem' }}>
-                            Bank/office visit required — manual approve with reason (this partner only).
-                          </div>
-                        )}
-                        {u.manualKycApproveReason && (
-                          <div className="muted">Manual approve: {u.manualKycApproveReason}</div>
-                        )}
-                        {u.appInviteUrl && <div className="invite-link">{u.appInviteUrl}</div>}
-                      </div>
-                      <div className="actions" style={{ marginTop: 0 }}>
-                        {u.status !== 'KYC_COMPLETED' && !u.bankVisitRequired && u.status !== 'BANK_VISIT_REQUIRED' && (
-                          <>
-                            <button className="btn btn-ghost btn-sm" type="button" onClick={() => void resendAppInvite(u.id)}>
-                              Re-send app invite
+                    <article className="ops-partner-card" key={u.id}>
+                      <div className="ops-partner-card-top">
+                        <div>
+                          <strong>{u.fullName}</strong>
+                          <div className="muted ops-partner-meta">{u.phone} · {u.email || '—'}</div>
+                          <span className={`status status-${u.status === 'KYC_COMPLETED' ? 'ACTIVE' : u.status === 'FAILED' ? 'REJECTED' : 'PENDING_APPROVAL'}`}>
+                            {statusLabel(u.status)}
+                          </span>
+                        </div>
+                        <div className="ops-partner-actions">
+                          {u.status !== 'KYC_COMPLETED' && !u.bankVisitRequired && u.status !== 'BANK_VISIT_REQUIRED' && (
+                            <>
+                              <button className="btn btn-ghost btn-sm" type="button" onClick={() => void resendAppInvite(u.id)}>Re-send invite</button>
+                              <button className="btn btn-ghost btn-sm" type="button" onClick={() => void markAppKycComplete(u.id)}>Mark KYC done</button>
+                            </>
+                          )}
+                          {(u.bankVisitRequired || u.status === 'BANK_VISIT_REQUIRED' || u.status === 'FAILED') && u.status !== 'KYC_COMPLETED' && (
+                            <button className="btn btn-primary btn-sm" type="button" onClick={() => { setManualKycUserId(u.id); setManualKycReason(''); }}>
+                              Manual KYC
                             </button>
-                            <button className="btn btn-ghost btn-sm" type="button" onClick={() => void markAppKycComplete(u.id)}>
-                              Mark KYC done
-                            </button>
-                          </>
-                        )}
-                        {(u.bankVisitRequired || u.status === 'BANK_VISIT_REQUIRED' || u.status === 'FAILED') && u.status !== 'KYC_COMPLETED' && (
-                          <button
-                            className="btn btn-primary btn-sm"
-                            type="button"
-                            onClick={() => { setManualKycUserId(u.id); setManualKycReason(''); }}
-                          >
-                            Manual KYC approve
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {manualKycUserId === u.id && (
-                      <div className="form-row" style={{ marginTop: '0.5rem' }}>
-                        <textarea
-                          rows={2}
-                          placeholder="Bank visit / verification reason (required)"
-                          value={manualKycReason}
-                          onChange={(e) => setManualKycReason(e.target.value)}
-                        />
-                        <div className="actions" style={{ marginTop: '0.4rem' }}>
-                          <button className="btn btn-primary btn-sm" type="button" onClick={() => void manualKycApprove(u.id)}>
-                            Confirm manual approve
-                          </button>
-                          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setManualKycUserId(null)}>
-                            Cancel
-                          </button>
+                          )}
                         </div>
                       </div>
-                    )}
-                    <div style={{ marginTop: '0.75rem' }}>
-                      <div className="muted" style={{ marginBottom: '0.35rem' }}>
-                        Signature sheet (1 image ×4){u.signatureUploaded || sigDoc ? '' : ' — not uploaded yet'}
-                      </div>
-                      {sheetPreview || sigDoc ? (
-                        <>
-                          {sheetPreview ? (
-                            <div className="ops-signature-sheet">
-                              <DocThumb
-                                doc={sheetPreview}
-                                label="4-up sheet"
-                                token={session.token}
-                                onOpen={() => setViewerDocId(sheetPreview.id)}
-                                fetchBlob={fetchDocBlob}
-                              />
-                            </div>
-                          ) : sigDoc ? (
-                            <div className="ops-signature-grid">
-                              {[0, 1, 2, 3].map((i) => (
-                                <DocThumb
-                                  key={`${sigDoc.id}-${i}`}
-                                  doc={sigDoc}
-                                  label={`Sig ${i + 1}`}
-                                  token={session.token}
-                                  onOpen={() => setViewerDocId(sigDoc.id)}
-                                  fetchBlob={fetchDocBlob}
-                                />
-                              ))}
-                            </div>
-                          ) : null}
-                          <div className="actions" style={{ marginTop: '0.5rem' }}>
-                            {sheetPdf && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                type="button"
-                                onClick={() => setViewerDocId(sheetPdf.id)}
-                              >
-                                Printable PDF
-                              </button>
-                            )}
-                            {sheetPng && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                type="button"
-                                onClick={() => setViewerDocId(sheetPng.id)}
-                              >
-                                PNG sheet
-                              </button>
-                            )}
-                            {sheetJpeg && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                type="button"
-                                onClick={() => setViewerDocId(sheetJpeg.id)}
-                              >
-                                JPEG sheet
-                              </button>
-                            )}
-                            {sigDoc && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                type="button"
-                                onClick={() => setViewerDocId(sigDoc.id)}
-                              >
-                                Original image
-                              </button>
-                            )}
+                      {u.failureReason && <p className="muted ops-inline-note">Fail: {u.failureReason}</p>}
+                      {u.bankVisitRequired && <div className="alert alert-info ops-inline-alert">Bank visit required — manual approve with reason.</div>}
+                      {u.appInviteUrl && <div className="invite-link">{u.appInviteUrl}</div>}
+                      {manualKycUserId === u.id && (
+                        <div className="ops-manual-kyc">
+                          <textarea rows={2} placeholder="Bank visit / verification reason (required)" value={manualKycReason} onChange={(e) => setManualKycReason(e.target.value)} />
+                          <div className="actions">
+                            <button className="btn btn-primary btn-sm" type="button" onClick={() => void manualKycApprove(u.id)}>Confirm</button>
+                            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setManualKycUserId(null)}>Cancel</button>
                           </div>
-                        </>
-                      ) : (
-                        <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>No signature on file for this partner.</p>
+                        </div>
                       )}
-                    </div>
-                  </div>
+                      <div className="ops-sig-slot">
+                        {sheetPreview || sigDoc ? (
+                          <SpecimenSignatureCard
+                            partner={u}
+                            sheetDoc={sheetPreview || sigDoc!}
+                            sheetPdf={sheetPdf}
+                            sheetPng={sheetPng}
+                            sheetJpeg={sheetJpeg}
+                            originalDoc={sigDoc}
+                            token={session.token}
+                            fetchBlob={fetchDocBlob}
+                            onOpen={(id) => setViewerDocId(id)}
+                          />
+                        ) : (
+                          <p className="muted ops-sig-empty">Specimen signature — not uploaded yet</p>
+                        )}
+                      </div>
+                    </article>
                   );
                 })}
-                {(selected.partnerInvites || []).length > 0 && (
-                  <p className="muted" style={{ fontSize: '0.8rem' }}>Legacy portal invites (disabled) still listed for history.</p>
-                )}
-                {(selected.partnerInvites || []).map((inv) => (
-                  <div className="doc-row" key={`leg-${inv.id}`}>
-                    <div>
-                      <strong>{inv.fullName}</strong>
-                      <div className="muted">{inv.email} · {inv.status} (legacy)</div>
+              </div>
+              {(selected.partnerInvites || []).length > 0 && (
+                <div className="ops-legacy-invites">
+                  <p className="muted">Legacy portal invites</p>
+                  {(selected.partnerInvites || []).map((inv) => (
+                    <div className="ops-legacy-row" key={`leg-${inv.id}`}>
+                      <div>
+                        <strong>{inv.fullName}</strong>
+                        <span className="muted"> · {inv.email} · {inv.status}</span>
+                      </div>
+                      {inv.status !== 'COMPLETED' && inv.status !== 'CANCELLED' && (
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => void resendInvite(inv.id)}>
+                          Re-send
+                        </button>
+                      )}
                     </div>
-                    {inv.status !== 'COMPLETED' && inv.status !== 'CANCELLED' && (
-                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => void resendInvite(inv.id)}>
-                        Re-send legacy
-                      </button>
-                    )}
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          <section className="ops-drawer-section">
+            <div className="ops-drawer-section-head">
+              <h3>Roster</h3>
+            </div>
+            {(selected.associatedPersons || []).length === 0 ? (
+              <p className="muted">No associated persons (sole prop uses owner mobile KYC).</p>
+            ) : (
+              <div className="ops-roster-list">
+                {(selected.associatedPersons || []).map((p) => (
+                  <div className="ops-roster-item" key={p.id}>
+                    <strong>{p.fullName}</strong>
+                    <span className="muted">
+                      {p.roleType}{p.phone ? ` · ${p.phone}` : ''}{p.email ? ` · ${p.email}` : ''}
+                    </span>
                   </div>
                 ))}
               </div>
             )}
+          </section>
 
-            <div className="ops-block">
-              <h4>Partners / owner roster</h4>
-              {(selected.associatedPersons || []).length === 0 && (
-                <p className="muted">None on roster (sole prop uses owner mobile KYC only)</p>
-              )}
-              {(selected.associatedPersons || []).map((p) => (
-                <div className="doc-row" key={p.id}>
-                  <div>
-                    <strong>{p.fullName}</strong>
-                    <div className="muted">{p.roleType}{p.phone ? ` · ${p.phone}` : ''}{p.email ? ` · ${p.email}` : ''}</div>
-                  </div>
-                </div>
-              ))}
+          <section className="ops-drawer-section">
+            <div className="ops-drawer-section-head">
+              <h3>Documents</h3>
+              <p className="muted">Rejecting a file keeps the case open — applicant re-uploads that document only.</p>
             </div>
 
-            <div className="ops-block">
-              <h4>Documents — review each before approve</h4>
-              <p className="muted" style={{ marginTop: 0 }}>
-                Rejecting a document does <strong>not</strong> reject the whole client — applicant re-uploads that file only (status → INCOMPLETE).
-              </p>
-              {buildDocGroups(selected).map((group) => (
-                <div key={group.title} style={{ marginBottom: '1rem' }}>
-                  <h5 style={{ margin: '0 0 0.5rem', fontSize: '0.95rem' }}>{group.title}</h5>
-                  <div className="ops-thumb-grid">
-                    {group.docs.filter((d) => isPreviewable(d)).map((d) => (
-                      <DocThumb
-                        key={d.id}
-                        doc={d}
-                        label={humanizeDocKind(d.documentCode)}
-                        token={session.token}
-                        onOpen={() => setViewerDocId(d.id)}
-                        fetchBlob={fetchDocBlob}
-                      />
-                    ))}
-                  </div>
-                  {group.docs.map((d) => (
-                    <DocRow
-                      key={d.id}
-                      doc={d}
-                      label={humanizeDocKind(d.documentCode)}
-                      onView={() => setViewerDocId(d.id)}
-                      onApprove={() => void reviewDoc(d.id, true)}
-                      onReject={() => void reviewDoc(d.id, false)}
-                    />
-                  ))}
+            {buildDocGroups(selected).map((group) => (
+              <div className="ops-doc-group" key={group.title}>
+                <h4>{group.title}</h4>
+                <div className="ops-table-wrap">
+                  <table className="table ops-doc-table">
+                    <thead>
+                      <tr>
+                        <th>Document</th>
+                        <th>File</th>
+                        <th>Status</th>
+                        <th className="ops-col-actions">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.docs.map((d) => (
+                        <tr key={d.id} className={viewerDocId === d.id ? 'ops-row-active' : undefined}>
+                          <td>
+                            <div className="ops-doc-name-cell">
+                              <DocMiniThumb
+                                doc={d}
+                                fetchBlob={fetchDocBlob}
+                                onOpen={() => setViewerDocId(d.id)}
+                              />
+                              <div>
+                                <strong>{humanizeDocKind(d.documentCode)}</strong>
+                                {d.reviewNote && <div className="muted" style={{ fontSize: '0.78rem' }}>Note: {d.reviewNote}</div>}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="muted">
+                            <span className="ops-file-cell" title={d.originalName}>{d.originalName}</span>
+                          </td>
+                          <td>
+                            <span className={`status status-${docStatusClass(d.status)}`}>{statusLabel(d.status)}</span>
+                          </td>
+                          <td className="ops-col-actions">
+                            <div className="ops-doc-actions">
+                              {isPreviewable(d) && (
+                                <button
+                                  type="button"
+                                  className="ops-eye-btn ops-eye-btn--sm"
+                                  aria-label={`Preview ${humanizeDocKind(d.documentCode)}`}
+                                  title="Preview document"
+                                  onClick={() => setViewerDocId(d.id)}
+                                >
+                                  <EyeIcon />
+                                </button>
+                              )}
+                              {d.status === 'PENDING' && (
+                                <>
+                                  <button className="btn btn-primary btn-sm" type="button" onClick={() => void reviewDoc(d.id, true)}>
+                                    Approve
+                                  </button>
+                                  <button className="btn btn-danger btn-sm" type="button" onClick={() => void reviewDoc(d.id, false)}>
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-              {(selected.documents || []).length === 0 && (
-                <p className="muted">No documents uploaded yet.</p>
-              )}
-              {viewerDocId != null && (
-                <DocViewer
-                  docId={viewerDocId}
-                  doc={(selected.documents || []).find((d) => d.id === viewerDocId)}
-                  token={session.token}
-                  onClose={() => setViewerDocId(null)}
-                  fetchBlob={fetchDocBlob}
-                />
-              )}
-            </div>
-
-            <div className="ops-block">
-              <h4>Discrepancy note</h4>
-              <div className="form-row">
-                <textarea rows={3} value={discrepancy} onChange={(e) => setDiscrepancy(e.target.value)} placeholder="Ask applicant for corrections…" />
               </div>
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => void sendDiscrepancy(selected.id)}>
-                Send discrepancy
-              </button>
-            </div>
+            ))}
+            {(selected.documents || []).length === 0 && (
+              <p className="muted">No documents uploaded yet.</p>
+            )}
+          </section>
 
-            {(selected.status === 'PENDING_APPROVAL' || selected.status === 'SUBMITTED' || selected.status === 'INCOMPLETE') && (
-              <div className="ops-block">
-                <h4>Decision</h4>
-                {selected.status === 'INCOMPLETE' && (
-                  <p className="muted">
-                    Incomplete: missing or rejected documents. Applicant re-uploads rejected files only — full application is still open.
-                  </p>
+          <section className="ops-drawer-section">
+            <div className="ops-drawer-section-head">
+              <h3>Discrepancy note</h3>
+            </div>
+            <textarea
+              className="ops-drawer-textarea"
+              rows={3}
+              value={discrepancy}
+              onChange={(e) => setDiscrepancy(e.target.value)}
+              placeholder="Ask applicant for corrections…"
+            />
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => void sendDiscrepancy(selected.id)}>
+              Send discrepancy
+            </button>
+          </section>
+
+          {(selected.status === 'ACTIVE' || selected.status === 'PENDING_APPROVAL') && (
+            <section className="ops-drawer-section">
+              <div className="ops-drawer-section-head">
+                <h3>DFS account provision</h3>
+              </div>
+              <p className="muted ops-provision-line">
+                Status <strong>{selected.accountProvisionStatus || 'NOT_STARTED'}</strong>
+                {selected.dfsAccountId ? <> · ID <strong className="ops-mono">{selected.dfsAccountId}</strong></> : null}
+              </p>
+              {selected.accountProvisionError && (
+                <div className="alert alert-info">{selected.accountProvisionError}</div>
+              )}
+              {(selected.accountProvisionStatus === 'PENDING'
+                || selected.accountProvisionStatus === 'FAILED'
+                || selected.accountProvisionStatus === 'NOT_STARTED') && (
+                <button className="btn btn-primary btn-sm" type="button" onClick={() => void retryProvision(selected.id)}>
+                  Retry account create
+                </button>
+              )}
+            </section>
+          )}
+
+          {canDecide && (
+            <footer className="ops-case-footer">
+              <div className="ops-drawer-footer-copy">
+                {selected.status === 'PENDING_APPROVAL' && (
+                  <div className="ops-checklist">
+                    <span className={(selected.partnerKycTotal || 0) === 0 || selected.partnerKycCompleted === selected.partnerKycTotal ? 'ok' : ''}>
+                      KYC {selected.partnerKycCompleted ?? 0}/{selected.partnerKycTotal ?? 0}
+                    </span>
+                    <span className={(selected.docsPending ?? 0) === 0 ? 'ok' : ''}>
+                      Docs pending {selected.docsPending ?? 0}
+                    </span>
+                    <span className={(selected.docsRejected ?? 0) === 0 ? 'ok' : ''}>
+                      Rejected {selected.docsRejected ?? 0}
+                    </span>
+                    <span className={selected.sanctionsStatus === 'CLEAR' ? 'ok' : selected.sanctionsStatus === 'HIT' ? 'bad' : ''}>
+                      Sanctions {selected.sanctionsStatus || '—'}
+                    </span>
+                  </div>
                 )}
                 {selected.status === 'SUBMITTED' && (
-                  <p className="muted">Waiting for all partners to complete mobile app KYC before final approve. You can reject the full application, or mark KYC done / manual-approve above.</p>
+                  <p className="muted">Waiting on partner app KYC — you can still reject the full application.</p>
                 )}
-                {selected.status === 'PENDING_APPROVAL' && (
-                  <div className="alert alert-info" style={{ marginBottom: '0.75rem' }}>
-                    <strong>Pre-approve checklist</strong>
-                    <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.2rem' }}>
-                      <li>Partner app KYC: {(selected.partnerKycCompleted ?? 0)}/{(selected.partnerKycTotal ?? 0)}
-                        {(selected.partnerKycTotal || 0) > 0 && selected.partnerKycCompleted === selected.partnerKycTotal ? ' ✓' : ' — incomplete'}
-                      </li>
-                      <li>Documents pending review: {selected.docsPending ?? 0}
-                        {(selected.docsPending ?? 0) === 0 ? ' ✓' : ' — approve/reject each'}
-                      </li>
-                      <li>Documents rejected: {selected.docsRejected ?? 0}
-                        {(selected.docsRejected ?? 0) === 0 ? ' ✓' : ' — must be re-uploaded (client stays open)'}
-                      </li>
-                      <li>Sanctions: {selected.sanctionsStatus || '—'}
-                        {selected.sanctionsStatus === 'HIT' ? ' — block' : selected.sanctionsStatus === 'CLEAR' ? ' ✓' : ' (will clear on approve)'}
-                      </li>
-                    </ul>
-                    {!selected.docsReadyForApprove && (
-                      <p className="muted" style={{ margin: '0.5rem 0 0' }}>
-                        Approve stays disabled until every uploaded document is reviewed (no PENDING / REJECTED).
-                      </p>
-                    )}
-                  </div>
+                {selected.status === 'INCOMPLETE' && (
+                  <p className="muted">Incomplete: applicant must re-upload rejected documents.</p>
                 )}
-                <div className="form-row">
-                  <label>Full application reject reason (only if rejecting entire client)</label>
-                  <textarea rows={2} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
-                </div>
-                <div className="actions">
-                  <button className="btn btn-ghost" type="button" onClick={() => void clearSanctions(selected.id)}>Mark sanctions CLEAR</button>
-                  {selected.status === 'PENDING_APPROVAL' && (
-                    <button
-                      className="btn btn-primary"
-                      type="button"
-                      disabled={!selected.docsReadyForApprove}
-                      onClick={() => void approve(selected.id)}
-                    >
-                      Approve entity
-                    </button>
-                  )}
-                  <button className="btn btn-danger" type="button" onClick={() => void reject(selected.id)}>Reject full application</button>
-                </div>
+                <textarea
+                  className="ops-drawer-textarea ops-drawer-textarea--compact"
+                  rows={2}
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Full application reject reason (required to reject)"
+                />
               </div>
-            )}
-
-            {selected.status === 'ACTIVE' || selected.status === 'PENDING_APPROVAL' ? (
-              <div className="ops-block">
-                <h4>DFS backend account provision</h4>
-                <p className="muted" style={{ marginTop: 0 }}>
-                  Status: <strong>{selected.accountProvisionStatus || 'NOT_STARTED'}</strong>
-                  {selected.dfsAccountId ? <> · ID <strong>{selected.dfsAccountId}</strong></> : null}
-                </p>
-                {selected.accountProvisionError && (
-                  <div className="alert alert-info">{selected.accountProvisionError}</div>
-                )}
-                {(selected.accountProvisionStatus === 'PENDING'
-                  || selected.accountProvisionStatus === 'FAILED'
-                  || selected.accountProvisionStatus === 'NOT_STARTED') && (
-                  <button className="btn btn-primary btn-sm" type="button" onClick={() => void retryProvision(selected.id)}>
-                    Retry DFS backend account create
+              <div className="ops-drawer-footer-actions">
+                <button className="btn btn-ghost" type="button" onClick={() => void clearSanctions(selected.id)}>
+                  Clear sanctions
+                </button>
+                {selected.status === 'PENDING_APPROVAL' && (
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    disabled={!selected.docsReadyForApprove}
+                    onClick={() => void approve(selected.id)}
+                  >
+                    Approve entity
                   </button>
                 )}
+                <button className="btn btn-danger" type="button" onClick={() => void reject(selected.id)}>
+                  Reject application
+                </button>
               </div>
-            ) : null}
-          </aside>
-        )}
-      </div>
+            </footer>
+          )}
+        </div>
+      )}
+
+      {viewerDocId != null && selected && (
+        <DocOverlay
+          docId={viewerDocId}
+          doc={(selected.documents || []).find((d) => d.id === viewerDocId)}
+          fetchBlob={fetchDocBlob}
+          onClose={() => setViewerDocId(null)}
+        />
+      )}
     </div>
   );
 }
 
-function DocRow({
+
+function docStatusClass(status: string) {
+  if (status === 'APPROVED') return 'ACTIVE';
+  if (status === 'REJECTED') return 'REJECTED';
+  return 'PENDING_APPROVAL';
+}
+
+function isImageDoc(doc?: Doc) {
+  if (!doc) return false;
+  const ct = (doc.contentType || '').toLowerCase();
+  if (ct.startsWith('image/')) return true;
+  return /\.(jpe?g|png|gif|webp)$/i.test(doc.originalName || '');
+}
+
+function isVideoDoc(doc?: Doc) {
+  if (!doc) return false;
+  const ct = (doc.contentType || '').toLowerCase();
+  if (ct.startsWith('video/')) return true;
+  return /\.(mp4|webm|mov|3gp)$/i.test(doc.originalName || '');
+}
+
+function DocMiniThumb({
   doc,
-  label,
-  onView,
-  onApprove,
-  onReject,
+  fetchBlob,
+  onOpen,
 }: {
   doc: Doc;
-  label: string;
-  onView: () => void;
-  onApprove: () => void;
-  onReject: () => void;
+  fetchBlob: (id: number) => Promise<string>;
+  onOpen: () => void;
 }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const canPreview = isPreviewable(doc) && isImageDoc(doc);
+
+  useEffect(() => {
+    let url: string | null = null;
+    if (!canPreview) return;
+    fetchBlob(doc.id)
+      .then((u) => { url = u; setSrc(u); })
+      .catch(() => undefined);
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [doc.id, canPreview, fetchBlob]);
+
+  if (!isPreviewable(doc)) {
+    return <span className="ops-doc-mini ops-doc-mini--empty">—</span>;
+  }
+
   return (
-    <div className="doc-row">
-      <div>
-        <strong>{label}</strong>
-        <div className="muted">{doc.documentCode} · {doc.originalName}</div>
-        {doc.reviewNote && <div className="muted">Note: {doc.reviewNote}</div>}
-      </div>
-      <div className="actions" style={{ marginTop: 0 }}>
-        <span className={`status status-${doc.status === 'APPROVED' ? 'ACTIVE' : doc.status === 'REJECTED' ? 'REJECTED' : 'PENDING_APPROVAL'}`}>
-          {doc.status}
-        </span>
-        <button className="btn btn-ghost btn-sm" type="button" onClick={onView}>View</button>
-        {doc.status === 'PENDING' && (
-          <>
-            <button className="btn btn-ghost btn-sm" type="button" onClick={onApprove}>Approve</button>
-            <button className="btn btn-danger btn-sm" type="button" onClick={onReject}>Reject</button>
-          </>
-        )}
+    <button type="button" className="ops-doc-mini" onClick={onOpen} title="Preview" aria-label="Preview document">
+      {src ? <img src={src} alt="" /> : <span>{isVideoDoc(doc) ? 'VID' : 'DOC'}</span>}
+    </button>
+  );
+}
+
+function DocOverlay({
+  docId,
+  doc,
+  onClose,
+  fetchBlob,
+}: {
+  docId: number;
+  doc?: Doc;
+  onClose: () => void;
+  fetchBlob: (id: number) => Promise<string>;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [err, setErr] = useState('');
+  const [loading, setLoading] = useState(true);
+  const image = isImageDoc(doc);
+  const video = isVideoDoc(doc);
+
+  useEffect(() => {
+    let url: string | null = null;
+    setSrc(null);
+    setErr('');
+    setLoading(true);
+    fetchBlob(docId)
+      .then((u) => { url = u; setSrc(u); })
+      .catch((e) => setErr(e instanceof Error ? e.message : 'Load failed'))
+      .finally(() => setLoading(false));
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [docId, fetchBlob]);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  return (
+    <div className="ops-doc-overlay" role="dialog" aria-modal="true" aria-label="Document preview">
+      <button type="button" className="ops-doc-overlay-backdrop" aria-label="Close preview" onClick={onClose} />
+      <div className="ops-doc-overlay-panel">
+        <header className="ops-doc-overlay-head">
+          <div>
+            <strong>{doc ? humanizeDocKind(doc.documentCode) : `Document #${docId}`}</strong>
+            {doc?.originalName && <div className="muted" style={{ fontSize: '0.8rem' }}>{doc.originalName}</div>}
+          </div>
+          <button type="button" className="ops-doc-overlay-close" aria-label="Close" onClick={onClose}>
+            <CloseIcon />
+          </button>
+        </header>
+        <div className="ops-doc-overlay-body">
+          {loading && <p className="muted">Loading document…</p>}
+          {err && <div className="alert alert-error">{err}</div>}
+          {!loading && src && image && <img className="ops-doc-overlay-media" src={src} alt={doc?.originalName || 'Document'} />}
+          {!loading && src && video && <video className="ops-doc-overlay-media" src={src} controls autoPlay />}
+          {!loading && src && !image && !video && <iframe title="Document" src={src} className="ops-doc-overlay-frame" />}
+        </div>
       </div>
     </div>
   );
@@ -882,7 +1066,7 @@ function DocThumb({
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let url: string | null = null;
-    if (!isPreviewable(doc)) return;
+    if (!isPreviewable(doc) || !isImageDoc(doc)) return;
     fetchBlob(doc.id).then((u) => { url = u; setSrc(u); }).catch(() => undefined);
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [doc.id, doc.contentType, doc.originalName, fetchBlob]);
@@ -894,45 +1078,135 @@ function DocThumb({
   );
 }
 
-function DocViewer({
-  docId,
-  doc,
-  onClose,
+function SpecimenSignatureCard({
+  partner,
+  sheetDoc,
+  sheetPdf,
+  sheetPng,
+  sheetJpeg,
+  originalDoc,
   fetchBlob,
+  onOpen,
 }: {
-  docId: number;
-  doc?: Doc;
+  partner: AppUser;
+  sheetDoc: Doc;
+  sheetPdf?: Doc;
+  sheetPng?: Doc;
+  sheetJpeg?: Doc;
+  originalDoc?: Doc;
   token: string;
-  onClose: () => void;
   fetchBlob: (id: number) => Promise<string>;
+  onOpen: (id: number) => void;
 }) {
   const [src, setSrc] = useState<string | null>(null);
-  const [err, setErr] = useState('');
-  const isVideo =
-    (doc?.contentType || '').toLowerCase().startsWith('video/') ||
-    /\.(mp4|webm|mov|3gp)$/i.test(doc?.originalName || '');
+  const printRef = useRef<HTMLDivElement>(null);
+  const displayName = partner.cnicFullName || partner.fullName;
+  const captured = new Date().toLocaleDateString();
 
   useEffect(() => {
     let url: string | null = null;
-    fetchBlob(docId)
-      .then((u) => { url = u; setSrc(u); })
-      .catch((e) => setErr(e instanceof Error ? e.message : 'Load failed'));
-    return () => { if (url) URL.revokeObjectURL(url); };
-  }, [docId, fetchBlob]);
+    fetchBlob(sheetDoc.id)
+      .then((u) => {
+        url = u;
+        setSrc(u);
+      })
+      .catch(() => undefined);
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [sheetDoc.id, fetchBlob]);
+
+  function printCard() {
+    const node = printRef.current;
+    if (!node) return;
+    const win = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><title>Specimen Signature — ${displayName}</title>
+      <style>
+        body { font-family: Georgia, "Times New Roman", serif; color: #111; margin: 24px; }
+        .ss-card { border: 2px solid #222; padding: 16px 18px; max-width: 720px; }
+        .ss-title { letter-spacing: 0.12em; font-size: 13px; font-weight: 700; text-transform: uppercase; margin: 0 0 12px; }
+        .ss-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; font-size: 13px; margin-bottom: 14px; }
+        .ss-meta span { color: #555; display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+        .ss-sheet { width: 100%; border: 1px solid #ccc; background: #fff; }
+        .ss-foot { margin-top: 10px; font-size: 11px; color: #666; }
+      </style></head><body>${node.innerHTML}<script>window.onload=()=>{window.print();}</script></body></html>`);
+    win.document.close();
+  }
 
   return (
-    <div className="ops-viewer">
-      <div className="ops-viewer-bar">
-        <strong>{doc ? humanizeDocKind(doc.documentCode) : `Document #${docId}`}</strong>
-        <button className="btn btn-ghost btn-sm" type="button" onClick={onClose}>Close viewer</button>
+    <div className="ss-card-wrap">
+      <div className="ss-card-toolbar">
+        <strong>Specimen signature card</strong>
+        <div className="actions" style={{ marginTop: 0 }}>
+          <button className="btn btn-primary btn-sm" type="button" onClick={printCard}>
+            Print SS card
+          </button>
+          {sheetPdf && (
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => onOpen(sheetPdf.id)}>
+              PDF
+            </button>
+          )}
+          {sheetPng && (
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => onOpen(sheetPng.id)}>
+              PNG
+            </button>
+          )}
+          {sheetJpeg && (
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => onOpen(sheetJpeg.id)}>
+              JPEG
+            </button>
+          )}
+          {originalDoc && (
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => onOpen(originalDoc.id)}>
+              Original
+            </button>
+          )}
+        </div>
       </div>
-      {err && <div className="alert alert-error">{err}</div>}
-      {src && isVideo && (
-        <video src={src} controls className="ops-viewer-frame" style={{ maxWidth: '100%' }} />
-      )}
-      {src && !isVideo && (
-        <iframe title="Document" src={src} className="ops-viewer-frame" />
-      )}
+      <div className="ss-card" ref={printRef}>
+        <p className="ss-title">Specimen Signature</p>
+        <div className="ss-meta">
+          <div>
+            <span>Name</span>
+            <strong>{displayName}</strong>
+          </div>
+          <div>
+            <span>CNIC</span>
+            <strong>{partner.cnicNumber || '—'}</strong>
+          </div>
+          <div>
+            <span>Phone</span>
+            <strong>{partner.phone || '—'}</strong>
+          </div>
+          <div>
+            <span>Date</span>
+            <strong>{captured}</strong>
+          </div>
+        </div>
+        <div className="ss-sheet-frame">
+          {src ? (
+            <button type="button" className="ss-sheet-btn" onClick={() => onOpen(sheetDoc.id)}>
+              <img className="ss-sheet" src={src} alt="Specimen signature 4-up" />
+            </button>
+          ) : (
+            <div className="ops-signature-grid">
+              {[0, 1, 2, 3].map((i) => (
+                <DocThumb
+                  key={`${sheetDoc.id}-${i}`}
+                  doc={sheetDoc}
+                  label={`Sig ${i + 1}`}
+                  token=""
+                  onOpen={() => onOpen(sheetDoc.id)}
+                  fetchBlob={fetchBlob}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+        <p className="ss-foot">Same signature image placed in four boxes for specimen record / print.</p>
+      </div>
     </div>
   );
 }
+

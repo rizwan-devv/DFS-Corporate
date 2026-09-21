@@ -19,6 +19,8 @@ public class PartnerAppUserResponse {
     private int kycAttemptsRemaining;
     private boolean bankVisitRequired;
     private boolean signatureUploaded;
+    private String cnicNumber;
+    private String cnicFullName;
     private String manualKycApproveReason;
     private String manualKycApprovedBy;
     private Instant manualKycApprovedAt;
@@ -51,6 +53,10 @@ public class PartnerAppUserResponse {
     public void setBankVisitRequired(boolean bankVisitRequired) { this.bankVisitRequired = bankVisitRequired; }
     public boolean isSignatureUploaded() { return signatureUploaded; }
     public void setSignatureUploaded(boolean signatureUploaded) { this.signatureUploaded = signatureUploaded; }
+    public String getCnicNumber() { return cnicNumber; }
+    public void setCnicNumber(String cnicNumber) { this.cnicNumber = cnicNumber; }
+    public String getCnicFullName() { return cnicFullName; }
+    public void setCnicFullName(String cnicFullName) { this.cnicFullName = cnicFullName; }
     public String getManualKycApproveReason() { return manualKycApproveReason; }
     public void setManualKycApproveReason(String manualKycApproveReason) { this.manualKycApproveReason = manualKycApproveReason; }
     public String getManualKycApprovedBy() { return manualKycApprovedBy; }

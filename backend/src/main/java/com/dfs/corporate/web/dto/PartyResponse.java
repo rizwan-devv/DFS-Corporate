@@ -49,7 +49,6 @@ public class PartyResponse {
     private ScreeningStatus sanctionsStatus;
     private IdentityVerificationStatus identityVerificationStatus;
     private String identityVerificationMethod;
-    private RiskRating riskRating;
     private Boolean eddRequired;
     private String eddNotes;
     private String videoKycRef;
@@ -122,7 +121,6 @@ public class PartyResponse {
         r.sanctionsStatus = p.getSanctionsStatus();
         r.identityVerificationStatus = p.getIdentityVerificationStatus();
         r.identityVerificationMethod = p.getIdentityVerificationMethod();
-        r.riskRating = p.getRiskRating();
         r.eddRequired = p.getEddRequired();
         r.eddNotes = p.getEddNotes();
         r.videoKycRef = p.getVideoKycRef();
@@ -284,7 +282,6 @@ public class PartyResponse {
     public ScreeningStatus getSanctionsStatus() { return sanctionsStatus; }
     public IdentityVerificationStatus getIdentityVerificationStatus() { return identityVerificationStatus; }
     public String getIdentityVerificationMethod() { return identityVerificationMethod; }
-    public RiskRating getRiskRating() { return riskRating; }
     public Boolean getEddRequired() { return eddRequired; }
     public String getEddNotes() { return eddNotes; }
     public String getVideoKycRef() { return videoKycRef; }

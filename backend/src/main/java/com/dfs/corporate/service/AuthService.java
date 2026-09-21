@@ -4,7 +4,9 @@ import com.dfs.corporate.domain.*;
 import com.dfs.corporate.repository.AccountRepository;
 import com.dfs.corporate.repository.BrandRepository;
 import com.dfs.corporate.repository.PartyRepository;
+import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.security.JwtService;
+import com.dfs.corporate.web.dto.ChangePasswordRequest;
 import com.dfs.corporate.web.dto.LoginRequest;
 import com.dfs.corporate.web.dto.SignupRequest;
 import com.dfs.corporate.web.dto.VerifyOtpRequest;
@@ -225,6 +227,30 @@ public class AuthService {
         res.put("partyPublicId", party.getPublicId());
         res.put("fullName", party.getFullName());
         res.put("firstLogin", account.isFirstLogin());
+        return res;
+    }
+
+    @Transactional
+    public Map<String, Object> changePassword(AccountPrincipal principal, ChangePasswordRequest req) {
+        if (req.getNewPassword() == null || req.getNewPassword().length() < 8) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "New password must be at least 8 characters");
+        }
+        if (req.getNewPassword().equals(req.getCurrentPassword())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "New password must be different from current password");
+        }
+        Account account = accountRepository.findById(principal.getAccountId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Account not found"));
+        if (account.getPasswordHash() == null
+                || !passwordEncoder.matches(req.getCurrentPassword(), account.getPasswordHash())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Current password is incorrect");
+        }
+        account.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
+        account.setFirstLogin(false);
+        accountRepository.save(account);
+
+        Map<String, Object> res = new HashMap<>();
+        res.put("message", "Password updated");
+        res.put("firstLogin", false);
         return res;
     }
 }

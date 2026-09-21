@@ -73,7 +73,6 @@ type Party = {
   purposeOfAccount?: string;
   intendedRelationship?: string;
   termsAccepted?: boolean;
-  riskRating?: string;
   eddRequired?: boolean;
   eddNotes?: string;
   videoKycRef?: string;
@@ -109,7 +108,7 @@ export function OnboardingPage() {
     addressDifferenceReason: '', city: '', country: 'Pakistan', phone: '',
     natureOfBusiness: '', businessLicenseDetails: '', purposeOfAccount: '',
     intendedRelationship: '', termsAccepted: false, onboardingStep: 2,
-    geoLocation: '', riskRating: 'MEDIUM', eddRequired: false, eddNotes: '', videoKycRef: '',
+    geoLocation: '', eddRequired: false, eddNotes: '', videoKycRef: '',
   });
   const [roster, setRoster] = useState({
     fullName: '', email: '', phone: '',
@@ -147,7 +146,6 @@ export function OnboardingPage() {
       purposeOfAccount: data.purposeOfAccount || '',
       intendedRelationship: data.intendedRelationship || '',
       termsAccepted: !!data.termsAccepted,
-      riskRating: data.riskRating || 'MEDIUM',
       eddRequired: !!data.eddRequired,
       eddNotes: data.eddNotes || '',
       videoKycRef: data.videoKycRef || '',
@@ -249,7 +247,7 @@ export function OnboardingPage() {
     try {
       const data = await api<Party>('/api/onboarding/submit', { method: 'POST', token: session!.token });
       setParty(data);
-      setOk(`Submitted. Tracking ${data.trackingId}. Partners will get mobile app KYC emails (check backend logs if mail off). Status: ${data.status}`);
+      setOk(`Submitted. Tracking ${data.trackingId}. Check your email for portal login (temporary password — change on first login). Partners will get mobile app KYC emails. Status: ${data.status}`);
       setStep(5);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Submit failed');
@@ -385,10 +383,6 @@ export function OnboardingPage() {
                 <input required value={entity.purposeOfAccount} onChange={(e) => setEntity({ ...entity, purposeOfAccount: e.target.value })} /></div>
               <div className="form-row"><label>Intended nature of relationship</label>
                 <input value={entity.intendedRelationship} onChange={(e) => setEntity({ ...entity, intendedRelationship: e.target.value })} /></div>
-              <div className="form-row"><label>Risk rating (CRP)</label>
-                <select value={entity.riskRating} onChange={(e) => setEntity({ ...entity, riskRating: e.target.value })}>
-                  <option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option>
-                </select></div>
               <label className="form-check">
                 <input type="checkbox" checked={entity.termsAccepted} onChange={(e) => setEntity({ ...entity, termsAccepted: e.target.checked })} />
                 I accept terms &amp; conditions for this entity account/wallet.

@@ -1,6 +1,7 @@
 package com.dfs.corporate.service;
 
 import com.dfs.corporate.domain.*;
+import com.dfs.corporate.repository.AccountRepository;
 import com.dfs.corporate.repository.AssociatedPersonRepository;
 import com.dfs.corporate.repository.PartyDocumentRepository;
 import com.dfs.corporate.repository.PartyRepository;
@@ -11,10 +12,12 @@ import com.dfs.corporate.web.dto.PartyResponse;
 import com.dfs.corporate.web.dto.ProfileUpdateRequest;
 import com.dfs.corporate.web.error.ApiException;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.security.SecureRandom;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -31,24 +34,34 @@ public class OnboardingService {
     private final PartyDocumentRepository documentRepository;
     private final RequiredDocumentRepository requiredDocumentRepository;
     private final AssociatedPersonRepository associatedPersonRepository;
+    private final AccountRepository accountRepository;
     private final PartnerAppUserService partnerAppUserService;
     private final FileStorageService fileStorageService;
     private final PartyStatusSyncService partyStatusSyncService;
+    private final PasswordEncoder passwordEncoder;
+    private final MailService mailService;
+    private final SecureRandom random = new SecureRandom();
 
     public OnboardingService(PartyRepository partyRepository,
                              PartyDocumentRepository documentRepository,
                              RequiredDocumentRepository requiredDocumentRepository,
                              AssociatedPersonRepository associatedPersonRepository,
+                             AccountRepository accountRepository,
                              PartnerAppUserService partnerAppUserService,
                              FileStorageService fileStorageService,
-                             PartyStatusSyncService partyStatusSyncService) {
+                             PartyStatusSyncService partyStatusSyncService,
+                             PasswordEncoder passwordEncoder,
+                             MailService mailService) {
         this.partyRepository = partyRepository;
         this.documentRepository = documentRepository;
         this.requiredDocumentRepository = requiredDocumentRepository;
         this.associatedPersonRepository = associatedPersonRepository;
+        this.accountRepository = accountRepository;
         this.partnerAppUserService = partnerAppUserService;
         this.fileStorageService = fileStorageService;
         this.partyStatusSyncService = partyStatusSyncService;
+        this.passwordEncoder = passwordEncoder;
+        this.mailService = mailService;
     }
 
     public PartyResponse me(AccountPrincipal principal) {
@@ -107,7 +120,6 @@ public class OnboardingService {
         party.setUserAgent(userAgent != null && userAgent.length() > 500 ? userAgent.substring(0, 500) : userAgent);
         if (req.getGeoLocation() != null) party.setGeoLocation(req.getGeoLocation());
         if (req.getOnboardingStep() != null) party.setOnboardingStep(req.getOnboardingStep());
-        if (req.getRiskRating() != null) party.setRiskRating(req.getRiskRating());
         if (req.getEddRequired() != null) party.setEddRequired(req.getEddRequired());
         if (req.getEddNotes() != null) party.setEddNotes(req.getEddNotes());
         if (req.getVideoKycRef() != null) party.setVideoKycRef(req.getVideoKycRef());
@@ -235,7 +247,51 @@ public class OnboardingService {
         partnerAppUserService.provisionOnSubmit(party);
         partnerAppUserService.tryAdvanceParty(party.getId());
 
+        // Portal login credentials so applicant can return for re-upload before final approve
+        issuePortalCredentialsOnSubmit(party);
+
         return enrich(partyRepository.findById(party.getId()).orElse(party));
+    }
+
+    private void issuePortalCredentialsOnSubmit(Party party) {
+        Account account = accountRepository.findByPartyId(party.getId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Account missing"));
+        String rawPassword = generateTempPassword();
+        account.setPasswordHash(passwordEncoder.encode(rawPassword));
+        account.setFirstLogin(true);
+        accountRepository.save(account);
+
+        mailService.send(party.getEmail(), "DFS Corporate — Portal login credentials",
+                """
+                Hello %s,
+
+                Your application (%s) has been submitted.
+
+                Portal login:
+                  Email: %s
+                  Temporary password: %s
+
+                On first login you must change this password.
+                Use the new password to track status and re-upload any documents rejected by backoffice.
+
+                Tracking ID: %s
+
+                — DFS Corporate
+                """.formatted(
+                        party.getFullName(),
+                        party.getTrackingId(),
+                        party.getEmail(),
+                        rawPassword,
+                        party.getTrackingId()));
+    }
+
+    private String generateTempPassword() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 12; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return sb.toString();
     }
 
     public List<RequiredDocument> requiredFor(PartyType type) {

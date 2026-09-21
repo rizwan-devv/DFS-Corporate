@@ -22,6 +22,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { PortalUsersPage } from './pages/PortalUsersPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
 import { SignaturePage } from './pages/SignaturePage';
+import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { ThemeProvider } from './theme/ThemeContext';
 
 export default function App() {
@@ -37,9 +38,11 @@ export default function App() {
               <Route path="/franchise-onboard" element={<FranchiseOnboardPage />} />
               <Route path="/verify-otp" element={<VerifyOtpPage />} />
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/change-password" element={<ChangePasswordPage />} />
               <Route path="/onboarding" element={<OnboardingPage />} />
               <Route path="/partner-kyc/:token" element={<PartnerKycPage />} />
               <Route path="/admin" element={<AdminPage />} />
+              <Route path="/admin/review/:partyId" element={<AdminPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/signature/:appUserId" element={<SignaturePage />} />
               <Route path="/invites" element={<InvitesPage />} />

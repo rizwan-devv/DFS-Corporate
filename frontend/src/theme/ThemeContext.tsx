@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { THEME_ORDER, isThemeMode, type ThemeMode } from './themeModes';
+import { THEME_ORDER, isLightScheme, isThemeMode, type ThemeMode } from './themeModes';
 
 type ThemeCtx = {
   theme: ThemeMode;
@@ -25,7 +25,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.style.colorScheme = isLightScheme(theme) ? 'light' : 'dark';
     try {
       localStorage.setItem(KEY, theme);
     } catch {

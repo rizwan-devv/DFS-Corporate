@@ -8,6 +8,7 @@ export type Session = {
   partyType?: string;
   partyPublicId?: string;
   fullName?: string;
+  firstLogin?: boolean;
 };
 
 type AuthCtx = {
