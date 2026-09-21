@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
+import { TransferBackBar } from '../../components/TransferBackBar';
 import { api, apiUrl } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import type { MockTransfer, UbpBill, UbpCategory } from '../../lib/transferTypes';
@@ -211,17 +212,15 @@ export function UbpTransferPage() {
 
   return (
     <div className="portal-page">
+      <TransferBackBar />
       <PageHeader
         eyebrow="Transfers"
         title="Utility Bill Payment"
         subtitle="Pakistan billers — electricity, gas, water, internet, mobile & tickets (mock)."
         actions={
-          <div className="actions" style={{ marginTop: 0 }}>
-            <Link className="btn btn-ghost btn-sm" to="/transfers">All products</Link>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()}>
-              Refresh
-            </button>
-          </div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()}>
+            Refresh
+          </button>
         }
       />
 

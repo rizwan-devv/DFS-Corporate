@@ -2,6 +2,7 @@ import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
+import { TransfersNavGroup } from './TransfersNavGroup';
 
 const PUBLIC_PATHS = new Set([
   '/',
@@ -101,14 +102,7 @@ export function Layout() {
                     <span className="portal-link-icon">▭</span>
                     Cards
                   </NavLink>
-                  <NavLink to="/transfers" className="portal-link">
-                    <span className="portal-link-icon">↗</span>
-                    Transfers
-                  </NavLink>
-                  <NavLink to="/beneficiaries" className="portal-link">
-                    <span className="portal-link-icon">◎</span>
-                    Beneficiaries
-                  </NavLink>
+                  <TransfersNavGroup />
                 </>
               )}
               {isAdmin && (
@@ -149,14 +143,7 @@ export function Layout() {
                         <span className="portal-link-icon">▭</span>
                         Cards
                       </NavLink>
-                      <NavLink to="/transfers" className="portal-link">
-                        <span className="portal-link-icon">↗</span>
-                        Transfers
-                      </NavLink>
-                      <NavLink to="/beneficiaries" className="portal-link">
-                        <span className="portal-link-icon">◎</span>
-                        Beneficiaries
-                      </NavLink>
+                      <TransfersNavGroup />
                     </>
                   )}
                   {showMerchantOps && (

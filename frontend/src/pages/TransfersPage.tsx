@@ -26,35 +26,20 @@ export function TransfersPage() {
       <PageHeader
         eyebrow="Finance"
         title="Transfers"
-        subtitle="Choose a payment rail. Each product has its own workspace — single, bulk where supported, and history."
-        actions={
-          <Link className="btn btn-ghost btn-sm" to="/beneficiaries">
-            Beneficiaries
-          </Link>
-        }
+        subtitle="Select a product to continue."
       />
 
-      <div className="alert alert-info" style={{ marginBottom: '1.25rem' }}>
-        <strong>Mock mode</strong> — portal demos only. No live AgentApp settlement.
-      </div>
-
-      <div className="transfer-hub-grid">
+      <div className="transfer-menu" role="menu" aria-label="Transfer products">
         {TRANSFER_PRODUCTS.map((p) => (
-          <Link key={p.id} to={p.path} className="transfer-hub-card">
-            <span className="transfer-hub-code">{p.short}</span>
-            <h3>{p.title}</h3>
-            <p>{p.blurb}</p>
-            <span className="transfer-hub-meta">
-              {p.bulk ? 'Single · Bulk CSV' : 'Single · QR'}
+          <Link key={p.id} to={p.path} className="transfer-menu-item" role="menuitem">
+            <span className="transfer-menu-code">{p.short}</span>
+            <span className="transfer-menu-body">
+              <span className="transfer-menu-title">{p.title}</span>
+              <span className="transfer-menu-blurb">{p.blurb}</span>
             </span>
+            <span className="transfer-menu-arrow" aria-hidden>→</span>
           </Link>
         ))}
-        <Link to="/beneficiaries" className="transfer-hub-card transfer-hub-card--accent">
-          <span className="transfer-hub-code">BEN</span>
-          <h3>Beneficiaries</h3>
-          <p>Maintain payees once, then select them on FT, IBFT, and Raast.</p>
-          <span className="transfer-hub-meta">Add · Edit · Deactivate</span>
-        </Link>
       </div>
     </div>
   );
