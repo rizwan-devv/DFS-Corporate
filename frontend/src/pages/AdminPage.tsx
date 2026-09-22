@@ -179,6 +179,7 @@ export function AdminPage() {
   const [discrepancy, setDiscrepancy] = useState('');
   const [viewerDocId, setViewerDocId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [amlRefreshing, setAmlRefreshing] = useState(false);
 
   const token = session?.token;
 
@@ -354,6 +355,36 @@ export function AdminPage() {
     await open(id);
   }
 
+  async function refreshAmlWatchlist() {
+    if (!session?.token) return;
+    if (!window.confirm('Download official OFAC + UN lists and replace prior OFAC/UN rows? INTERNAL demo CNICs are kept.')) {
+      return;
+    }
+    setError('');
+    setOk('');
+    setAmlRefreshing(true);
+    try {
+      const res = await api<{
+        message?: string;
+        ofacPrimaryNames?: number;
+        ofacAliasNames?: number;
+        unNames?: number;
+        activeTotal?: number;
+        errors?: string[];
+        elapsedMs?: number;
+      }>('/api/admin/aml/watchlist/refresh', { method: 'POST', token: session.token });
+      const errs = res.errors?.length ? ` (${res.errors.join('; ')})` : '';
+      setOk(
+        `${res.message || 'Watchlist refreshed'}: OFAC ${res.ofacPrimaryNames ?? 0}+${res.ofacAliasNames ?? 0} aliases, ` +
+          `UN ${res.unNames ?? 0}, active ${res.activeTotal ?? 0} (${res.elapsedMs ?? 0} ms)${errs}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AML watchlist refresh failed');
+    } finally {
+      setAmlRefreshing(false);
+    }
+  }
+
   async function sendDiscrepancy(id: number) {
     if (!discrepancy.trim()) { setError('Discrepancy note required'); return; }
     setError(''); setOk('');
@@ -506,6 +537,15 @@ export function AdminPage() {
           </label>
           <button className="btn btn-ghost btn-sm" type="button" disabled={loading} onClick={() => void refresh()}>
             {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            type="button"
+            disabled={amlRefreshing}
+            onClick={() => void refreshAmlWatchlist()}
+            title="Download OFAC SDN/ALT + UN XML into local watchlist"
+          >
+            {amlRefreshing ? 'Importing lists…' : 'Refresh AML lists'}
           </button>
         </div>
       </div>

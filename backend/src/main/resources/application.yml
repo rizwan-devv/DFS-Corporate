@@ -92,6 +92,17 @@ dfs:
 aml:
   # Name similarity (0-100). At or above → MANUAL_REVIEW. CNIC exact match is always HIT.
   fuzzy-threshold: ${AML_FUZZY_THRESHOLD:88}
+  import:
+    # Weekly download of official OFAC SDN (+ ALT) CSV and UN consolidated XML (not HTML scrape).
+    schedule-enabled: ${AML_IMPORT_SCHEDULE_ENABLED:true}
+    cron: ${AML_IMPORT_CRON:0 0 2 * * SUN}
+    ofac-enabled: ${AML_IMPORT_OFAC_ENABLED:true}
+    un-enabled: ${AML_IMPORT_UN_ENABLED:true}
+    ofac-sdn-url: ${AML_IMPORT_OFAC_SDN_URL:https://sanctionslistservice.ofac.treas.gov/api/download/SDN.CSV}
+    ofac-alt-url: ${AML_IMPORT_OFAC_ALT_URL:https://sanctionslistservice.ofac.treas.gov/api/download/ALT.CSV}
+    un-xml-url: ${AML_IMPORT_UN_XML_URL:https://scsanctions.un.org/resources/xml/en/consolidated.xml}
+    # Cap rows per source file to protect DB during first import / demos
+    max-names: ${AML_IMPORT_MAX_NAMES:50000}
 
 logging:
   level:

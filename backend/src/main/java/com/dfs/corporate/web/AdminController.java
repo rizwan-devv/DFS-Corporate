@@ -2,6 +2,7 @@ package com.dfs.corporate.web;
 
 import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.service.AdminOnboardingService;
+import com.dfs.corporate.service.AmlWatchlistImportService;
 import com.dfs.corporate.web.dto.PartnerAppUserResponse;
 import com.dfs.corporate.web.dto.PartnerInviteResponse;
 import com.dfs.corporate.web.dto.PartyResponse;
@@ -23,9 +24,12 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminOnboardingService adminOnboardingService;
+    private final AmlWatchlistImportService amlWatchlistImportService;
 
-    public AdminController(AdminOnboardingService adminOnboardingService) {
+    public AdminController(AdminOnboardingService adminOnboardingService,
+                           AmlWatchlistImportService amlWatchlistImportService) {
         this.adminOnboardingService = adminOnboardingService;
+        this.amlWatchlistImportService = amlWatchlistImportService;
     }
 
     @GetMapping("/brands")
@@ -117,6 +121,12 @@ public class AdminController {
     @PostMapping(value = "/aml/watchlist/csv", consumes = MediaType.TEXT_PLAIN_VALUE)
     public Map<String, Object> importAml(@RequestBody String csv) {
         return adminOnboardingService.importAmlCsv(csv);
+    }
+
+    /** Download + parse official OFAC SDN/ALT CSV and UN consolidated XML (no scraping). */
+    @PostMapping("/aml/watchlist/refresh")
+    public Map<String, Object> refreshAmlWatchlist() {
+        return amlWatchlistImportService.refreshOfficialLists();
     }
 
     @PostMapping("/parties/{id}/identity-verification")
