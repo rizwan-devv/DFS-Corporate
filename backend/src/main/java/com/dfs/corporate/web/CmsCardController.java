@@ -5,6 +5,8 @@ import com.dfs.corporate.service.CmsCardService;
 import com.dfs.corporate.web.dto.CmsCardInquiryRequest;
 import com.dfs.corporate.web.dto.CmsCardSearchRequest;
 import com.dfs.corporate.web.dto.CmsCardStatusUpdateRequest;
+import com.dfs.corporate.web.dto.CmsRelationshipLinkRequest;
+import com.dfs.corporate.web.dto.PartyResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -60,6 +62,16 @@ public class CmsCardController {
                             @Valid @RequestBody CmsCardInquiryRequest req) {
         String who = principal != null ? String.valueOf(principal.getUsername()) : "unknown";
         return cmsCardService.inquire(req, who);
+    }
+
+    /**
+     * Link CMS Relationship # for this merchant (AgentApp /card/inquiry key).
+     * Does not change dfs_account_id or transfer rails.
+     */
+    @PutMapping("/relationship")
+    public PartyResponse linkRelationship(@AuthenticationPrincipal AccountPrincipal principal,
+                                          @Valid @RequestBody CmsRelationshipLinkRequest req) {
+        return cmsCardService.linkRelationshipForPrincipal(principal, req.getRelationshipNum());
     }
 
     @GetMapping("/lov/status")

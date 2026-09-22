@@ -215,6 +215,19 @@ public class Party {
     private String dfsAccountId;
 
     /**
+     * CMS Relationship # used by AgentApp POST /card/inquiry.
+     * Separate from dfs_account_id (DFS wallet / provision id).
+     */
+    @Column(name = "cms_relationship_num", length = 64)
+    private String cmsRelationshipNum;
+
+    @Column(name = "cms_relationship_linked_at")
+    private Instant cmsRelationshipLinkedAt;
+
+    @Column(name = "cms_relationship_source", length = 32)
+    private String cmsRelationshipSource;
+
+    /**
      * DFS App APP_USER_ID for the corporate wallet payer.
      * Required by fundsTransferLocal; not the same as local partner_app_users.id.
      */
@@ -409,6 +422,16 @@ public class Party {
     }
     public String getDfsAccountId() { return dfsAccountId; }
     public void setDfsAccountId(String dfsAccountId) { this.dfsAccountId = dfsAccountId; }
+    public String getCmsRelationshipNum() { return cmsRelationshipNum; }
+    public void setCmsRelationshipNum(String cmsRelationshipNum) { this.cmsRelationshipNum = cmsRelationshipNum; }
+    public Instant getCmsRelationshipLinkedAt() { return cmsRelationshipLinkedAt; }
+    public void setCmsRelationshipLinkedAt(Instant cmsRelationshipLinkedAt) {
+        this.cmsRelationshipLinkedAt = cmsRelationshipLinkedAt;
+    }
+    public String getCmsRelationshipSource() { return cmsRelationshipSource; }
+    public void setCmsRelationshipSource(String cmsRelationshipSource) {
+        this.cmsRelationshipSource = cmsRelationshipSource;
+    }
     public String getDfsAppUserId() { return dfsAppUserId; }
     public void setDfsAppUserId(String dfsAppUserId) { this.dfsAppUserId = dfsAppUserId; }
     public String getAccountProvisionError() { return accountProvisionError; }

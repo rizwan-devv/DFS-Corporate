@@ -188,6 +188,10 @@ export function CardsPage() {
   const [siblings, setSiblings] = useState<UiCard[]>([]);
   const [inquiryNote, setInquiryNote] = useState<string | null>(null);
   const [pin, setPin] = useState('');
+  const [linkedRel, setLinkedRel] = useState('');
+  const [relInput, setRelInput] = useState('');
+  const [linking, setLinking] = useState(false);
+  const [linkOk, setLinkOk] = useState<string | null>(null);
 
   const card = cards[active] ?? cards[0];
 
@@ -236,6 +240,7 @@ export function CardsPage() {
         message?: string;
         scoped?: boolean;
         mode?: string;
+        cmsRelationshipNum?: string;
       }>('/api/cms/cards/search', {
         method: 'POST',
         token: session.token,
@@ -243,6 +248,10 @@ export function CardsPage() {
       });
       setScopeKeys(Array.isArray(res.scopeKeys) ? res.scopeKeys.map(String) : []);
       setLoadMode(res.mode || status.mode || '');
+      if (res.cmsRelationshipNum) {
+        setLinkedRel(String(res.cmsRelationshipNum));
+        setRelInput(String(res.cmsRelationshipNum));
+      }
       const items = extractItems(res).map(mapCard);
       if (items.length === 0) {
         setCards([]);
@@ -251,7 +260,7 @@ export function CardsPage() {
           res.message ||
             (!status.appConfigured
               ? 'Set DFS_CMS_APP_API_KEY / USERNAME / PASSWORD (same as AgentApp) for /card/inquiry.'
-              : 'No cards matched this corporate account (dfsAccountId = CMS relationship number).'),
+              : 'No cards yet — link the CMS Relationship # used in AgentApp.'),
         );
       } else {
         setCards(items);
@@ -267,6 +276,28 @@ export function CardsPage() {
       setLoading(false);
     }
   }, [session?.token]);
+
+  async function linkRelationship() {
+    if (!session?.token || !relInput.trim()) return;
+    setLinking(true);
+    setLinkOk(null);
+    setError(null);
+    try {
+      const res = await api<{ cmsRelationshipNum?: string }>('/api/cms/cards/relationship', {
+        method: 'PUT',
+        token: session.token,
+        body: JSON.stringify({ relationshipNum: relInput.trim() }),
+      });
+      setLinkedRel(res.cmsRelationshipNum || relInput.trim());
+      setLinkOk('CMS Relationship linked — loading cards…');
+      await load();
+      setLinkOk('CMS Relationship linked (AgentApp inquiry key).');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to link relationship');
+    } finally {
+      setLinking(false);
+    }
+  }
 
   useEffect(() => {
     void load();
@@ -426,7 +457,7 @@ export function CardsPage() {
       <PageHeader
         eyebrow="Cards · CMS App"
         title="Card details"
-        subtitle="Loaded like AgentApp: CMS App /card/inquiry by your party relationship number (dfsAccountId)."
+        subtitle="Same as AgentApp: CMS App /card/inquiry by CMS Relationship #."
         actions={
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()} disabled={loading}>
             {loading ? 'Refreshing…' : 'Refresh'}
@@ -451,6 +482,43 @@ export function CardsPage() {
       />
 
       {error && <p className="api-banner">{error}</p>}
+      {linkOk && <div className="alert alert-ok" style={{ marginBottom: '1rem' }}>{linkOk}</div>}
+
+      <section className="glass-panel animate-in" style={{ marginBottom: '1rem' }}>
+        <h2 className="panel-title" style={{ marginTop: 0 }}>CMS Relationship #</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Enter the same Relationship number AgentApp uses after CMS card approval.
+          {linkedRel ? (
+            <>
+              {' '}
+              Linked: <span className="mono">{linkedRel}</span>
+            </>
+          ) : (
+            ' Not linked yet.'
+          )}
+        </p>
+        <div className="form-row" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label style={{ flex: '1 1 220px' }}>
+            Relationship number
+            <input
+              className="mono"
+              value={relInput}
+              onChange={(e) => setRelInput(e.target.value)}
+              placeholder="e.g. from CMS / AgentApp"
+              disabled={linking || !session?.token}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={linking || !relInput.trim() || !session?.token}
+            onClick={() => void linkRelationship()}
+          >
+            {linking ? 'Linking…' : 'Link & load cards'}
+          </button>
+        </div>
+      </section>
+
       <p className="muted" style={{ margin: 0 }}>
         Source: <strong>{sourceLabel}</strong>
         {cmsEnabled ? ' · integration enabled' : ' · integration disabled'}
@@ -468,9 +536,8 @@ export function CardsPage() {
         <section className="glass-panel animate-in">
           <h2 className="panel-title">No cards for this login</h2>
           <p className="muted">
-            Set party <span className="mono">dfsAccountId</span> to the 13-digit CMS{' '}
-            <strong>Relationship #</strong> (same value AgentApp uses), and configure{' '}
-            <span className="mono">DFS_CMS_APP_*</span> on the server.
+            Link the CMS <strong>Relationship #</strong> above (same value AgentApp uses for{' '}
+            <span className="mono">/card/inquiry</span>), then refresh.
           </p>
         </section>
       ) : (

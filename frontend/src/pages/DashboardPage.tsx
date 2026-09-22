@@ -59,6 +59,7 @@ type Party = {
   rejectionReason?: string;
   accountProvisionStatus?: string;
   dfsAccountId?: string;
+  cmsRelationshipNum?: string;
   accountProvisionError?: string;
   accountProvisionedAt?: string;
   partnerKycTotal?: number;
@@ -556,6 +557,10 @@ export function DashboardPage() {
                 <div>
                   <span className="muted">DFS account / relationship ID</span>
                   <strong className="mono">{party?.dfsAccountId || '—'}</strong>
+                </div>
+                <div>
+                  <span className="muted">CMS Relationship #</span>
+                  <strong className="mono">{party?.cmsRelationshipNum || '—'}</strong>
                 </div>
                 <div>
                   <span className="muted">Level</span>

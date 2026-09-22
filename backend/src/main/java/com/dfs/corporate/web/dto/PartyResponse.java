@@ -62,6 +62,9 @@ public class PartyResponse {
     private Instant createdAt;
     private AccountProvisionStatus accountProvisionStatus;
     private String dfsAccountId;
+    private String cmsRelationshipNum;
+    private Instant cmsRelationshipLinkedAt;
+    private String cmsRelationshipSource;
     private String accountProvisionError;
     private Instant accountProvisionedAt;
     private Integer accountProvisionAttempts;
@@ -135,6 +138,9 @@ public class PartyResponse {
         r.accountProvisionStatus = p.getAccountProvisionStatus() != null
                 ? p.getAccountProvisionStatus() : AccountProvisionStatus.NOT_STARTED;
         r.dfsAccountId = p.getDfsAccountId();
+        r.cmsRelationshipNum = p.getCmsRelationshipNum();
+        r.cmsRelationshipLinkedAt = p.getCmsRelationshipLinkedAt();
+        r.cmsRelationshipSource = p.getCmsRelationshipSource();
         r.accountProvisionError = p.getAccountProvisionError();
         r.accountProvisionedAt = p.getAccountProvisionedAt();
         r.accountProvisionAttempts = p.getAccountProvisionAttempts();
@@ -295,6 +301,9 @@ public class PartyResponse {
     public Instant getCreatedAt() { return createdAt; }
     public AccountProvisionStatus getAccountProvisionStatus() { return accountProvisionStatus; }
     public String getDfsAccountId() { return dfsAccountId; }
+    public String getCmsRelationshipNum() { return cmsRelationshipNum; }
+    public Instant getCmsRelationshipLinkedAt() { return cmsRelationshipLinkedAt; }
+    public String getCmsRelationshipSource() { return cmsRelationshipSource; }
     public String getAccountProvisionError() { return accountProvisionError; }
     public Instant getAccountProvisionedAt() { return accountProvisionedAt; }
     public Integer getAccountProvisionAttempts() { return accountProvisionAttempts; }

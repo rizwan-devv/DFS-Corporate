@@ -11,6 +11,7 @@ import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.web.dto.CmsCardInquiryRequest;
 import com.dfs.corporate.web.dto.CmsCardSearchRequest;
 import com.dfs.corporate.web.dto.CmsCardStatusUpdateRequest;
+import com.dfs.corporate.web.dto.PartyResponse;
 import com.dfs.corporate.web.error.ApiException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,7 +21,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -60,6 +63,66 @@ public class CmsCardService {
     }
 
     /**
+     * Merchant links CMS Relationship # (same key AgentApp uses for /card/inquiry).
+     * Validates via CMS App inquiry when configured.
+     */
+    @Transactional
+    public PartyResponse linkRelationshipForPrincipal(AccountPrincipal principal, String relationshipNum) {
+        if (principal == null || principal.getPartyId() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "No party on this login");
+        }
+        return linkRelationship(principal.getPartyId(), relationshipNum, "MERCHANT");
+    }
+
+    /** Platform admin links CMS Relationship # for any party. */
+    @Transactional
+    public PartyResponse linkRelationshipForParty(Long partyId, String relationshipNum) {
+        return linkRelationship(partyId, relationshipNum, "ADMIN");
+    }
+
+    private PartyResponse linkRelationship(Long partyId, String relationshipNum, String source) {
+        String rel = relationshipNum != null ? relationshipNum.trim() : "";
+        if (rel.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "relationshipNum is required");
+        }
+        if (rel.length() < 6) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "relationshipNum looks too short");
+        }
+
+        Party party = partyRepository.findById(partyId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Party not found"));
+
+        if (appClient.isConfigured()) {
+            try {
+                JsonNode raw = appClient.inquire(rel, null);
+                List<JsonNode> found = extractItems(raw);
+                if (found.isEmpty()) {
+                    JsonNode single = unwrapData(raw);
+                    if (single != null && single.isObject() && looksLikeCard(single)) {
+                        found = List.of(single);
+                    }
+                }
+                if (found.isEmpty()) {
+                    // Soft-accept: Agent sometimes returns wrapper without list — still save if HTTP OK
+                    log.info("CMS inquiry for relationshipNum={} returned no card items; linking anyway", rel);
+                }
+            } catch (ApiException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        "CMS App inquiry failed for relationshipNum=" + rel + ": " + ex.getMessage());
+            }
+        }
+
+        party.setCmsRelationshipNum(rel);
+        party.setCmsRelationshipLinkedAt(Instant.now());
+        party.setCmsRelationshipSource(source);
+        partyRepository.save(party);
+        log.info("Linked CMS relationshipNum={} to partyId={} source={}", rel, partyId, source);
+        return PartyResponse.from(party);
+    }
+
+    /**
      * Load cards like AgentApp: CMS App /card/inquiry by relationshipNum for this party (+ children).
      * Falls back to CMS Portal search if App inquiry yields nothing.
      */
@@ -76,10 +139,11 @@ public class CmsCardService {
             empty.put("scoped", true);
             empty.put("mode", "none");
             empty.put("message",
-                    "No relationship / DFS account id on this party — cannot inquire CMS cards. "
-                            + "Set dfsAccountId to the 13-digit CMS relationship number (same as AgentApp).");
+                    "No CMS Relationship # on this party — cannot inquire cards (AgentApp path). "
+                            + "Link cmsRelationshipNum (same value AgentApp uses for /card/inquiry).");
             empty.set("scopeKeys", objectMapper.createArrayNode());
             empty.set("items", objectMapper.createArrayNode());
+            empty.put("cmsRelationshipNum", "");
             return empty;
         }
 
@@ -152,8 +216,22 @@ public class CmsCardService {
                 out.put("message",
                         "No cards for relationship keys "
                                 + scope.keys()
-                                + ". Confirm party dfsAccountId equals CMS Relationship # (13 digits).");
+                                + ". Link the CMS Relationship # used by AgentApp (/card/inquiry).");
             }
+        }
+        String linked = scope.keys().stream()
+                .findFirst()
+                .orElse("");
+        // Prefer showing stored cms relationship when present on principal party
+        if (principal != null && principal.getPartyId() != null) {
+            partyRepository.findById(principal.getPartyId()).ifPresent(p -> {
+                if (p.getCmsRelationshipNum() != null && !p.getCmsRelationshipNum().isBlank()) {
+                    out.put("cmsRelationshipNum", p.getCmsRelationshipNum().trim());
+                }
+            });
+        }
+        if (!out.has("cmsRelationshipNum")) {
+            out.put("cmsRelationshipNum", linked);
         }
         return out;
     }
@@ -327,16 +405,29 @@ public class CmsCardService {
     }
 
     private void addPartyKeys(Set<String> keys, Party party) {
-        if (party.getDfsAccountId() != null && !party.getDfsAccountId().isBlank()) {
-            keys.add(party.getDfsAccountId().trim());
+        // AgentApp path: CMS Relationship # first (not dfs_account_id / tracking)
+        if (party.getCmsRelationshipNum() != null && !party.getCmsRelationshipNum().isBlank()) {
+            keys.add(party.getCmsRelationshipNum().trim());
         }
-        if (party.getTrackingId() != null && !party.getTrackingId().isBlank()) {
-            keys.add(party.getTrackingId().trim());
+        // Fallback: only use dfs_account_id when it looks like a real relationship (not short internal ids like 106)
+        if (party.getDfsAccountId() != null && !party.getDfsAccountId().isBlank()) {
+            String dfs = party.getDfsAccountId().trim();
+            if (looksLikeCmsRelationship(dfs)) {
+                keys.add(dfs);
+            }
         }
         String phone = IdentityFormats.phoneDigits(party.getPhone());
         if (phone != null && phone.length() >= 10) {
             keys.add(phone);
         }
+    }
+
+    /** CMS / AgentApp relationship keys are typically 10+ digits (not short DB/agent ids). */
+    private static boolean looksLikeCmsRelationship(String v) {
+        if (v == null) return false;
+        String t = v.trim();
+        if (t.length() < 10) return false;
+        return t.matches("\\d{10,20}") || t.length() >= 10;
     }
 
     private ObjectNode normalizeCard(JsonNode raw) {

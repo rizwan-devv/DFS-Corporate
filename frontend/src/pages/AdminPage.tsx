@@ -71,6 +71,7 @@ type Party = {
   docsReadyForApprove?: boolean;
   accountProvisionStatus?: string;
   dfsAccountId?: string;
+  cmsRelationshipNum?: string;
   accountProvisionError?: string;
 };
 
@@ -318,6 +319,32 @@ export function AdminPage() {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Retry failed');
+    }
+  }
+
+  async function linkCmsRelationship(id: number) {
+    const rel = window.prompt(
+      'CMS Relationship # (same as AgentApp /card/inquiry)',
+      selected?.cmsRelationshipNum || '',
+    );
+    if (rel == null) return;
+    if (!rel.trim()) {
+      setError('Relationship number required');
+      return;
+    }
+    setError('');
+    setOk('');
+    try {
+      const data = await api<Party>(`/api/admin/parties/${id}/cms-relationship`, {
+        method: 'PUT',
+        token: session!.token,
+        body: JSON.stringify({ relationshipNum: rel.trim() }),
+      });
+      setSelected(data);
+      setOk(`CMS relationship linked: ${data.cmsRelationshipNum}`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'CMS relationship link failed');
     }
   }
 
@@ -904,18 +931,28 @@ export function AdminPage() {
               </div>
               <p className="muted ops-provision-line">
                 Status <strong>{selected.accountProvisionStatus || 'NOT_STARTED'}</strong>
-                {selected.dfsAccountId ? <> · ID <strong className="ops-mono">{selected.dfsAccountId}</strong></> : null}
+                {selected.dfsAccountId ? <> · DFS ID <strong className="ops-mono">{selected.dfsAccountId}</strong></> : null}
+                {selected.cmsRelationshipNum ? (
+                  <> · CMS Rel <strong className="ops-mono">{selected.cmsRelationshipNum}</strong></>
+                ) : null}
               </p>
               {selected.accountProvisionError && (
                 <div className="alert alert-info">{selected.accountProvisionError}</div>
               )}
-              {(selected.accountProvisionStatus === 'PENDING'
-                || selected.accountProvisionStatus === 'FAILED'
-                || selected.accountProvisionStatus === 'NOT_STARTED') && (
-                <button className="btn btn-primary btn-sm" type="button" onClick={() => void retryProvision(selected.id)}>
-                  Retry account create
-                </button>
-              )}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {(selected.accountProvisionStatus === 'PENDING'
+                  || selected.accountProvisionStatus === 'FAILED'
+                  || selected.accountProvisionStatus === 'NOT_STARTED') && (
+                  <button className="btn btn-primary btn-sm" type="button" onClick={() => void retryProvision(selected.id)}>
+                    Retry account create
+                  </button>
+                )}
+                {(selected.status === 'ACTIVE' || selected.status === 'PENDING_APPROVAL') && (
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => void linkCmsRelationship(selected.id)}>
+                    Link CMS relationship
+                  </button>
+                )}
+              </div>
             </section>
           )}
 
