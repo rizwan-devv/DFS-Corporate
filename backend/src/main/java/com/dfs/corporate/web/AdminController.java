@@ -3,7 +3,6 @@ package com.dfs.corporate.web;
 import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.service.AdminOnboardingService;
 import com.dfs.corporate.service.AmlWatchlistImportService;
-import com.dfs.corporate.service.CmsCardService;
 import com.dfs.corporate.web.dto.PartnerAppUserResponse;
 import com.dfs.corporate.web.dto.PartnerInviteResponse;
 import com.dfs.corporate.web.dto.PartyResponse;
@@ -26,14 +25,11 @@ public class AdminController {
 
     private final AdminOnboardingService adminOnboardingService;
     private final AmlWatchlistImportService amlWatchlistImportService;
-    private final CmsCardService cmsCardService;
 
     public AdminController(AdminOnboardingService adminOnboardingService,
-                           AmlWatchlistImportService amlWatchlistImportService,
-                           CmsCardService cmsCardService) {
+                           AmlWatchlistImportService amlWatchlistImportService) {
         this.adminOnboardingService = adminOnboardingService;
         this.amlWatchlistImportService = amlWatchlistImportService;
-        this.cmsCardService = cmsCardService;
     }
 
     @GetMapping("/brands")
@@ -143,13 +139,6 @@ public class AdminController {
     @PostMapping("/parties/{id}/discrepancy")
     public PartyResponse discrepancy(@PathVariable Long id, @RequestBody Map<String, String> body) {
         return adminOnboardingService.setDiscrepancy(id, body.get("note"));
-    }
-
-    /** Link CMS Relationship # (AgentApp /card/inquiry) — does not change DFS wallet id. */
-    @PutMapping("/parties/{id}/cms-relationship")
-    public PartyResponse linkCmsRelationship(@PathVariable Long id, @RequestBody Map<String, String> body) {
-        String rel = body != null ? body.get("relationshipNum") : null;
-        return cmsCardService.linkRelationshipForParty(id, rel);
     }
 
     @PostMapping("/partner-invites/{id}/resend")

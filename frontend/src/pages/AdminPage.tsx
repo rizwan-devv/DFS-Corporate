@@ -322,32 +322,6 @@ export function AdminPage() {
     }
   }
 
-  async function linkCmsRelationship(id: number) {
-    const rel = window.prompt(
-      'CMS Relationship # (same as AgentApp /card/inquiry)',
-      selected?.cmsRelationshipNum || '',
-    );
-    if (rel == null) return;
-    if (!rel.trim()) {
-      setError('Relationship number required');
-      return;
-    }
-    setError('');
-    setOk('');
-    try {
-      const data = await api<Party>(`/api/admin/parties/${id}/cms-relationship`, {
-        method: 'PUT',
-        token: session!.token,
-        body: JSON.stringify({ relationshipNum: rel.trim() }),
-      });
-      setSelected(data);
-      setOk(`CMS relationship linked: ${data.cmsRelationshipNum}`);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'CMS relationship link failed');
-    }
-  }
-
   async function reject(id: number) {
     if (!rejectReason.trim()) { setError('Rejection reason required'); return; }
     setError(''); setOk('');
@@ -945,11 +919,6 @@ export function AdminPage() {
                   || selected.accountProvisionStatus === 'NOT_STARTED') && (
                   <button className="btn btn-primary btn-sm" type="button" onClick={() => void retryProvision(selected.id)}>
                     Retry account create
-                  </button>
-                )}
-                {(selected.status === 'ACTIVE' || selected.status === 'PENDING_APPROVAL') && (
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => void linkCmsRelationship(selected.id)}>
-                    Link CMS relationship
                   </button>
                 )}
               </div>

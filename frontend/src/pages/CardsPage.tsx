@@ -188,10 +188,6 @@ export function CardsPage() {
   const [siblings, setSiblings] = useState<UiCard[]>([]);
   const [inquiryNote, setInquiryNote] = useState<string | null>(null);
   const [pin, setPin] = useState('');
-  const [linkedRel, setLinkedRel] = useState('');
-  const [relInput, setRelInput] = useState('');
-  const [linking, setLinking] = useState(false);
-  const [linkOk, setLinkOk] = useState<string | null>(null);
 
   const card = cards[active] ?? cards[0];
 
@@ -248,10 +244,6 @@ export function CardsPage() {
       });
       setScopeKeys(Array.isArray(res.scopeKeys) ? res.scopeKeys.map(String) : []);
       setLoadMode(res.mode || status.mode || '');
-      if (res.cmsRelationshipNum) {
-        setLinkedRel(String(res.cmsRelationshipNum));
-        setRelInput(String(res.cmsRelationshipNum));
-      }
       const items = extractItems(res).map(mapCard);
       if (items.length === 0) {
         setCards([]);
@@ -260,7 +252,7 @@ export function CardsPage() {
           res.message ||
             (!status.appConfigured
               ? 'Set DFS_CMS_APP_API_KEY / USERNAME / PASSWORD (same as AgentApp) for /card/inquiry.'
-              : 'No cards yet — link the CMS Relationship # used in AgentApp.'),
+              : 'No card for this account yet. When AgentApp orders a card and CMS activates it for your CNIC, it appears here.'),
         );
       } else {
         setCards(items);
@@ -276,28 +268,6 @@ export function CardsPage() {
       setLoading(false);
     }
   }, [session?.token]);
-
-  async function linkRelationship() {
-    if (!session?.token || !relInput.trim()) return;
-    setLinking(true);
-    setLinkOk(null);
-    setError(null);
-    try {
-      const res = await api<{ cmsRelationshipNum?: string }>('/api/cms/cards/relationship', {
-        method: 'PUT',
-        token: session.token,
-        body: JSON.stringify({ relationshipNum: relInput.trim() }),
-      });
-      setLinkedRel(res.cmsRelationshipNum || relInput.trim());
-      setLinkOk('CMS Relationship linked — loading cards…');
-      await load();
-      setLinkOk('CMS Relationship linked (AgentApp inquiry key).');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to link relationship');
-    } finally {
-      setLinking(false);
-    }
-  }
 
   useEffect(() => {
     void load();
@@ -457,7 +427,7 @@ export function CardsPage() {
       <PageHeader
         eyebrow="Cards · CMS App"
         title="Card details"
-        subtitle="AgentApp path: inquire by CMS Relationship # (auto from KYC CNIC when possible)."
+        subtitle="Your card loads automatically when it is active in AgentApp/CMS for your KYC CNIC."
         actions={
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()} disabled={loading}>
             {loading ? 'Refreshing…' : 'Refresh'}
@@ -467,8 +437,8 @@ export function CardsPage() {
 
       <FinanceSlideshow
         slides={[
-          { accent: 'Inquiry', title: 'By relationship', body: 'Same CMS App path AgentApp uses: relationshipNum → /card/inquiry.' },
-          { accent: 'Mask', title: 'Sensitive by default', body: 'PAN and CVV stay hidden until audited unmask.' },
+          { accent: 'Auto', title: 'Your card only', body: 'Same inquiry as AgentApp, scoped to your CNIC / relationship from KYC.' },
+          { accent: 'Agent', title: 'Order → approve', body: 'When AgentApp orders a card and CMS activates it, it appears here.' },
           {
             accent: 'Live',
             title: appConfigured ? 'CMS App ready' : cmsEnabled ? 'App creds missing' : 'CMS off',
@@ -482,42 +452,6 @@ export function CardsPage() {
       />
 
       {error && <p className="api-banner">{error}</p>}
-      {linkOk && <div className="alert alert-ok" style={{ marginBottom: '1rem' }}>{linkOk}</div>}
-
-      <section className="glass-panel animate-in" style={{ marginBottom: '1rem' }}>
-        <h2 className="panel-title" style={{ marginTop: 0 }}>CMS Relationship #</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
-          CMS Relationship is usually the 13-digit CNIC (auto-filled after KYC). You can override if needed.
-          {linkedRel ? (
-            <>
-              {' '}
-              Linked: <span className="mono">{linkedRel}</span>
-            </>
-          ) : (
-            ' Not linked yet — complete KYC with CNIC or enter Relationship # below.'
-          )}
-        </p>
-        <div className="form-row" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={{ flex: '1 1 220px' }}>
-            Relationship number
-            <input
-              className="mono"
-              value={relInput}
-              onChange={(e) => setRelInput(e.target.value)}
-              placeholder="e.g. from CMS / AgentApp"
-              disabled={linking || !session?.token}
-            />
-          </label>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={linking || !relInput.trim() || !session?.token}
-            onClick={() => void linkRelationship()}
-          >
-            {linking ? 'Linking…' : 'Link & load cards'}
-          </button>
-        </div>
-      </section>
 
       <p className="muted" style={{ margin: 0 }}>
         Source: <strong>{sourceLabel}</strong>
@@ -534,10 +468,10 @@ export function CardsPage() {
 
       {!card ? (
         <section className="glass-panel animate-in">
-          <h2 className="panel-title">No cards for this login</h2>
+          <h2 className="panel-title">No card for this login</h2>
           <p className="muted">
-            Link the CMS <strong>Relationship #</strong> above (same value AgentApp uses for{' '}
-            <span className="mono">/card/inquiry</span>), then refresh.
+            Cards appear automatically after AgentApp order and CMS activation for your KYC CNIC
+            (CMS Relationship #). Nothing to enter here.
           </p>
         </section>
       ) : (
