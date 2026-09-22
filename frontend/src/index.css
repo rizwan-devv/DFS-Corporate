@@ -3979,6 +3979,40 @@ html[data-theme="payfast"] body {
   background: rgba(243, 247, 251, 0.96);
 }
 
+/* Light / Payfast alerts — dark text on soft tints (base .alert-* is dark-theme) */
+[data-theme="payfast"] .alert-ok,
+[data-theme="light"] .alert-ok {
+  background: color-mix(in srgb, var(--success) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+  color: #065f46;
+}
+
+[data-theme="payfast"] .alert-ok strong,
+[data-theme="light"] .alert-ok strong {
+  color: #047857;
+}
+
+[data-theme="payfast"] .alert-info,
+[data-theme="light"] .alert-info {
+  background: color-mix(in srgb, var(--teal, #00457c) 8%, #ffffff);
+  border-color: color-mix(in srgb, var(--teal, #00457c) 28%, var(--border));
+  color: var(--text);
+}
+
+[data-theme="payfast"] .alert-error,
+[data-theme="light"] .alert-error {
+  background: color-mix(in srgb, var(--danger) 10%, #ffffff);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  color: #991b1b;
+}
+
+[data-theme="payfast"] .alert-warn,
+[data-theme="light"] .alert-warn {
+  background: color-mix(in srgb, var(--warning) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+  color: #92400e;
+}
+
 .auth-brand {
   display: flex;
   align-items: center;
