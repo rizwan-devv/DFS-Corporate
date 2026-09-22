@@ -40,15 +40,18 @@ public class CmsCardService {
     private final CmsPortalClient portalClient;
     private final CmsAppClient appClient;
     private final PartyRepository partyRepository;
+    private final PartyCmsIdentitySync partyCmsIdentitySync;
     private final ObjectMapper objectMapper;
 
     public CmsCardService(CmsPortalClient portalClient,
                           CmsAppClient appClient,
                           PartyRepository partyRepository,
+                          PartyCmsIdentitySync partyCmsIdentitySync,
                           ObjectMapper objectMapper) {
         this.portalClient = portalClient;
         this.appClient = appClient;
         this.partyRepository = partyRepository;
+        this.partyCmsIdentitySync = partyCmsIdentitySync;
         this.objectMapper = objectMapper;
     }
 
@@ -394,40 +397,42 @@ public class CmsCardService {
 
         Party party = partyRepository.findById(principal.getPartyId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Party not found"));
+        party = partyCmsIdentitySync.ensureFromPartnerUsers(party);
         addPartyKeys(keys, party);
 
         if (party.getPartyType() == PartyType.MERCHANT) {
             for (Party child : partyRepository.findByParentPartyIdOrderByCreatedAtDesc(party.getId())) {
-                addPartyKeys(keys, child);
+                addPartyKeys(keys, partyCmsIdentitySync.ensureFromPartnerUsers(child));
             }
         }
         return new Scope(keys, admin);
     }
 
     private void addPartyKeys(Set<String> keys, Party party) {
-        // AgentApp path: CMS Relationship # first (not dfs_account_id / tracking)
+        // 1) Explicit CMS Relationship # (manual link or KYC auto)
         if (party.getCmsRelationshipNum() != null && !party.getCmsRelationshipNum().isBlank()) {
             keys.add(party.getCmsRelationshipNum().trim());
         }
-        // Fallback: only use dfs_account_id when it looks like a real relationship (not short internal ids like 106)
+        // 2) CNIC — in this CMS, Relationship # is often the 13-digit CNIC
+        String cnic = IdentityFormats.cnicDigits(party.getCnicNumber());
+        if (cnic != null && cnic.length() >= 12) {
+            keys.add(cnic);
+        }
+        // 3) DFS account id only when it looks like a real 12–14 digit relationship/account
         if (party.getDfsAccountId() != null && !party.getDfsAccountId().isBlank()) {
             String dfs = party.getDfsAccountId().trim();
             if (looksLikeCmsRelationship(dfs)) {
                 keys.add(dfs);
             }
         }
-        String phone = IdentityFormats.phoneDigits(party.getPhone());
-        if (phone != null && phone.length() >= 10) {
-            keys.add(phone);
-        }
+        // Do not use phone / tracking id — CMS Relationship is never the mobile in this env
     }
 
-    /** CMS / AgentApp relationship keys are typically 10+ digits (not short DB/agent ids). */
+    /** CMS Relationship keys are typically 12–14 digits (CNIC or DFS account), not short ids like 106. */
     private static boolean looksLikeCmsRelationship(String v) {
         if (v == null) return false;
         String t = v.trim();
-        if (t.length() < 10) return false;
-        return t.matches("\\d{10,20}") || t.length() >= 10;
+        return t.matches("\\d{12,14}");
     }
 
     private ObjectNode normalizeCard(JsonNode raw) {

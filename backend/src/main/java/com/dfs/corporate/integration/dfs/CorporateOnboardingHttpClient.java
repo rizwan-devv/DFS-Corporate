@@ -132,14 +132,12 @@ public class CorporateOnboardingHttpClient implements DfsAccountClient {
             String message = text(root, "messages", "message", "statusMessage");
             boolean ok = isSuccessCode(code) || root.path("success").asBoolean(false);
 
-            String accountId = text(root, "accountId", "dfsAccountId", "agentId", "id");
-            if (accountId == null && root.has("data")) {
-                JsonNode data = root.get("data");
-                if (data.isObject()) {
-                    accountId = text(data, "accountId", "dfsAccountId", "agentId", "id", "walletId");
-                } else if (data.isTextual()) {
-                    accountId = data.asText();
-                }
+            // Prefer wallet / account numbers — never take a bare short "id" first (caused dfs_account_id=106)
+            String accountId = pickAccountId(root);
+            if (accountId == null && root.has("data") && root.get("data").isObject()) {
+                accountId = pickAccountId(root.get("data"));
+            } else if (accountId == null && root.has("data") && root.get("data").isTextual()) {
+                accountId = root.get("data").asText();
             }
 
             if (ok) {
@@ -157,6 +155,45 @@ public class CorporateOnboardingHttpClient implements DfsAccountClient {
             }
             return DfsAccountCreateResult.failed("Unparseable DFS backend response: " + truncate(raw));
         }
+    }
+
+    /**
+     * Extract DFS wallet / account key for parties.dfs_account_id.
+     * Prefer accountNo / mobile / long numeric ids; avoid short internal "id" fields.
+     */
+    private static String pickAccountId(JsonNode node) {
+        if (node == null || !node.isObject()) return null;
+        String preferred = text(node,
+                "accountNo", "accountNumber", "ACCOUNT_NO", "mobileNumber", "mobileNo", "msisdn",
+                "dfsAccountId", "accountId", "walletId", "agentId");
+        if (preferred != null && looksLikeStoredAccountId(preferred)) {
+            return preferred.trim();
+        }
+        if (preferred != null && !preferred.isBlank() && !looksLikeShortInternalId(preferred)) {
+            return preferred.trim();
+        }
+        String bareId = text(node, "id");
+        if (bareId != null && looksLikeStoredAccountId(bareId)) {
+            return bareId.trim();
+        }
+        // Last resort: non-short preferred field even if not 12–14 digits (e.g. alphanumeric)
+        if (preferred != null && !preferred.isBlank() && !looksLikeShortInternalId(preferred)) {
+            return preferred.trim();
+        }
+        return null;
+    }
+
+    private static boolean looksLikeStoredAccountId(String v) {
+        if (v == null) return false;
+        String t = v.trim();
+        // 11-digit mobile wallet or 12–14 digit account/CNIC-style
+        return t.matches("\\d{11,14}");
+    }
+
+    private static boolean looksLikeShortInternalId(String v) {
+        if (v == null) return true;
+        String t = v.trim();
+        return t.matches("\\d{1,6}");
     }
 
     private static boolean isSuccessCode(String code) {

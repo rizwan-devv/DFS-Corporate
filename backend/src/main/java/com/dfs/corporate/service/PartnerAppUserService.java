@@ -30,6 +30,7 @@ public class PartnerAppUserService {
     private final MailService mailService;
     private final AccountProvisioningService accountProvisioningService;
     private final PartyStatusSyncService partyStatusSyncService;
+    private final PartyCmsIdentitySync partyCmsIdentitySync;
     private final String mobileAppBaseUrl;
     private final SecureRandom random = new SecureRandom();
 
@@ -39,6 +40,7 @@ public class PartnerAppUserService {
                                  MailService mailService,
                                  @Lazy AccountProvisioningService accountProvisioningService,
                                  PartyStatusSyncService partyStatusSyncService,
+                                 PartyCmsIdentitySync partyCmsIdentitySync,
                                  @Value("${app.mobile-app-base-url:https://app.dfscorporate.local/kyc}") String mobileAppBaseUrl) {
         this.appUserRepository = appUserRepository;
         this.associatedPersonRepository = associatedPersonRepository;
@@ -46,6 +48,7 @@ public class PartnerAppUserService {
         this.mailService = mailService;
         this.accountProvisioningService = accountProvisioningService;
         this.partyStatusSyncService = partyStatusSyncService;
+        this.partyCmsIdentitySync = partyCmsIdentitySync;
         this.mobileAppBaseUrl = mobileAppBaseUrl.endsWith("/")
                 ? mobileAppBaseUrl.substring(0, mobileAppBaseUrl.length() - 1)
                 : mobileAppBaseUrl;
@@ -125,6 +128,7 @@ public class PartnerAppUserService {
         user.setMobileVerified(true);
         user.setFailureReason(null);
         appUserRepository.save(user);
+        partyCmsIdentitySync.applyKycCnic(user.getPartyId(), user.getCnicNumber());
         tryAdvanceParty(user.getPartyId());
         accountProvisioningService.provisionAfterKycComplete(user.getPartyId());
         return toResponse(user);
@@ -153,6 +157,7 @@ public class PartnerAppUserService {
         user.setManualKycApprovedBy(approvedBy != null ? approvedBy : "BACKOFFICE");
         user.setManualKycApprovedAt(Instant.now());
         appUserRepository.save(user);
+        partyCmsIdentitySync.applyKycCnic(user.getPartyId(), user.getCnicNumber());
         tryAdvanceParty(user.getPartyId());
         accountProvisioningService.provisionAfterKycComplete(user.getPartyId());
 

@@ -457,7 +457,7 @@ export function CardsPage() {
       <PageHeader
         eyebrow="Cards · CMS App"
         title="Card details"
-        subtitle="Same as AgentApp: CMS App /card/inquiry by CMS Relationship #."
+        subtitle="AgentApp path: inquire by CMS Relationship # (auto from KYC CNIC when possible)."
         actions={
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()} disabled={loading}>
             {loading ? 'Refreshing…' : 'Refresh'}
@@ -487,14 +487,14 @@ export function CardsPage() {
       <section className="glass-panel animate-in" style={{ marginBottom: '1rem' }}>
         <h2 className="panel-title" style={{ marginTop: 0 }}>CMS Relationship #</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          Enter the same Relationship number AgentApp uses after CMS card approval.
+          CMS Relationship is usually the 13-digit CNIC (auto-filled after KYC). You can override if needed.
           {linkedRel ? (
             <>
               {' '}
               Linked: <span className="mono">{linkedRel}</span>
             </>
           ) : (
-            ' Not linked yet.'
+            ' Not linked yet — complete KYC with CNIC or enter Relationship # below.'
           )}
         </p>
         <div className="form-row" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>

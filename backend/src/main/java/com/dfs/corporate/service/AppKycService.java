@@ -65,6 +65,7 @@ public class AppKycService {
     private final VideoScriptService videoScriptService;
     private final PartnerAppUserService partnerAppUserService;
     private final AccountProvisioningService accountProvisioningService;
+    private final PartyCmsIdentitySync partyCmsIdentitySync;
     private final OtpService otpService;
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
@@ -80,6 +81,7 @@ public class AppKycService {
                          VideoScriptService videoScriptService,
                          PartnerAppUserService partnerAppUserService,
                          AccountProvisioningService accountProvisioningService,
+                         PartyCmsIdentitySync partyCmsIdentitySync,
                          OtpService otpService,
                          PasswordEncoder passwordEncoder,
                          MailService mailService,
@@ -94,6 +96,7 @@ public class AppKycService {
         this.videoScriptService = videoScriptService;
         this.partnerAppUserService = partnerAppUserService;
         this.accountProvisioningService = accountProvisioningService;
+        this.partyCmsIdentitySync = partyCmsIdentitySync;
         this.otpService = otpService;
         this.passwordEncoder = passwordEncoder;
         this.mailService = mailService;
@@ -578,6 +581,7 @@ public class AppKycService {
         appUserRepository.save(user);
 
         // Mobile KYC media stays PENDING until backoffice View + Approve/Reject each file.
+        partyCmsIdentitySync.applyKycCnic(user.getPartyId(), user.getCnicNumber());
 
         partnerAppUserService.tryAdvanceParty(user.getPartyId());
 
