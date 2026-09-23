@@ -73,9 +73,13 @@ dfs:
     default-monthly-volume-id: "1"
     api-key: ${DFS_ACCOUNT_API_KEY:}
     use-stub: false
-  # Bulk employee park → DFS account open confirmation (consumer wallets)
+  # Bulk employee onboard → DFS App POST /v1/corporate/bulkAccounts
   employee-onboard:
-    use-stub: ${DFS_EMPLOYEE_ONBOARD_USE_STUB:true}
+    # false = live DFS bulkAccounts (default). true = local stub only.
+    use-stub: ${DFS_EMPLOYEE_ONBOARD_USE_STUB:false}
+    channel: ${DFS_EMPLOYEE_ONBOARD_CHANNEL:COP}
+    segment: ${DFS_EMPLOYEE_ONBOARD_SEGMENT:Corporate Clients Segment}
+    bulk-accounts-path: ${DFS_EMPLOYEE_ONBOARD_PATH:/v1/corporate/bulkAccounts}
     # Shared secret for POST /api/public/employee-onboard/confirm (header X-Employee-Onboard-Key)
     confirm-key: ${DFS_EMPLOYEE_ONBOARD_CONFIRM_KEY:dev-employee-onboard-key}
   # AgentApp corporate portal APIs (balance / mini-statement / change MPIN) — X-Portal-Key

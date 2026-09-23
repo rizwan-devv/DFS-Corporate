@@ -9,13 +9,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
-/**
- * Default park client: accepts the row and returns a synthetic park_ref.
- * Replace with a real DFS HTTP client when employee park API is available
- * ({@code dfs.employee-onboard.use-stub=false} + real implementation bean).
- */
 @Component
-@ConditionalOnProperty(name = "dfs.employee-onboard.use-stub", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "dfs.employee-onboard.use-stub", havingValue = "true", matchIfMissing = false)
 public class StubEmployeeAccountParkClient implements EmployeeAccountParkClient {
 
     private static final Logger log = LoggerFactory.getLogger(StubEmployeeAccountParkClient.class);
@@ -25,6 +20,6 @@ public class StubEmployeeAccountParkClient implements EmployeeAccountParkClient 
         String ref = "PARK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         log.info("Stub park employee partyId={} row={} mobile={} parkRef={}",
                 party.getId(), row.getPublicId(), row.getMobile(), ref);
-        return new ParkResult(true, ref, "Parked (stub) — await DFS account confirmation");
+        return ParkResult.parked(ref, "Parked (stub) — await DFS account confirmation");
     }
 }

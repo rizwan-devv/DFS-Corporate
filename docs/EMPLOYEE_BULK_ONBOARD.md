@@ -1,16 +1,33 @@
-# Employee bulk onboarding (park → DFS confirm)
+# Employee bulk onboarding (DFS bulkAccounts)
 
-Corporate uploads a staff CSV. The portal validates and **parks** each row on DFS (stub until the real API exists). When DFS creates the consumer account, it calls our confirm webhook (or you simulate from the UI). Status becomes **OPEN**.
+Corporate uploads a staff CSV. On **Park on DFS**, each valid row calls:
+
+`POST {DFS_APP_API_BASE_URL}/v1/corporate/bulkAccounts`  
+Header: `X-Portal-Key` (= `CORPORATE_PORTAL_API_KEY`)
+
+```json
+{
+  "channel": "COP",
+  "segment": "Corporate Clients Segment",
+  "payload": {
+    "mobileNo": "03001111111",
+    "nidNo": "3520100000001",
+    "accountTitle": "Probe One"
+  }
+}
+```
+
+Mapped from CSV: `mobile` → `mobileNo`, `cnic` → `nidNo`, `full_name` → `accountTitle`.
 
 ## Portal
 
 **Network → Employees** (`/employees`)
 
 1. Download CSV template  
-2. Upload (Excel → save as CSV)  
-3. Review VALIDATED / INVALID rows  
-4. **Park on DFS**  
-5. Wait for confirmation → **OPEN** (or use **Simulate OPEN** while stubbed)
+2. Upload  
+3. Review VALIDATED / INVALID  
+4. **Park on DFS** → live `bulkAccounts` per row  
+5. Row becomes **OPEN** if DFS returns an account, else **PARKED** (use Simulate OPEN / webhook if async)
 
 ## CSV columns
 
@@ -19,72 +36,40 @@ employee_code,full_name,father_name,mobile,cnic,date_of_birth,gender,email,depar
 E001,Ali Khan,Ahmed Khan,03005900256,3520212345671,1990-01-15,M,ali@example.com,Finance
 ```
 
-- `full_name`, `mobile` (10+ digits), `cnic` (13 digits) required  
-- Max **500** rows per file  
-- Duplicate mobile/CNIC in the same file → INVALID  
-
-## Statuses
-
-| Batch | Meaning |
-|-------|---------|
-| DRAFT | Uploaded, not parked |
-| PARKED | Sent to DFS (awaiting accounts) |
-| PARTIAL / COMPLETED / FAILED | After confirmations |
-
-| Row | Meaning |
-|-----|---------|
-| INVALID | Bad data |
-| VALIDATED | Ready to park |
-| PARKED | On DFS side |
-| OPEN | Account confirmed |
-| FAILED / REJECTED | Confirm said no |
-
-## APIs
-
-Authenticated (JWT):
-
-| Method | Path |
-|--------|------|
-| GET | `/api/employees/bulk/template.csv` |
-| POST | `/api/employees/bulk` (multipart `file`) |
-| POST | `/api/employees/bulk/{publicId}/park` |
-| GET | `/api/employees/bulk` |
-| GET | `/api/employees/bulk/{publicId}` |
-| GET | `/api/employees/bulk/{publicId}/result.csv` |
-| POST | `/api/employees/bulk/confirm` (portal simulate) |
-
-DFS webhook (public + key):
-
-```http
-POST /api/public/employee-onboard/confirm
-X-Employee-Onboard-Key: <dfs.employee-onboard.confirm-key>
-Content-Type: application/json
-
-{
-  "rowPublicId": "<uuid from park/result>",
-  "status": "OPEN",
-  "dfsAccountNo": "03005900256",
-  "dfsCustomerId": "324",
-  "message": "Account created"
-}
-```
-
-`status`: `OPEN` | `FAILED` | `REJECTED` (also accepts `SUCCESS` / `CREATED` as OPEN).  
-You may send `parkRef` instead of `rowPublicId`.
+Required for DFS: `full_name`, `mobile` (10+ digits), `cnic` (13 digits).
 
 ## Config
 
 ```yaml
 dfs:
+  portal-api:
+    enabled: true   # DFS_PORTAL_API_ENABLED
+    portal-key: …   # CORPORATE_PORTAL_API_KEY
+    app-base-url: http://46.225.160.93:18002/app
   employee-onboard:
-    use-stub: true   # StubEmployeeAccountParkClient
-    confirm-key: ${DFS_EMPLOYEE_ONBOARD_CONFIRM_KEY:dev-employee-onboard-key}
+    use-stub: false   # DFS_EMPLOYEE_ONBOARD_USE_STUB
+    channel: COP
+    segment: Corporate Clients Segment
+    bulk-accounts-path: /v1/corporate/bulkAccounts
+    confirm-key: …    # webhook X-Employee-Onboard-Key
 ```
 
-When DFS provides the real park API, add an `EmployeeAccountParkClient` implementation and set `use-stub: false`.
+## Statuses
 
-## Out of scope (this MVP)
+| Row | Meaning |
+|-----|---------|
+| VALIDATED | Ready to park |
+| PARKED | DFS accepted; account not yet in response |
+| OPEN | Account number known (from DFS response or confirm) |
+| FAILED | DFS / validation error |
 
-- Live DFS park HTTP call  
-- Consumer-app KYC inside the corporate portal  
-- Auto salary / FT to new wallets (use existing FT bulk after OPEN)
+## Confirm webhook (optional)
+
+```http
+POST /api/public/employee-onboard/confirm
+X-Employee-Onboard-Key: <confirm-key>
+```
+
+Body: `{ "rowPublicId", "status": "OPEN", "dfsAccountNo", "dfsCustomerId", "message" }`
+
+Portal also has **Simulate OPEN** for PARKED rows while testing.

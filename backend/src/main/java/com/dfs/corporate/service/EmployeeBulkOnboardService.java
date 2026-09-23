@@ -124,6 +124,7 @@ public class EmployeeBulkOnboardService {
         batchRepository.save(batch);
 
         int parked = 0;
+        int open = 0;
         int failed = 0;
         for (EmployeeBulkRow row : rows) {
             if (row.getStatus() != EmployeeBulkRowStatus.VALIDATED) {
@@ -133,11 +134,23 @@ public class EmployeeBulkOnboardService {
             try {
                 EmployeeAccountParkClient.ParkResult result = parkClient.park(party, row);
                 if (result.success()) {
-                    row.setStatus(EmployeeBulkRowStatus.PARKED);
                     row.setParkRef(result.parkRef());
                     row.setResponseMessage(result.message());
                     row.setParkedAt(Instant.now());
-                    parked++;
+                    if (result.dfsAccountNo() != null && !result.dfsAccountNo().isBlank()) {
+                        row.setDfsAccountNo(result.dfsAccountNo());
+                    }
+                    if (result.dfsCustomerId() != null && !result.dfsCustomerId().isBlank()) {
+                        row.setDfsCustomerId(result.dfsCustomerId());
+                    }
+                    if (result.accountOpened()) {
+                        row.setStatus(EmployeeBulkRowStatus.OPEN);
+                        row.setConfirmedAt(Instant.now());
+                        open++;
+                    } else {
+                        row.setStatus(EmployeeBulkRowStatus.PARKED);
+                        parked++;
+                    }
                 } else {
                     row.setStatus(EmployeeBulkRowStatus.FAILED);
                     row.setResponseMessage(result.message() != null ? result.message() : "Park failed");
@@ -153,12 +166,19 @@ public class EmployeeBulkOnboardService {
         rowRepository.saveAll(rows);
 
         batch.setParkedRows(parked);
+        batch.setOpenRows(open);
         batch.setFailedRows(failed);
         batch.setParkedAt(Instant.now());
-        if (parked == 0) {
+        if (parked == 0 && open == 0) {
             batch.setStatus(EmployeeBulkBatchStatus.FAILED);
             batch.setFinishedAt(Instant.now());
             batch.setErrorMessage("No rows parked successfully");
+        } else if (parked == 0 && failed == 0) {
+            batch.setStatus(EmployeeBulkBatchStatus.COMPLETED);
+            batch.setFinishedAt(Instant.now());
+        } else if (open > 0 && parked == 0 && failed > 0) {
+            batch.setStatus(EmployeeBulkBatchStatus.PARTIAL);
+            batch.setFinishedAt(Instant.now());
         } else {
             batch.setStatus(EmployeeBulkBatchStatus.PARKED);
         }

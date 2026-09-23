@@ -133,7 +133,7 @@ export function EmployeeOnboardPage() {
         body: JSON.stringify({}),
       });
       setBatch(b);
-      setOk(`Parked ${b.parkedRows} row(s). Waiting for DFS account confirmation.`);
+      setOk(`Parked ${b.parkedRows} · opened ${b.openRows} · failed ${b.failedRows}. Check row statuses.`);
       void loadList();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Park failed');
@@ -214,7 +214,8 @@ export function EmployeeOnboardPage() {
 
       <div className="alert alert-info">
         Save Excel as <strong>CSV</strong> first. Columns: employee_code, full_name, father_name, mobile, cnic,
-        date_of_birth, gender, email, department. Park uses a stub until the real DFS API is wired.
+        date_of_birth, gender, email, department. <strong>Park on DFS</strong> calls live{' '}
+        <code>bulkAccounts</code> (mobile + CNIC + name) via the corporate portal key.
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
