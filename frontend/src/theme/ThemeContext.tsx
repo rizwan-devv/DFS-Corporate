@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { THEME_ORDER, isLightScheme, isThemeMode, type ThemeMode } from './themeModes';
+import { THEME_ORDER, isLightScheme, migrateTheme, type ThemeMode } from './themeModes';
 
 type ThemeCtx = {
   theme: ThemeMode;
@@ -12,12 +12,12 @@ const KEY = 'dfs_corporate_theme';
 
 function load(): ThemeMode {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (isThemeMode(raw)) return raw;
+    const migrated = migrateTheme(localStorage.getItem(KEY));
+    if (migrated) return migrated;
   } catch {
     /* ignore */
   }
-  return 'dark';
+  return 'payfast';
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

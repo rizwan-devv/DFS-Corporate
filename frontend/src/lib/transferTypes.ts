@@ -101,7 +101,7 @@ export const TRANSFER_PRODUCTS: {
     path: '/transfers/raast',
     title: 'Raast',
     short: 'Raast',
-    blurb: 'Instant payment via Raast ID / IBAN with QR (mock).',
+    blurb: 'Receive via live Raast QR from your corporate wallet.',
     bulk: false,
   },
 ];

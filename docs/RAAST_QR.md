@@ -10,4 +10,4 @@ Portal: `GET /api/transfers/live/raast/account-details` (JWT)
 
 Uses `data.qrCode`, `iban`, `accountTitle`, `mobileNo`, `currentBalance`, `accountStatusDescr`.
 
-Outbound Raast **pay** remains mock until DFS provides a pay API.
+Outbound Raast pay is not exposed in the portal until DFS provides a pay API.
