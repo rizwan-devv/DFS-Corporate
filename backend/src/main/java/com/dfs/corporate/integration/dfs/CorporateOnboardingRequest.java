@@ -10,12 +10,16 @@ import java.util.List;
 public class CorporateOnboardingRequest {
 
     private String channel;
+    /** Parent company name — same value for children of that company. */
+    private String segment;
     @JsonProperty("imieNo")
     private String imieNo;
     private Payload payload;
 
     public String getChannel() { return channel; }
     public void setChannel(String channel) { this.channel = channel; }
+    public String getSegment() { return segment; }
+    public void setSegment(String segment) { this.segment = segment; }
     public String getImieNo() { return imieNo; }
     public void setImieNo(String imieNo) { this.imieNo = imieNo; }
     public Payload getPayload() { return payload; }

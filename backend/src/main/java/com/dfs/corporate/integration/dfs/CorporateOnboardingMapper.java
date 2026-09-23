@@ -33,7 +33,7 @@ public class CorporateOnboardingMapper {
     private final FranchiseInviteRepository inviteRepository;
 
     public CorporateOnboardingMapper(
-            @Value("${dfs.account-api.channel:AGNT}") String channel,
+            @Value("${dfs.account-api.channel:COP}") String channel,
             @Value("${dfs.account-api.level-code:L4}") String defaultLevelCode,
             @Value("${dfs.account-api.default-city-id:1}") String defaultCityId,
             @Value("${dfs.account-api.default-business-type-id:1}") String defaultBusinessTypeId,
@@ -64,7 +64,8 @@ public class CorporateOnboardingMapper {
                 "1234");
 
         CorporateOnboardingRequest req = new CorporateOnboardingRequest();
-        req.setChannel(channel);
+        req.setChannel(firstNonBlank(channel, "COP"));
+        req.setSegment(resolveSegment(party));
         req.setImieNo(imei);
 
         CorporateOnboardingRequest.Payload p = new CorporateOnboardingRequest.Payload();
@@ -148,6 +149,23 @@ public class CorporateOnboardingMapper {
 
         req.setPayload(p);
         return req;
+    }
+
+    /**
+     * Segment is the root parent company's business name.
+     * Children (franchise / sub-merchant) reuse that same name.
+     */
+    private String resolveSegment(Party party) {
+        Party root = party;
+        int guard = 0;
+        while (root.getParentPartyId() != null && guard++ < 16) {
+            Party parent = partyRepository.findById(root.getParentPartyId()).orElse(null);
+            if (parent == null || parent.getId().equals(root.getId())) {
+                break;
+            }
+            root = parent;
+        }
+        return firstNonBlank(root.getBusinessName(), root.getFullName(), party.getBusinessName(), party.getFullName());
     }
 
     /**

@@ -67,7 +67,8 @@ dfs:
     path: /agentapp/v1/corporateonboarding
     segments-path: /agentapp/v1/getAllSegments
     lovs-path: /agentapp/v1/getAllLovs
-    channel: AGNT
+    # Corporate account create — COP. Segment is parent businessName (not a LOV id).
+    channel: ${DFS_ACCOUNT_API_CHANNEL:COP}
     level-code: L4
     default-city-id: "1"
     default-business-type-id: "1"
