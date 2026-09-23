@@ -3,6 +3,7 @@ package com.dfs.corporate.web;
 import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.service.ApprovalWorkflowService;
 import com.dfs.corporate.service.FranchiseCommissionService;
+import com.dfs.corporate.service.FranchiseCommissionSettlementService;
 import com.dfs.corporate.service.PortalUserService;
 import com.dfs.corporate.web.dto.*;
 import jakarta.validation.Valid;
@@ -18,13 +19,16 @@ public class CorporatePortalController {
     private final PortalUserService portalUserService;
     private final ApprovalWorkflowService approvalWorkflowService;
     private final FranchiseCommissionService franchiseCommissionService;
+    private final FranchiseCommissionSettlementService commissionSettlementService;
 
     public CorporatePortalController(PortalUserService portalUserService,
                                      ApprovalWorkflowService approvalWorkflowService,
-                                     FranchiseCommissionService franchiseCommissionService) {
+                                     FranchiseCommissionService franchiseCommissionService,
+                                     FranchiseCommissionSettlementService commissionSettlementService) {
         this.portalUserService = portalUserService;
         this.approvalWorkflowService = approvalWorkflowService;
         this.franchiseCommissionService = franchiseCommissionService;
+        this.commissionSettlementService = commissionSettlementService;
     }
 
     // —— Portal users & roles ——
@@ -99,5 +103,18 @@ public class CorporatePortalController {
             @AuthenticationPrincipal AccountPrincipal principal,
             @PathVariable Long childPartyId) {
         return franchiseCommissionService.parentConfirm(principal, childPartyId);
+    }
+
+    @GetMapping("/api/franchises/commission/entries")
+    public List<FranchiseCommissionEntryResponse> listCommissionEntries(
+            @AuthenticationPrincipal AccountPrincipal principal) {
+        return commissionSettlementService.listForParent(principal);
+    }
+
+    @PostMapping("/api/franchises/commission/settle")
+    public FranchiseCommissionSettleResponse settleCommission(
+            @AuthenticationPrincipal AccountPrincipal principal,
+            @RequestBody(required = false) FranchiseCommissionSettleRequest req) {
+        return commissionSettlementService.settleForParent(principal, req);
     }
 }

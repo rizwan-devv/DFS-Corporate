@@ -149,7 +149,9 @@ export function FranchisesPage() {
 
           <section className="glass-panel animate-in">
             <h2 className="panel-title">Franchises</h2>
-            <p className="muted panel-subtitle">Percentage commission only — no amount split in this portal.</p>
+            <p className="muted panel-subtitle">
+              Locked % is taken from each inbound credit on the child wallet and paid to you (Commission page).
+            </p>
             {loading ? (
               <p className="muted">Loading…</p>
             ) : children.length === 0 ? (

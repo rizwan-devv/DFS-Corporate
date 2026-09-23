@@ -51,6 +51,10 @@ app:
     from: noreply@dfscorporate.local
     # When false, credentials/OTP are logged instead of SMTP send (easy local testing)
     enabled: ${MAIL_ENABLED:false}
+  # Inbound franchise commission: scan child credits and FT % to parent.
+  commission:
+    settle-enabled: ${COMMISSION_SETTLE_ENABLED:true}
+    settle-interval-ms: ${COMMISSION_SETTLE_INTERVAL_MS:300000}
 
 # Payment approval workflow (Maker → Checker → Approver → Releaser)
 approvals:
