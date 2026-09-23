@@ -50,18 +50,71 @@ export function displayStatus(row: ApprovalRow): string {
   return row.status || '—';
 }
 
-/** Progress toward release: short path (≤5k) is submit+release; full path is check+approve+release. */
-export function approvalCount(row: ApprovalRow): string {
+function isShortPath(row: ApprovalRow): boolean {
   const actions = row.actions || [];
-  const skippedMid =
+  return (
     actions.some((a) => (a.comment || '').toLowerCase().includes('skipped checker/approver')) ||
     (actions.some((a) => a.step === 'MAKER' && a.decision === 'SUBMIT') &&
       !actions.some((a) => a.step === 'CHECKER' || a.step === 'APPROVER') &&
-      (row.currentStep === 'RELEASER' || row.currentStep === 'DONE' || row.status === 'APPROVED'));
+      (row.currentStep === 'RELEASER' || row.currentStep === 'DONE' || row.status === 'APPROVED'))
+  );
+}
 
-  const needed = skippedMid ? 2 : 3; // submit+release vs check+approve+release
-  const done = actions.filter((a) => a.decision === 'APPROVE' || a.decision === 'SUBMIT').length;
+/** Progress toward release: short path (≤5k) is submit+release; full path is check+approve+release. */
+export function approvalCount(row: ApprovalRow): string {
+  const needed = isShortPath(row) ? 2 : 3;
+  const done = (row.actions || []).filter((a) => a.decision === 'APPROVE' || a.decision === 'SUBMIT').length;
   return `${Math.min(done, needed)}/${needed}`;
+}
+
+/** Human step label for the Steps column (e.g. "Awaiting release · 1/2"). */
+export function progressLabel(row: ApprovalRow): string {
+  const count = approvalCount(row);
+  const st = displayStatus(row);
+  if (st === 'RELEASED') return `Released · ${count}`;
+  if (st === 'PENDING_RELEASE') return `Awaiting release · ${count}`;
+  if (st === 'PENDING_CHECK') return `Awaiting checker · ${count}`;
+  if (st === 'CHECKED') return `Awaiting approver · ${count}`;
+  if (st === 'STOPPED') return `Stopped · ${count}`;
+  if (st === 'REJECTED') return `Rejected · ${count}`;
+  return count;
+}
+
+export function isPendingDisplayStatus(st: string): boolean {
+  return st === 'PENDING_CHECK' || st === 'CHECKED' || st === 'PENDING_RELEASE';
+}
+
+export function shortRequestId(publicId: string): string {
+  const clean = (publicId || '').replace(/-/g, '');
+  return clean.length >= 8 ? clean.slice(-8).toUpperCase() : publicId || '—';
+}
+
+export function formatActionDecision(step: string, decision: string, comment?: string): string {
+  const c = (comment || '').toUpperCase();
+  if (decision === 'SUBMIT') return 'Submitted';
+  if (decision === 'REJECT' || c.includes('STOP')) return c.includes('STOP') ? 'Stopped' : 'Rejected';
+  if (decision === 'APPROVE' && step === 'RELEASER') return 'Released';
+  if (decision === 'APPROVE' && step === 'CHECKER') return 'Checked';
+  if (decision === 'APPROVE' && step === 'APPROVER') return 'Approved';
+  if (decision === 'APPROVE') return 'Approved';
+  return decision;
+}
+
+export function formatWhen(iso?: string): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
 }
 
 export function roleFlags(roles: string[] | undefined) {

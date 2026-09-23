@@ -4513,17 +4513,65 @@ html[data-theme="payfast"] body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .txn-details-head h4 {
   margin: 0;
 }
 
+.txn-details-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.txn-details-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.txn-details-summary .muted {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.txn-timeline-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.txn-timeline {
+  margin: 0;
+  padding: 0 0 0 1.1rem;
+  list-style: decimal;
+}
+
+.txn-timeline li {
+  margin-bottom: 0.55rem;
+}
+
+.txn-timeline-main {
+  font-size: 0.92rem;
+}
+
+.txn-timeline-meta {
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+
 .txn-legacy {
   margin-top: 1.5rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border);
+}
+
+.txn-legacy h4 {
+  margin-bottom: 0.35rem;
 }
 
 .txn-form-grid {
@@ -4599,10 +4647,14 @@ html[data-theme="payfast"] body {
     grid-template-columns: 1fr;
   }
 
-  .txn-table th:nth-child(3),
-  .txn-table td:nth-child(3),
-  .txn-table th:nth-child(8),
-  .txn-table td:nth-child(8) {
+  .txn-details-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .txn-table th:nth-child(1),
+  .txn-table td:nth-child(1),
+  .txn-table th:nth-child(6),
+  .txn-table td:nth-child(6) {
     display: none;
   }
 }

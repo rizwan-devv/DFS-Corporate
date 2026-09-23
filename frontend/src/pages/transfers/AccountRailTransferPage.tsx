@@ -16,11 +16,15 @@ import {
   type LiveStatus,
 } from '../../lib/liveTransfers';
 import {
-  approvalCount,
   canActOn,
   displayStatus,
+  formatActionDecision,
+  formatWhen,
+  isPendingDisplayStatus,
   parsePayload,
+  progressLabel,
   roleFlags,
+  shortRequestId,
   type ApprovalRow,
 } from '../../lib/transferWorkflow';
 
@@ -62,9 +66,10 @@ export function AccountRailTransferPage({ product }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('PENDING');
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [directLive, setDirectLive] = useState(false);
+  const [showTechJson, setShowTechJson] = useState(false);
 
   const liveOn = !!live?.liveEnabled;
 
@@ -80,6 +85,9 @@ export function AccountRailTransferPage({ product }: Props) {
 
   const filteredApprovals = useMemo(() => {
     if (statusFilter === 'ALL') return productApprovals;
+    if (statusFilter === 'PENDING') {
+      return productApprovals.filter((a) => isPendingDisplayStatus(displayStatus(a)));
+    }
     return productApprovals.filter((a) => displayStatus(a) === statusFilter);
   }, [productApprovals, statusFilter]);
 
@@ -208,6 +216,7 @@ export function AccountRailTransferPage({ product }: Props) {
       setFtInitResult(null);
       setSelectedBenId(null);
       setPageTab('all');
+      setStatusFilter('PENDING');
       await loadApprovals();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Submit failed');
@@ -481,11 +490,15 @@ export function AccountRailTransferPage({ product }: Props) {
         <div className="panel panel--wide txn-panel">
           <div className="txn-panel-head">
             <div>
-              <h3>{product} — Single Transfer — all requests</h3>
-              <p className="muted">Open Details for lifecycle (maker → checker → approver → releaser). Release will later call live DFS.</p>
+              <h3>{product} — Approval queue</h3>
+              <p className="muted">
+                Maker → Checker → Approver → Releaser. <strong>RELEASED</strong> means the request is approved —
+                DFS payout on Release is not wired yet, so money does not move from this queue.
+              </p>
             </div>
             <div className="txn-panel-tools">
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Status filter">
+                <option value="PENDING">Pending only</option>
                 <option value="ALL">All statuses</option>
                 <option value="PENDING_CHECK">PENDING_CHECK</option>
                 <option value="CHECKED">CHECKED</option>
@@ -499,20 +512,18 @@ export function AccountRailTransferPage({ product }: Props) {
           </div>
 
           <div className="alert alert-info txn-info">
-            All requests for this product. Actions appear based on your portal role and the current step.
+            Actions appear for your role at the current step. Use <strong>All statuses</strong> to see completed or stopped requests.
           </div>
 
           <div className="txn-table-wrap">
             <table className="txn-table">
               <thead>
                 <tr>
-                  <th>Txn</th>
+                  <th>Id</th>
                   <th>Amount</th>
-                  <th>Reference</th>
-                  <th>{product === 'IBFT' ? 'IBAN / ID' : 'Wallet / ID'}</th>
-                  <th>Title</th>
+                  <th>{product === 'IBFT' ? 'Beneficiary / IBAN' : 'Beneficiary'}</th>
                   <th>Status</th>
-                  <th>Appr</th>
+                  <th>Steps</th>
                   <th>Created</th>
                   <th>Actions</th>
                 </tr>
@@ -520,26 +531,43 @@ export function AccountRailTransferPage({ product }: Props) {
               <tbody>
                 {filteredApprovals.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="txn-empty muted">No {product} approval requests yet. Create one under New Request.</td>
+                    <td colSpan={7} className="txn-empty muted">
+                      {statusFilter === 'PENDING'
+                        ? `No pending ${product} requests. Switch filter to All statuses or create one under New Request.`
+                        : `No ${product} approval requests yet. Create one under New Request.`}
+                    </td>
                   </tr>
                 )}
-                {filteredApprovals.map((row, idx) => {
+                {filteredApprovals.map((row) => {
                   const p = parsePayload(row.payloadJson);
                   const acts = canActOn(row, roles);
                   const st = displayStatus(row);
+                  const beneficiary = p.beneficiaryName?.trim()
+                    || p.accountNumber
+                    || row.referenceKey
+                    || '—';
                   return (
                     <tr key={row.publicId}>
-                      <td className="txn-mono">{1000 + idx}</td>
-                      <td>{p.amount ?? '—'}</td>
-                      <td>{row.referenceKey || p.notes || '—'}</td>
-                      <td className="txn-mono">{p.accountNumber || '—'}</td>
-                      <td>{p.beneficiaryName || row.title}</td>
+                      <td className="txn-mono" title={row.publicId}>{shortRequestId(row.publicId)}</td>
+                      <td>{p.amount != null && p.amount !== '' ? `PKR ${p.amount}` : '—'}</td>
+                      <td>
+                        <div>{beneficiary}</div>
+                        {p.beneficiaryName?.trim() && p.accountNumber && (
+                          <div className="muted txn-mono" style={{ fontSize: '0.78rem' }}>{p.accountNumber}</div>
+                        )}
+                      </td>
                       <td><span className={`txn-status txn-status--${st.toLowerCase()}`}>{st}</span></td>
-                      <td>{approvalCount(row)}</td>
-                      <td className="txn-mono muted">{row.createdAt ? new Date(row.createdAt).toISOString() : '—'}</td>
+                      <td className="muted" style={{ fontSize: '0.85rem' }}>{progressLabel(row)}</td>
+                      <td className="muted">{formatWhen(row.createdAt)}</td>
                       <td>
                         <div className="txn-actions">
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDetailsId(row.publicId)}>Details</button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => { setDetailsId(row.publicId); setShowTechJson(false); }}
+                          >
+                            Details
+                          </button>
                           {acts.approve && (
                             <button type="button" className="btn btn-ghost btn-sm" disabled={loading} onClick={() => void decide(row.publicId, 'APPROVE')}>
                               Approve
@@ -564,24 +592,78 @@ export function AccountRailTransferPage({ product }: Props) {
             </table>
           </div>
 
-          {detailsRow && (
-            <div className="txn-details">
-              <div className="txn-details-head">
-                <h4>Request details</h4>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDetailsId(null)}>Close</button>
+          {detailsRow && (() => {
+            const p = parsePayload(detailsRow.payloadJson);
+            const st = displayStatus(detailsRow);
+            const actions = [...(detailsRow.actions || [])].sort(
+              (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
+            );
+            return (
+              <div className="txn-details">
+                <div className="txn-details-head">
+                  <h4>Request {shortRequestId(detailsRow.publicId)}</h4>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDetailsId(null)}>Close</button>
+                </div>
+
+                <div className="txn-details-summary">
+                  <div><span className="muted">Status</span><strong className={`txn-status txn-status--${st.toLowerCase()}`}>{st}</strong></div>
+                  <div><span className="muted">Amount</span><strong>{p.amount != null && p.amount !== '' ? `PKR ${p.amount}` : '—'}</strong></div>
+                  <div><span className="muted">To</span><strong className="txn-mono">{p.accountNumber || '—'}</strong></div>
+                  <div><span className="muted">Beneficiary</span><strong>{p.beneficiaryName || '—'}</strong></div>
+                  <div><span className="muted">Steps</span><strong>{progressLabel(detailsRow)}</strong></div>
+                  <div><span className="muted">Payout</span><strong className="muted">Not sent (DFS on Release pending)</strong></div>
+                </div>
+
+                <h5 className="txn-timeline-title">Lifecycle</h5>
+                {actions.length === 0 ? (
+                  <p className="muted">No actions recorded yet.</p>
+                ) : (
+                  <ol className="txn-timeline">
+                    {actions.map((a, i) => (
+                      <li key={`${a.step}-${a.createdAt}-${i}`}>
+                        <div className="txn-timeline-main">
+                          <strong>{formatActionDecision(a.step, a.decision, a.comment)}</strong>
+                          <span className="muted"> · {a.step}</span>
+                        </div>
+                        <div className="muted txn-timeline-meta">
+                          {a.actorEmail || '—'} · {formatWhen(a.createdAt)}
+                          {a.comment ? ` · ${a.comment}` : ''}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+
+                {st === 'RELEASED' && (
+                  <p className="alert alert-info" style={{ marginTop: '0.85rem' }}>
+                    Workflow complete. Live DFS debit/credit is not hooked to Release yet — this row will not appear in Direct live pays below.
+                  </p>
+                )}
+
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ marginTop: '0.5rem' }}
+                  onClick={() => setShowTechJson((v) => !v)}
+                >
+                  {showTechJson ? 'Hide technical JSON' : 'Show technical JSON'}
+                </button>
+                {showTechJson && (
+                  <pre className="transfer-pre">{JSON.stringify({
+                    ...detailsRow,
+                    payload: p,
+                  }, null, 2)}</pre>
+                )}
               </div>
-              <p><strong>Status</strong> {displayStatus(detailsRow)} · step {detailsRow.currentStep}</p>
-              <pre className="transfer-pre">{JSON.stringify({
-                ...detailsRow,
-                payload: parsePayload(detailsRow.payloadJson),
-              }, null, 2)}</pre>
-              <p className="muted">DFS payout on Release will be wired in the next iteration.</p>
-            </div>
-          )}
+            );
+          })()}
 
           {history.length > 0 && (
             <div className="txn-legacy">
-              <h4>Executed transfers (live / mock ledger)</h4>
+              <h4>Direct live / mock pays (bypass workflow)</h4>
+              <p className="muted" style={{ marginTop: 0 }}>
+                These are payments sent with <strong>Direct live pay</strong> or mock rails — not linked to the approval queue above.
+              </p>
               {history.slice(0, 8).map((t) => (
                 <div className="doc-row" key={t.id}>
                   <div>
