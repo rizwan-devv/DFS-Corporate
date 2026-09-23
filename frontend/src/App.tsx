@@ -25,6 +25,7 @@ import { BeneficiariesPage } from './pages/BeneficiariesPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PortalUsersPage } from './pages/PortalUsersPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
+import { EmployeeOnboardPage } from './pages/EmployeeOnboardPage';
 import { SignaturePage } from './pages/SignaturePage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { ThemeProvider } from './theme/ThemeContext';
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="/signature/:appUserId" element={<SignaturePage />} />
               <Route path="/invites" element={<InvitesPage />} />
               <Route path="/franchises" element={<FranchisesPage />} />
+              <Route path="/employees" element={<EmployeeOnboardPage />} />
               <Route path="/balance" element={<BalancePage />} />
               <Route path="/statement" element={<StatementPage />} />
               <Route path="/transactions" element={<TransactionsPage />} />

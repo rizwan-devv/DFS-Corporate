@@ -157,6 +157,10 @@ export function Layout() {
                         <span className="portal-link-icon">▣</span>
                         Onboarded
                       </NavLink>
+                      <NavLink to="/employees" className="portal-link">
+                        <span className="portal-link-icon">☷</span>
+                        Employees
+                      </NavLink>
                       <p className="portal-nav-label">Operations</p>
                       <NavLink to="/approvals" className="portal-link">
                         <span className="portal-link-icon">✓</span>
