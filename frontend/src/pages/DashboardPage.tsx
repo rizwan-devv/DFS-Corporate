@@ -36,11 +36,27 @@ function formatBalanceDisplay(raw: string): string {
 
 type AppUser = {
   id: number;
+  associatedPersonId?: number;
   fullName: string;
   phone: string;
+  email?: string;
   status: string;
   signatureUploaded?: boolean;
   bankVisitRequired?: boolean;
+  cnicNumber?: string;
+  cnicFullName?: string;
+  completedAt?: string;
+};
+
+type AssocPerson = {
+  id: number;
+  roleType?: string;
+  fullName?: string;
+  phone?: string;
+  email?: string;
+  ownershipPercent?: number;
+  authorizedToOperate?: boolean;
+  idDocumentNumber?: string;
 };
 type RequiredDoc = { documentCode: string; documentLabel: string; mandatory: boolean; uploaded: boolean };
 type PartyDoc = { documentCode: string; status: string; reviewNote?: string };
@@ -65,6 +81,8 @@ type Party = {
   partnerKycTotal?: number;
   partnerKycCompleted?: number;
   partnerAppUsers?: AppUser[];
+  associatedPersons?: AssocPerson[];
+  partnershipUnregistered?: boolean;
   requiredDocuments?: RequiredDoc[];
   documents?: PartyDoc[];
   levelCode?: string;
@@ -139,6 +157,43 @@ function statusHint(status?: string) {
   }
 }
 
+function isPartnershipEntity(entityType?: string) {
+  return entityType === 'PARTNERSHIP' || entityType === 'LLP';
+}
+
+function maskCnic(raw?: string) {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (digits.length < 13) return raw?.trim() || '—';
+  return `${digits.slice(0, 5)}-*******-${digits.slice(-1)}`;
+}
+
+function initials(name?: string) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'P';
+  return ((parts[0][0] || '') + (parts[1]?.[0] || '')).toUpperCase();
+}
+
+function kycLabel(status?: string) {
+  switch (status) {
+    case 'KYC_COMPLETED':
+      return 'KYC complete';
+    case 'INVITED':
+      return 'Invite sent';
+    case 'OTP_PENDING':
+    case 'IN_PROGRESS':
+      return 'In progress';
+    case 'FAILED':
+      return 'KYC failed';
+    default:
+      return status?.replace(/_/g, ' ') || 'Pending';
+  }
+}
+
+function roleLabel(role?: string) {
+  if (!role) return 'Partner';
+  return role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function provisionHint(status?: string) {
   switch (status) {
     case 'NOT_STARTED':
@@ -168,9 +223,27 @@ export function DashboardPage() {
   const canManageNetwork = isMaster && (party?.status || session?.partyStatus) === 'ACTIVE';
   const status = party?.status || session?.partyStatus || '—';
   const provision = party?.accountProvisionStatus;
+  const partnership = isPartnershipEntity(party?.entityType);
   const kycTotal = party?.partnerKycTotal || 0;
   const kycDone = party?.partnerKycCompleted || 0;
   const kycPct = kycTotal > 0 ? Math.round((kycDone / kycTotal) * 100) : 0;
+  const partnerRows = useMemo(() => {
+    const users = party?.partnerAppUsers || [];
+    const roster = party?.associatedPersons || [];
+    const usedRoster = new Set<number>();
+    const rows: { user?: AppUser; roster?: AssocPerson }[] = users.map((u) => {
+      const match =
+        roster.find((p) => p.id === u.associatedPersonId) ||
+        roster.find((p) => p.phone && u.phone && p.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''));
+      if (match?.id) usedRoster.add(match.id);
+      return { user: u, roster: match };
+    });
+    roster.forEach((p) => {
+      if (p.id && !usedRoster.has(p.id)) rows.push({ user: undefined, roster: p });
+    });
+    return rows;
+  }, [party?.partnerAppUsers, party?.associatedPersons]);
+  const signatureCount = (party?.partnerAppUsers || []).filter((u) => u.signatureUploaded).length;
   const showApp = status === 'DRAFT' || status === 'REJECTED' || status === 'SUBMITTED' || status === 'PENDING_APPROVAL' || status === 'INCOMPLETE';
   const badgeLabel = isMaster ? 'CORPORATE MASTER' : 'FRANCHISE / CHILD WALLET';
   const pendingInvites = invites.filter(isPendingInvite).length;
@@ -534,6 +607,127 @@ export function DashboardPage() {
             </div>
           </section>
 
+          {partnership && (
+            <section className="glass-panel dash-partners animate-in">
+              <div className="panel-header">
+                <div>
+                  <h2 className="panel-title">Partners</h2>
+                  <p className="muted panel-subtitle">
+                    {party?.entityType === 'LLP' ? 'Limited liability partners' : 'Registered partners'} of{' '}
+                    {party?.businessName || 'this firm'}
+                    {party?.partnershipUnregistered ? ' · unregistered partnership' : ''}
+                  </p>
+                </div>
+                <span className="dash-partners-count">{partnerRows.length} partners</span>
+              </div>
+              <div className="dash-partners-stats">
+                <div className="stat-chip">
+                  <span className="stat-label">On the firm</span>
+                  <strong>{partnerRows.length}</strong>
+                </div>
+                <div className="stat-chip">
+                  <span className="stat-label">KYC complete</span>
+                  <strong>
+                    {kycDone}/{kycTotal || partnerRows.length}
+                  </strong>
+                </div>
+                <div className="stat-chip">
+                  <span className="stat-label">Signatures</span>
+                  <strong>
+                    {signatureCount}/{party?.partnerAppUsers?.length || 0}
+                  </strong>
+                </div>
+              </div>
+              {kycTotal > 0 && (
+                <div className="ops-progress large">
+                  <div className="ops-progress-bar">
+                    <span style={{ width: `${kycPct}%` }} />
+                  </div>
+                  <span className="ops-progress-label">{kycPct}% KYC</span>
+                </div>
+              )}
+              {partnerRows.length === 0 ? (
+                <p className="muted" style={{ marginTop: '1rem' }}>
+                  No partners on file yet. They appear here after they are added to the partnership roster.
+                </p>
+              ) : (
+                <div className="dash-partners-grid">
+                  {partnerRows.map((row, idx) => {
+                    const name =
+                      row.user?.cnicFullName || row.user?.fullName || row.roster?.fullName || `Partner ${idx + 1}`;
+                    const phone = row.user?.phone || row.roster?.phone;
+                    const email = row.user?.email || row.roster?.email;
+                    const cnic = row.user?.cnicNumber || row.roster?.idDocumentNumber;
+                    const status = row.user?.status;
+                    return (
+                      <article className="dash-partner-card" key={row.user?.id || row.roster?.id || idx}>
+                        <div className="dash-partner-card-top">
+                          <div className="dash-partner-id">
+                            <span className="dash-partner-avatar" aria-hidden>
+                              {initials(name)}
+                            </span>
+                            <div>
+                              <strong>{name}</strong>
+                              <div className="muted dash-partner-role">
+                                {roleLabel(row.roster?.roleType)}
+                                {row.roster?.authorizedToOperate ? ' · authorised to operate' : ''}
+                                {row.roster?.ownershipPercent != null
+                                  ? ` · ${Number(row.roster.ownershipPercent)}% ownership`
+                                  : ''}
+                              </div>
+                            </div>
+                          </div>
+                          {status ? (
+                            <span
+                              className={`status status-${
+                                status === 'KYC_COMPLETED' ? 'ACTIVE' : status === 'FAILED' ? 'REJECTED' : 'SUBMITTED'
+                              }`}
+                            >
+                              {kycLabel(status)}
+                            </span>
+                          ) : (
+                            <span className="status status-SUBMITTED">Roster only</span>
+                          )}
+                        </div>
+                        <dl className="dash-partner-meta">
+                          <div>
+                            <dt>Mobile</dt>
+                            <dd className="mono">{phone || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt>Email</dt>
+                            <dd>{email || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt>CNIC</dt>
+                            <dd className="mono">{maskCnic(cnic)}</dd>
+                          </div>
+                          <div>
+                            <dt>Signature</dt>
+                            <dd>
+                              {row.user?.signatureUploaded
+                                ? 'On file'
+                                : row.user
+                                  ? 'Missing'
+                                  : '—'}
+                            </dd>
+                          </div>
+                        </dl>
+                        {row.user && (
+                          <div className="actions" style={{ marginTop: '0.85rem' }}>
+                            <Link className="btn btn-ghost btn-sm" to={`/signature/${row.user.id}`}>
+                              {row.user.signatureUploaded ? 'Replace signature' : 'Upload signature'}
+                            </Link>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
           {status === 'ACTIVE' && (
             <section className="glass-panel animate-in animate-in-delay-1">
               <div className="panel-header">
@@ -632,11 +826,11 @@ export function DashboardPage() {
             </section>
           )}
 
-          {kycTotal > 0 && (
+          {!partnership && kycTotal > 0 && (
             <section className="glass-panel animate-in">
               <div className="dash-kyc-head">
                 <h2 className="panel-title" style={{ margin: 0 }}>
-                  Partner mobile KYC
+                  Owner mobile KYC
                 </h2>
                 <span className="muted">
                   {kycDone}/{kycTotal} complete
