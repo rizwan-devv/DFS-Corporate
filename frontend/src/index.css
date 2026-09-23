@@ -4524,12 +4524,43 @@ html[data-theme="payfast"] body {
 
 .txn-form-grid {
   display: grid;
-  gap: 0.85rem;
-  max-width: 52rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem 1.35rem;
+  align-items: start;
+  max-width: none;
 }
 
 .txn-form-grid .form-row {
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.txn-form-grid .form-row label {
+  font-weight: 650;
+  font-size: 0.86rem;
+  color: var(--text);
+}
+
+.txn-form-grid .form-row input,
+.txn-form-grid .form-row select {
+  width: 100%;
+}
+
+.txn-span-3 {
+  grid-column: 1 / -1;
+}
+
+.txn-req {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.txn-fetch-btn {
+  align-self: flex-start;
+  margin-top: 0.35rem;
 }
 
 .txn-title-row {
@@ -4543,7 +4574,10 @@ html[data-theme="payfast"] body {
 }
 
 .txn-form-actions {
-  margin-top: 0.5rem;
+  margin-top: 0.35rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .txn-direct-toggle {
@@ -4557,6 +4591,10 @@ html[data-theme="payfast"] body {
 }
 
 @media (max-width: 900px) {
+  .txn-form-grid {
+    grid-template-columns: 1fr;
+  }
+
   .txn-table th:nth-child(3),
   .txn-table td:nth-child(3),
   .txn-table th:nth-child(8),

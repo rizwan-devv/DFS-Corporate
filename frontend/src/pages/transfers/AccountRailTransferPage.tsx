@@ -612,64 +612,97 @@ export function AccountRailTransferPage({ product }: Props) {
 
           {!directLive && (
             <form className="txn-form-grid" onSubmit={submitForApproval}>
-              <BeneficiaryPicker product={product} selectedPublicId={selectedBenId} onSelect={applyBeneficiary} />
-              {product === 'IBFT' && liveOn && (
-                <div className="form-row">
-                  <label>Beneficiary bank *</label>
-                  <select
-                    required
-                    value={form.bankImd}
-                    onChange={(e) => {
-                      const imd = e.target.value;
-                      const b = banks.find((x) => String(x.bankImd) === imd);
-                      setForm({ ...form, bankImd: imd, bankName: b?.bankName ? String(b.bankName) : '' });
-                    }}
-                  >
-                    <option value="">Select bank</option>
-                    {banks.map((b) => (
-                      <option key={String(b.bankImd)} value={String(b.bankImd)}>
-                        {String(b.bankName || b.bankImd)} ({String(b.bankImd)})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {product === 'IBFT' && !liveOn && (
-                <div className="form-row">
-                  <label>Bank name *</label>
-                  <input required value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} />
-                </div>
-              )}
-              <div className="form-row">
-                <label>{product === 'FT' ? 'Beneficiary wallet / mobile *' : 'IBAN / account *'}</label>
-                <input required value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} />
+              <div className="txn-span-3">
+                <BeneficiaryPicker product={product} selectedPublicId={selectedBenId} onSelect={applyBeneficiary} />
               </div>
-              <div className="form-row">
-                <label>Amount (PKR) *</label>
-                <input required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-              </div>
-              <div className="form-row">
-                <label>Account title</label>
-                <div className="txn-title-row">
-                  <input value={form.beneficiaryName} onChange={(e) => setForm({ ...form, beneficiaryName: e.target.value })} />
-                  {product === 'IBFT' && liveOn && (
-                    <button type="button" className="btn btn-ghost btn-sm" disabled={loading} onClick={(e) => void ibftTitleFetch(e as unknown as FormEvent)}>
-                      Fetch title
-                    </button>
+
+              {product === 'IBFT' ? (
+                <div className="form-row">
+                  <label>Beneficiary bank <span className="txn-req">*</span></label>
+                  {liveOn ? (
+                    <select
+                      required
+                      value={form.bankImd}
+                      onChange={(e) => {
+                        const imd = e.target.value;
+                        const b = banks.find((x) => String(x.bankImd) === imd);
+                        setForm({ ...form, bankImd: imd, bankName: b?.bankName ? String(b.bankName) : '' });
+                      }}
+                    >
+                      <option value="">Select bank</option>
+                      {banks.map((b) => (
+                        <option key={String(b.bankImd)} value={String(b.bankImd)}>
+                          {String(b.bankName || b.bankImd)} ({String(b.bankImd)})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input required value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} placeholder="Bank name" />
                   )}
                 </div>
+              ) : (
+                <div className="form-row">
+                  <label>Transfer type</label>
+                  <input value="Fund Transfer (same network)" disabled readOnly />
+                </div>
+              )}
+
+              <div className="form-row">
+                <label>{product === 'FT' ? 'Beneficiary wallet / mobile' : 'IBAN'} <span className="txn-req">*</span></label>
+                <input
+                  required
+                  value={form.accountNumber}
+                  onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
+                  placeholder={product === 'IBFT' ? 'PKxxAAAA…' : '03XXXXXXXXX'}
+                />
               </div>
+
+              <div className="form-row">
+                <label>Amount (PKR) <span className="txn-req">*</span></label>
+                <input required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+              </div>
+
+              <div className="form-row">
+                <label>Account title {product === 'IBFT' && liveOn ? <span className="txn-req">*</span> : null}</label>
+                <input
+                  value={form.beneficiaryName}
+                  onChange={(e) => setForm({ ...form, beneficiaryName: e.target.value })}
+                  required={product === 'IBFT' && liveOn}
+                />
+                {product === 'IBFT' && liveOn && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm txn-fetch-btn"
+                    disabled={loading}
+                    onClick={(e) => void ibftTitleFetch(e as unknown as FormEvent)}
+                  >
+                    Fetch title
+                  </button>
+                )}
+              </div>
+
+              <div className="form-row">
+                <label>Phone number</label>
+                <input
+                  value={form.mobile}
+                  onChange={(e) => setForm({ ...form, mobile: e.target.value })}
+                  placeholder="03XXXXXXXXX"
+                />
+              </div>
+
               <div className="form-row">
                 <label>Customer reference</label>
                 <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
               </div>
+
               {product === 'IBFT' && (
                 <div className="form-row">
                   <label>Purpose</label>
                   <input value={form.purposeOfPayment} onChange={(e) => setForm({ ...form, purposeOfPayment: e.target.value })} />
                 </div>
               )}
-              <div className="actions txn-form-actions">
+
+              <div className="txn-span-3 txn-form-actions">
                 <button className="btn btn-primary" type="submit" disabled={loading || !flags.canMake}>
                   {loading ? 'Submitting…' : `Submit ${product}`}
                 </button>
@@ -679,10 +712,12 @@ export function AccountRailTransferPage({ product }: Props) {
 
           {directLive && liveOn && product === 'IBFT' && (
             <form className="txn-form-grid" onSubmit={titleResult && isLiveOk(titleResult) ? ibftAdvice : ibftTitleFetch}>
-              <h4 className="form-section-title">Direct live IBFT</h4>
-              <BeneficiaryPicker product="IBFT" selectedPublicId={selectedBenId} onSelect={applyBeneficiary} />
+              <h4 className="form-section-title txn-span-3">Direct live IBFT</h4>
+              <div className="txn-span-3">
+                <BeneficiaryPicker product="IBFT" selectedPublicId={selectedBenId} onSelect={applyBeneficiary} />
+              </div>
               <div className="form-row">
-                <label>Bank</label>
+                <label>Beneficiary bank <span className="txn-req">*</span></label>
                 <select required value={form.bankImd} onChange={(e) => {
                   const imd = e.target.value;
                   const b = banks.find((x) => String(x.bankImd) === imd);
@@ -696,73 +731,110 @@ export function AccountRailTransferPage({ product }: Props) {
                 </select>
               </div>
               <div className="form-row">
-                <label>IBAN / account</label>
-                <input required value={form.accountNumber} onChange={(e) => { setTitleResult(null); setForm({ ...form, accountNumber: e.target.value }); }} />
+                <label>IBAN <span className="txn-req">*</span></label>
+                <input required value={form.accountNumber} placeholder="PKxxAAAA…" onChange={(e) => { setTitleResult(null); setForm({ ...form, accountNumber: e.target.value }); }} />
               </div>
               <div className="form-row">
-                <label>Amount</label>
+                <label>Amount (PKR) <span className="txn-req">*</span></label>
                 <input required value={form.amount} onChange={(e) => { setTitleResult(null); setForm({ ...form, amount: e.target.value }); }} />
               </div>
+              <div className="form-row">
+                <label>Account title</label>
+                <input value={form.beneficiaryName} onChange={(e) => setForm({ ...form, beneficiaryName: e.target.value })} />
+                {!titleResult || !isLiveOk(titleResult) ? (
+                  <button type="submit" className="btn btn-primary btn-sm txn-fetch-btn" disabled={loading}>
+                    {loading ? 'Working…' : 'Fetch title'}
+                  </button>
+                ) : null}
+              </div>
+              <div className="form-row">
+                <label>Phone number</label>
+                <input value={form.mobile} placeholder="03XXXXXXXXX" onChange={(e) => setForm({ ...form, mobile: e.target.value })} />
+              </div>
+              <div className="form-row">
+                <label>Customer reference</label>
+                <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+              </div>
               {titleResult && isLiveOk(titleResult) && (
-                <div className="form-row">
-                  <label>Title</label>
-                  <input value={form.beneficiaryName} onChange={(e) => setForm({ ...form, beneficiaryName: e.target.value })} />
+                <div className="txn-span-3 txn-form-actions">
+                  <button className="btn btn-primary" type="submit" disabled={loading}>
+                    {loading ? 'Working…' : 'Submit advice (move money)'}
+                  </button>
                 </div>
               )}
-              <div className="actions">
-                <button className="btn btn-primary" type="submit" disabled={loading}>
-                  {loading ? 'Working…' : titleResult && isLiveOk(titleResult) ? 'Submit advice (move money)' : 'Fetch title'}
-                </button>
-              </div>
             </form>
           )}
 
           {directLive && liveOn && product === 'FT' && (
             <form className="txn-form-grid" onSubmit={ftInitResult && isLiveOk(ftInitResult) ? ftConfirm : ftInitiate}>
-              <h4 className="form-section-title">Direct live FT</h4>
-              <BeneficiaryPicker product="FT" selectedPublicId={selectedBenId} onSelect={applyBeneficiary} />
-              <div className="form-row">
-                <label>Beneficiary mobile</label>
-                <input required value={form.accountNumber} onChange={(e) => { setFtInitResult(null); setForm({ ...form, accountNumber: e.target.value }); }} />
+              <h4 className="form-section-title txn-span-3">Direct live FT</h4>
+              <div className="txn-span-3">
+                <BeneficiaryPicker product="FT" selectedPublicId={selectedBenId} onSelect={applyBeneficiary} />
               </div>
               <div className="form-row">
-                <label>Amount</label>
+                <label>Beneficiary wallet / mobile <span className="txn-req">*</span></label>
+                <input required value={form.accountNumber} placeholder="03XXXXXXXXX" onChange={(e) => { setFtInitResult(null); setForm({ ...form, accountNumber: e.target.value }); }} />
+              </div>
+              <div className="form-row">
+                <label>Amount (PKR) <span className="txn-req">*</span></label>
                 <input required value={form.amount} onChange={(e) => { setFtInitResult(null); setForm({ ...form, amount: e.target.value }); }} />
               </div>
-              {ftInitResult && isLiveOk(ftInitResult) && (
+              <div className="form-row">
+                <label>Account title</label>
+                <input value={form.beneficiaryName} onChange={(e) => setForm({ ...form, beneficiaryName: e.target.value })} />
+              </div>
+              {ftInitResult && isLiveOk(ftInitResult) ? (
                 <>
                   <div className="form-row">
-                    <label>Customer MPIN</label>
+                    <label>Customer MPIN <span className="txn-req">*</span></label>
                     <input required type="password" value={form.mpin} onChange={(e) => setForm({ ...form, mpin: e.target.value })} />
                   </div>
-                  {!live?.hasDfsAppUserId && (
+                  <div className="form-row">
+                    <label>Customer reference</label>
+                    <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                  </div>
+                  {!live?.hasDfsAppUserId ? (
                     <div className="form-row">
-                      <label>APP_USER_ID</label>
+                      <label>APP_USER_ID <span className="txn-req">*</span></label>
                       <input required value={form.appUserId} onChange={(e) => setForm({ ...form, appUserId: e.target.value })} />
                     </div>
+                  ) : (
+                    <div className="form-row" />
                   )}
+                  <div className="txn-span-3 txn-form-actions">
+                    <button className="btn btn-primary" type="submit" disabled={loading}>
+                      {loading ? 'Working…' : 'Confirm FT'}
+                    </button>
+                  </div>
                 </>
+              ) : (
+                <div className="txn-span-3 txn-form-actions">
+                  <button className="btn btn-primary" type="submit" disabled={loading}>
+                    {loading ? 'Working…' : 'Initiate FT'}
+                  </button>
+                </div>
               )}
-              <div className="actions">
-                <button className="btn btn-primary" type="submit" disabled={loading}>
-                  {loading ? 'Working…' : ftInitResult && isLiveOk(ftInitResult) ? 'Confirm FT' : 'Initiate FT'}
-                </button>
-              </div>
             </form>
           )}
 
           {!liveOn && !directLive && !flags.canMake && (
             <form className="txn-form-grid" onSubmit={submitMockSingle}>
-              <h4 className="form-section-title">Mock single (no maker role)</h4>
+              <h4 className="form-section-title txn-span-3">Mock single (no maker role)</h4>
               <div className="form-row">
-                <label>Account</label>
+                <label>Account <span className="txn-req">*</span></label>
                 <input required value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} />
               </div>
               <div className="form-row">
-                <label>Amount</label>
+                <label>Amount (PKR) <span className="txn-req">*</span></label>
                 <input required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
               </div>
-              <button className="btn btn-primary" type="submit" disabled={loading}>Submit mock</button>
+              <div className="form-row">
+                <label>Title</label>
+                <input value={form.beneficiaryName} onChange={(e) => setForm({ ...form, beneficiaryName: e.target.value })} />
+              </div>
+              <div className="txn-span-3 txn-form-actions">
+                <button className="btn btn-primary" type="submit" disabled={loading}>Submit mock</button>
+              </div>
             </form>
           )}
 
