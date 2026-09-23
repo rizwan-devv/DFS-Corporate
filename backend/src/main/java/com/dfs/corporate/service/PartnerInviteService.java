@@ -94,11 +94,11 @@ public class PartnerInviteService {
 
         String url = inviteUrl(invite.getPublicToken());
         mailService.send(invite.getEmail(),
-                "DFS Corporate — complete your partner KYC",
+                "PayFast Corporate — complete your partner KYC",
                 "Hello " + invite.getFullName() + ",\n\n"
                         + "You have been invited as a partner for " + party.getBusinessName() + ".\n"
                         + "Complete your KYC here (link valid 14 days):\n" + url + "\n\n"
-                        + "DFS Corporate Onboarding");
+                        + "PayFast Corporate Onboarding");
 
         return toResponse(invite);
     }
@@ -141,12 +141,12 @@ public class PartnerInviteService {
         String url = inviteUrl(invite.getPublicToken());
         // Stub for future mobile app deep-link; currently portal partner KYC URL
         mailService.send(invite.getEmail(),
-                "DFS Corporate — complete your partner KYC (reminder)",
+                "PayFast Corporate — complete your partner KYC (reminder)",
                 "Hello " + invite.getFullName() + ",\n\n"
                         + "Reminder: complete KYC for " + party.getBusinessName() + ".\n"
                         + "App / KYC link (valid 14 days):\n" + url + "\n\n"
                         + "User ID (phone placeholder): use the mobile number registered with your partner record.\n\n"
-                        + "DFS Corporate Backoffice");
+                        + "PayFast Corporate Backoffice");
         inviteRepository.save(invite);
         return toResponse(invite);
     }

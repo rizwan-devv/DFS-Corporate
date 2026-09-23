@@ -26,7 +26,7 @@ type UiCard = {
 const DEMO: UiCard[] = [
   {
     id: 'CARD-1001',
-    holder: 'DFS Corporate Merchant',
+    holder: 'PayFast Corporate Merchant',
     last4: '4821',
     accountNo: '1002••••9012',
     network: 'DFS Pay',

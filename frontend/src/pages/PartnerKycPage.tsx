@@ -12,7 +12,7 @@ export function PartnerKycPage() {
           <h2 className="panel-title">Partner KYC moved to the app</h2>
           <p className="muted">
             Portal partner KYC links are disabled. After the merchant submits the application,
-            each partner receives an email with the <strong>DFS Corporate mobile app</strong> link,
+            each partner receives an email with the <strong>PayFast Corporate mobile app</strong> link,
             phone as user ID, and a temporary PIN for biometric / video KYC.
           </p>
           {token && (

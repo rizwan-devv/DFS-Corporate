@@ -50,12 +50,12 @@ public class OtpService {
 
         log.info("OTP issued target={} purpose={} code={}", target, purpose, code);
         if (sendEmail && target.contains("@")) {
-            mailService.send(target, "DFS Corporate verification code",
+            mailService.send(target, "PayFast Corporate verification code",
                     "Your verification code is: " + code + "\nIt expires in 10 minutes.");
         } else {
             // SMS gateway not wired — code is logged for local/dev (same pattern as mail.enabled=false)
             mailService.send(target.contains("@") ? target : "otp+" + target + "@dfscorporate.local",
-                    "DFS Corporate mobile OTP",
+                    "PayFast Corporate mobile OTP",
                     "Mobile OTP for " + target + ": " + code + "\nExpires in 10 minutes.");
         }
         return code;

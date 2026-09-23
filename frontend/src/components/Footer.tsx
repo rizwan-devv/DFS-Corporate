@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { BRAND } from '../lib/brand';
 
 export function Footer() {
   const { session } = useAuth();
@@ -13,7 +14,7 @@ export function Footer() {
         <div className="footer-brand">
           <div className="brand">
             <div className="brand-mark"><span /></div>
-            DFS CORPORATE
+            {BRAND.short}
           </div>
           <p className="footer-tagline">
             Corporate entity onboarding aligned with SBP Consolidated Customer Onboarding Framework.
@@ -45,7 +46,7 @@ export function Footer() {
 
       <div className="container footer-bottom">
         <p className="muted footer-copy">
-          © {year} DFS Corporate. For authorized corporate onboarding only.
+          © {year} {BRAND.name}. For authorized corporate onboarding only.
         </p>
         <p className="muted footer-meta">
           Secured digital channel · Draft save 30 days · Partner KYC via mobile app

@@ -11,7 +11,7 @@ export function DonePage() {
     <div className="shell">
       <div className="brand-row animate-in">
         <div className="brand-mark" aria-hidden><span /></div>
-        <span className="brand-text">DFS CORPORATE</span>
+        <span className="brand-text">PAYFAST CORPORATE</span>
       </div>
 
       <div className="card success-card animate-in animate-in-delay-1">

@@ -1,4 +1,4 @@
-# DFS Corporate — Partner KYC (Vite + React + Capacitor)
+# PayFast Corporate — Partner KYC (Vite + React + Capacitor)
 
 Mobile app for partners invited after merchant portal submit.
 

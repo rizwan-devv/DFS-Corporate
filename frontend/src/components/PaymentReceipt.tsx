@@ -3,6 +3,7 @@ import {
   formatReceiptWhen,
   type PaymentReceiptModel,
 } from '../lib/paymentReceipt';
+import { BRAND } from '../lib/brand';
 
 type Props = {
   receipt: PaymentReceiptModel;
@@ -31,7 +32,7 @@ export function PaymentReceipt({ receipt, onClose }: Props) {
           <div className="receipt-brand">
             <span className="receipt-brand-mark" aria-hidden />
             <div>
-              <p className="receipt-eyebrow">DFS CORPORATE</p>
+              <p className="receipt-eyebrow">{BRAND.short}</p>
               <h2 id="receipt-title" className="receipt-title">Payment receipt</h2>
             </div>
           </div>
@@ -108,7 +109,7 @@ export function PaymentReceipt({ receipt, onClose }: Props) {
         )}
 
         <footer className="receipt-foot">
-          <p className="receipt-foot-note">DFS Connect · Keep this receipt for your records</p>
+          <p className="receipt-foot-note">{BRAND.receiptFooter}</p>
           <div className="receipt-actions">
             <button type="button" className="btn btn-ghost btn-sm" onClick={printReceipt}>Print</button>
             <button type="button" className="btn btn-primary btn-sm" onClick={onClose}>Done</button>

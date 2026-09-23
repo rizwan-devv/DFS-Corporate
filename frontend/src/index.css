@@ -1,6 +1,6 @@
 :root,
 [data-theme="dark"] {
-  /* DFS Connect dark — mid-navy, ambient blue/teal */
+  /* PayFast Corporate dark — mid-navy, ambient blue/teal */
   --bg: #0b1220;
   --bg-elevated: #121a2c;
   --bg-card: rgba(18, 28, 48, 0.78);
@@ -2268,7 +2268,7 @@ h2 {
 }
 
 
-/* ========== DFS Connect portal shell & showcase ========== */
+/* ========== PayFast Corporate portal shell & showcase ========== */
 
 .theme-seg {
   display: inline-flex;
@@ -4639,12 +4639,150 @@ html[data-theme="payfast"] body {
   color: var(--text);
 }
 
+[data-theme="payfast"] .receipt-overlay {
+  padding: 1.1rem;
+}
+
+[data-theme="payfast"] .receipt-backdrop {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(0, 182, 122, 0.16), transparent 55%),
+    rgba(2, 28, 48, 0.52);
+}
+
 [data-theme="payfast"] .receipt-sheet {
-  background: linear-gradient(165deg, #ffffff 0%, #f0f5fb 100%);
+  overflow: hidden;
+  padding: 0 0 1.15rem;
+  background:
+    linear-gradient(180deg, #f4f8fc 0%, #ffffff 38%, #f7fafc 100%);
+  border: 1px solid rgba(0, 55, 100, 0.14);
   box-shadow:
-    0 0 0 1px rgba(6, 24, 40, 0.04) inset,
-    0 24px 64px rgba(6, 24, 40, 0.12);
+    0 0 0 1px rgba(255, 255, 255, 0.7) inset,
+    0 18px 48px rgba(0, 43, 77, 0.16);
   color: #061828;
+}
+
+[data-theme="payfast"] .receipt-glow {
+  top: 72px;
+  background: radial-gradient(ellipse at center, rgba(0, 182, 122, 0.16), transparent 68%);
+}
+
+[data-theme="payfast"] .receipt-top {
+  margin: 0 0 1.1rem;
+  padding: 1.15rem 1.25rem 1.05rem;
+  background: linear-gradient(115deg, #002b4d 0%, #00457c 58%, #0a4a6e 100%);
+  border-bottom: 3px solid #00b67a;
+  color: #f8fbff;
+}
+
+[data-theme="payfast"] .receipt-eyebrow {
+  color: #7ee8c2;
+}
+
+[data-theme="payfast"] .receipt-title {
+  color: #ffffff;
+}
+
+[data-theme="payfast"] .receipt-close {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #e8f4fc;
+}
+
+[data-theme="payfast"] .receipt-close:hover {
+  background: rgba(0, 182, 122, 0.28);
+  border-color: rgba(0, 182, 122, 0.5);
+  color: #ffffff;
+}
+
+[data-theme="payfast"] .receipt-brand-mark {
+  background: linear-gradient(145deg, #00c788, #00457c);
+  box-shadow: 0 8px 22px rgba(0, 182, 122, 0.35);
+}
+
+[data-theme="payfast"] .receipt-status,
+[data-theme="payfast"] .receipt-amount-block,
+[data-theme="payfast"] .receipt-grid,
+[data-theme="payfast"] .receipt-network,
+[data-theme="payfast"] .receipt-message,
+[data-theme="payfast"] .receipt-foot {
+  margin-left: 1.25rem;
+  margin-right: 1.25rem;
+}
+
+[data-theme="payfast"] .receipt-status.is-ok {
+  background: rgba(0, 182, 122, 0.1);
+  border-color: rgba(0, 182, 122, 0.32);
+}
+
+[data-theme="payfast"] .receipt-status.is-ok .receipt-status-icon {
+  background: #00b67a;
+  color: #ffffff;
+}
+
+[data-theme="payfast"] .receipt-status strong {
+  color: #061828;
+}
+
+[data-theme="payfast"] .receipt-status span,
+[data-theme="payfast"] .receipt-amount-label,
+[data-theme="payfast"] .receipt-party-sub,
+[data-theme="payfast"] .receipt-grid dt,
+[data-theme="payfast"] .receipt-foot-note {
+  color: #3a5168;
+}
+
+[data-theme="payfast"] .receipt-amount-block {
+  padding: 0.85rem 0.95rem 1rem;
+  border: 1px solid rgba(0, 55, 100, 0.1);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f3f8fc);
+  box-shadow: 0 1px 2px rgba(6, 24, 40, 0.04);
+}
+
+[data-theme="payfast"] .receipt-amount {
+  color: #061828;
+}
+
+[data-theme="payfast"] .receipt-currency {
+  color: #00457c;
+}
+
+[data-theme="payfast"] .receipt-grid > div {
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: #f3f7fb;
+}
+
+[data-theme="payfast"] .receipt-grid dd {
+  color: #0a2236;
+}
+
+[data-theme="payfast"] .receipt-network {
+  background: #f3f7fb;
+  border-color: rgba(0, 55, 100, 0.1);
+}
+
+[data-theme="payfast"] .receipt-network h3 {
+  color: #008f5c;
+}
+
+[data-theme="payfast"] .receipt-message {
+  color: #2a4158;
+  background: rgba(0, 69, 124, 0.06);
+  border-left-color: #00b67a;
+}
+
+[data-theme="payfast"] .receipt-foot {
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(0, 182, 122, 0.28);
+}
+
+[data-theme="payfast"] .receipt-sheet--ok {
+  border-color: rgba(0, 182, 122, 0.35);
+}
+
+[data-theme="payfast"] .receipt-sheet--fail {
+  border-color: rgba(201, 54, 54, 0.35);
 }
 
 .receipt-sheet--ok {
@@ -4951,11 +5089,15 @@ html[data-theme="payfast"] body {
   .receipt-glow { display: none !important; }
   .receipt-sheet {
     box-shadow: none;
-    border: 1px solid #ddd;
+    border: 1px solid #d5dee8;
     max-height: none;
     width: 100%;
     background: #fff;
-    color: #0f172a;
+    color: #061828;
+  }
+  [data-theme="payfast"] .receipt-top {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
 

@@ -66,7 +66,7 @@ export function TransactionsPage() {
       <FinanceSlideshow
         slides={[
           { accent: 'Percent', title: 'Rate agreements', body: 'Parent locks a % for each franchise child.' },
-          { accent: 'No split', title: 'No ledger here', body: 'Amount splits are not posted in DFS Corporate.' },
+          { accent: 'No split', title: 'No ledger here', body: 'Amount splits are not posted in PayFast Corporate.' },
           { accent: 'Plans', title: 'PROPOSED → LOCKED', body: 'Confirm commission on Onboarded (Franchises) to lock the rate.' },
         ]}
       />

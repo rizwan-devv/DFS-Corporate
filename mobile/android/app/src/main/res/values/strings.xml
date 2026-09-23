@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">DFS Corporate KYC</string>
-    <string name="title_activity_main">DFS Corporate KYC</string>
+    <string name="app_name">PayFast Corporate KYC</string>
+    <string name="title_activity_main">PayFast Corporate KYC</string>
     <string name="package_name">com.dfscorporate.kyc</string>
     <string name="custom_url_scheme">com.dfscorporate.kyc</string>
 </resources>

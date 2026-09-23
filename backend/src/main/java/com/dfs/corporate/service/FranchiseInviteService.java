@@ -229,7 +229,7 @@ public class FranchiseInviteService {
         String url = inviteUrl(invite.getPublicToken());
         String parentName = parent.getBusinessName() != null ? parent.getBusinessName() : parent.getFullName();
         mailService.send(invite.getEmail(),
-                "DFS Corporate — franchise / child wallet invite",
+                "PayFast Corporate — franchise / child wallet invite",
                 "Hello " + invite.getContactName() + ",\n\n"
                         + "You are invited to join as a Franchise (child wallet) under:\n"
                         + "  " + parentName
@@ -244,7 +244,7 @@ public class FranchiseInviteService {
                         + url + "\n\n"
                         + "Suggested phone (app user ID): " + invite.getPhone() + "\n"
                         + "Link expires: " + invite.getExpiresAt() + "\n\n"
-                        + "— DFS Corporate / Business Wallet");
+                        + "— PayFast Corporate / Business Wallet");
     }
 
     private String inviteUrl(String token) {

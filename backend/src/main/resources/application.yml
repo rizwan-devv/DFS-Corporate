@@ -39,6 +39,7 @@ spring:
             enable: false
 
 app:
+  brand-name: ${APP_BRAND_NAME:PayFast Corporate}
   jwt:
     secret: ${JWT_SECRET:dfs-corporate-dev-secret-change-me-in-production-32chars-min}
     expiration-ms: 86400000

@@ -34,7 +34,7 @@ export function HomePage() {
           <div>
             <div className="breadcrumb animate-in">Home / Getting Started</div>
             <div className="badge animate-in animate-in-delay-1">CORPORATE KYC · SBP EMI</div>
-            <h1 className="animate-in animate-in-delay-2">Start Building with DFS Connect</h1>
+            <h1 className="animate-in animate-in-delay-2">Start Building with PayFast Corporate</h1>
             <p className="lead animate-in animate-in-delay-3">
               Open a corporate account as a merchant or sub-merchant. Complete SBP-aligned KYC,
               upload company documents, get admin review, and receive login credentials by email.

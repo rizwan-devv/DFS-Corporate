@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
 import { TransfersNavGroup } from './TransfersNavGroup';
+import { BRAND } from '../lib/brand';
 
 const PUBLIC_PATHS = new Set([
   '/',
@@ -77,8 +78,8 @@ export function Layout() {
                 <span />
               </div>
               <div className="portal-brand-text">
-                <span className="brand-text">{opsMode ? 'DFS BACKOFFICE' : 'DFS CORPORATE'}</span>
-                <span className="portal-brand-sub">{designPreview ? 'Design Preview' : 'DFS Connect'}</span>
+                <span className="brand-text">{opsMode ? BRAND.backoffice : BRAND.short}</span>
+                <span className="portal-brand-sub">{designPreview ? 'Design Preview' : BRAND.tagline}</span>
               </div>
             </Link>
 
@@ -237,8 +238,8 @@ export function Layout() {
                   <span />
                 </div>
                 <div className="portal-brand-text">
-                  <span className="brand-text">DFS CORPORATE</span>
-                  <span className="portal-brand-sub">DFS Connect</span>
+                  <span className="brand-text">{BRAND.short}</span>
+                  <span className="portal-brand-sub">{BRAND.tagline}</span>
                 </div>
               </Link>
               <nav className="nav-links" aria-label="Main">

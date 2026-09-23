@@ -261,7 +261,7 @@ public class OnboardingService {
         account.setFirstLogin(true);
         accountRepository.save(account);
 
-        mailService.send(party.getEmail(), "DFS Corporate — Portal login credentials",
+        mailService.send(party.getEmail(), "PayFast Corporate — Portal login credentials",
                 """
                 Hello %s,
 
@@ -276,7 +276,7 @@ public class OnboardingService {
 
                 Tracking ID: %s
 
-                — DFS Corporate
+                — PayFast Corporate
                 """.formatted(
                         party.getFullName(),
                         party.getTrackingId(),

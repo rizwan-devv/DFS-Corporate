@@ -127,12 +127,12 @@ public class PortalUserService {
         accountRepository.save(account);
         assignRoles(account.getId(), roles);
 
-        mailService.send(email, "DFS Corporate — portal user credentials",
+        mailService.send(email, "PayFast Corporate — portal user credentials",
                 "Hello,\n\nYou have been added to " + party.getBusinessName()
                         + " with roles: " + roles.stream().map(Enum::name).collect(Collectors.joining(", "))
                         + "\n\nLogin email: " + email
                         + "\nTemporary password: " + tempPassword
-                        + "\n\n— DFS Corporate");
+                        + "\n\n— PayFast Corporate");
 
         PortalUserResponse res = toResponse(account);
         res.setTemporaryPassword(tempPassword);

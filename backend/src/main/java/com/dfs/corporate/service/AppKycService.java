@@ -576,13 +576,13 @@ public class AppKycService {
         Party party = partyRepository.findById(user.getPartyId()).orElse(partyAfter);
         String to = user.getEmail() != null ? user.getEmail() : (party != null ? party.getEmail() : null);
         if (to != null) {
-            mailService.send(to, "DFS Corporate — KYC submitted",
+            mailService.send(to, "PayFast Corporate — KYC submitted",
                     "Hello " + user.getFullName() + ",\n\n"
                             + "Your mobile KYC was submitted successfully"
                             + (party != null && party.getBusinessName() != null
                             ? " for " + party.getBusinessName() : "")
                             + ".\n\nYour application is now with back-office for verification. "
-                            + "After approval you can use the agent app with the password you set.\n\n— DFS Corporate");
+                            + "After approval you can use the agent app with the password you set.\n\n— PayFast Corporate");
         }
         return toSession(user);
     }
@@ -620,12 +620,12 @@ public class AppKycService {
             user.setVideoKycRef(null);
             appUserRepository.save(user);
             if (to != null) {
-                mailService.send(to, "DFS Corporate — Visit bank/office for KYC",
+                mailService.send(to, "PayFast Corporate — Visit bank/office for KYC",
                         "Hello " + user.getFullName() + ",\n\n"
                                 + "Your phone KYC failed " + fails + " times.\n"
                                 + "Reason: " + failReason + "\n\n"
                                 + "Please visit the bank/office. Backoffice can complete your partner KYC with a written reason.\n\n"
-                                + "— DFS Corporate");
+                                + "— PayFast Corporate");
             }
             return toSession(user);
         }
@@ -642,7 +642,7 @@ public class AppKycService {
 
         int remaining = PartnerAppUserService.MAX_PHONE_KYC_FAILS - fails;
         if (to != null) {
-            mailService.send(to, "DFS Corporate — KYC failed, please retry",
+            mailService.send(to, "PayFast Corporate — KYC failed, please retry",
                     "Hello " + user.getFullName() + ",\n\n"
                             + "Your KYC could not be completed.\n"
                             + "Reason: " + failReason + "\n"
@@ -650,7 +650,7 @@ public class AppKycService {
                             + " (" + remaining + " left).\n\n"
                             + "User ID (phone): " + user.getPhone() + "\n"
                             + "New temporary PIN: " + user.getTempPin() + "\n\n"
-                            + "Open the app and try again.\n\n— DFS Corporate");
+                            + "Open the app and try again.\n\n— PayFast Corporate");
         }
         return toSession(user);
     }

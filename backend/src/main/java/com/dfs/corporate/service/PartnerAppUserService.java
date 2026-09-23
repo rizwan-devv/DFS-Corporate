@@ -164,11 +164,11 @@ public class PartnerAppUserService {
         Party party = partyRepository.findById(user.getPartyId()).orElse(null);
         String to = user.getEmail() != null ? user.getEmail() : (party != null ? party.getEmail() : null);
         if (to != null) {
-            mailService.send(to, "DFS Corporate — KYC approved at bank/office",
+            mailService.send(to, "PayFast Corporate — KYC approved at bank/office",
                     "Hello " + user.getFullName() + ",\n\n"
                             + "Your partner KYC was completed after bank/office verification.\n"
                             + "Reason on file: " + user.getManualKycApproveReason() + "\n\n"
-                            + "— DFS Corporate");
+                            + "— PayFast Corporate");
         }
         return toResponse(user);
     }
@@ -217,15 +217,15 @@ public class PartnerAppUserService {
         String link = mobileAppBaseUrl + "?token=" + user.getAppInviteToken();
         String to = user.getEmail() != null && !user.getEmail().isBlank() ? user.getEmail() : party.getEmail();
         mailService.send(to,
-                "DFS Corporate — complete KYC in the mobile app",
+                "PayFast Corporate — complete KYC in the mobile app",
                 "Hello " + user.getFullName() + ",\n\n"
                         + "You are invited to complete biometric / video KYC for "
                         + party.getBusinessName() + ".\n\n"
                         + "Mobile app link (opens KycApp):\n" + link + "\n\n"
                         + "User ID (phone): " + user.getPhone() + "\n"
                         + "Temporary PIN: " + user.getTempPin() + "\n\n"
-                        + "Complete biometric / OCR KYC in the DFS Corporate KycApp.\n\n"
-                        + "— DFS Corporate");
+                        + "Complete biometric / OCR KYC in the PayFast Corporate KycApp.\n\n"
+                        + "— PayFast Corporate");
     }
 
     public PartnerAppUserResponse toResponse(PartnerAppUser u) {

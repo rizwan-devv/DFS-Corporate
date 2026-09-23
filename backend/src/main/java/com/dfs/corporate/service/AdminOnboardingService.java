@@ -194,11 +194,11 @@ public class AdminOnboardingService {
         }
 
         if (hadPassword) {
-            mailService.send(party.getEmail(), "DFS Corporate — Account Approved",
+            mailService.send(party.getEmail(), "PayFast Corporate — Account Approved",
                     """
                     Hello %s,
 
-                    Your DFS Corporate application (%s) has been approved.
+                    Your PayFast Corporate application (%s) has been approved.
 
                     Continue using your existing portal login (email + the password you set after submit).
 
@@ -207,18 +207,18 @@ public class AdminOnboardingService {
 
                     DFS backend account provision: %s%s
 
-                    — DFS Corporate
+                    — PayFast Corporate
                     """.formatted(
                             party.getFullName(),
                             party.getTrackingId() != null ? party.getTrackingId() : party.getPartyType(),
                             party.getAccountProvisionStatus(),
                             party.getDfsAccountId() != null ? (" / ID: " + party.getDfsAccountId()) : ""));
         } else {
-            mailService.send(party.getEmail(), "DFS Corporate — Account Approved",
+            mailService.send(party.getEmail(), "PayFast Corporate — Account Approved",
                     """
                     Hello %s,
 
-                    Your DFS Corporate application (%s) has been approved.
+                    Your PayFast Corporate application (%s) has been approved.
 
                     Portal login (web :8060):
                       Email: %s
@@ -230,7 +230,7 @@ public class AdminOnboardingService {
 
                     DFS backend account provision: %s%s
 
-                    — DFS Corporate
+                    — PayFast Corporate
                     """.formatted(
                             party.getFullName(),
                             party.getPartyType(),
@@ -278,17 +278,17 @@ public class AdminOnboardingService {
         account.setStatus(AccountStatus.LOCKED);
         accountRepository.save(account);
 
-        mailService.send(party.getEmail(), "DFS Corporate — Application Rejected",
+        mailService.send(party.getEmail(), "PayFast Corporate — Application Rejected",
                 """
                 Hello %s,
 
-                Your DFS Corporate application was not approved.
+                Your PayFast Corporate application was not approved.
 
                 Reason: %s
 
                 You may correct your profile/documents and resubmit.
 
-                — DFS Corporate
+                — PayFast Corporate
                 """.formatted(party.getFullName(), req.getReason()));
 
         return enrich(party);
@@ -312,14 +312,14 @@ public class AdminOnboardingService {
                 party.setStatus(PartyStatus.INCOMPLETE);
                 partyRepository.save(party);
             }
-            mailService.send(party.getEmail(), "DFS Corporate — Document needs re-upload",
+            mailService.send(party.getEmail(), "PayFast Corporate — Document needs re-upload",
                     "Hello " + party.getFullName() + ",\n\n"
                             + "Document \"" + doc.getDocumentCode() + "\" was rejected by backoffice.\n"
                             + (note != null && !note.isBlank() ? "Note: " + note + "\n\n" : "\n")
                             + "Login to the portal with the email + password from your submit email "
                             + "(change it on first login if you have not yet).\n"
                             + "Open My Application and re-upload only this document. Your full application was not rejected.\n\n"
-                            + "— DFS Corporate");
+                            + "— PayFast Corporate");
         } else {
             partyStatusSyncService.syncAfterDocumentChange(party.getId());
         }
@@ -388,7 +388,7 @@ public class AdminOnboardingService {
         Party party = partyRepository.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Party not found"));
         party.setDiscrepancyNote(note);
-        mailService.send(party.getEmail(), "DFS Corporate — Additional information required",
+        mailService.send(party.getEmail(), "PayFast Corporate — Additional information required",
                 "Tracking ID: " + party.getTrackingId() + "\n\n" + note + "\n\nPlease update your application.");
         return enrich(partyRepository.save(party));
     }

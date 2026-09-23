@@ -41,7 +41,7 @@ public class DataInitializer {
             party.setPartyType(PartyType.MERCHANT);
             party.setStatus(PartyStatus.ACTIVE);
             party.setFullName("Platform Admin");
-            party.setBusinessName("DFS Corporate");
+            party.setBusinessName("PayFast Corporate");
             party.setEmail(adminEmail);
             party.setPhone("0000000000");
             party.setCountry("Pakistan");

@@ -66,6 +66,6 @@ public class PartnerInviteController {
 
     private Map<String, Object> disabled() {
         throw new ApiException(HttpStatus.GONE,
-                "Partner KYC on this portal is disabled. Use the DFS Corporate mobile app (link emailed after merchant submit).");
+                "Partner KYC on this portal is disabled. Use the PayFast Corporate mobile app (link emailed after merchant submit).");
     }
 }

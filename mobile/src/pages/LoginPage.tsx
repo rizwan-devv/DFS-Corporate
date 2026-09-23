@@ -62,7 +62,7 @@ export function LoginPage() {
     <div className="shell">
       <div className="brand-row animate-in">
         <div className="brand-mark" aria-hidden><span /></div>
-        <span className="brand-text">DFS CORPORATE</span>
+        <span className="brand-text">PAYFAST CORPORATE</span>
       </div>
 
       <header className="hero-block animate-in animate-in-delay-1">
