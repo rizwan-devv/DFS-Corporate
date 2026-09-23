@@ -27,8 +27,6 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
@@ -150,18 +148,18 @@ public class FranchiseCommissionSettlementService {
             return ScanResult.empty();
         }
 
-        LocalDate to = LocalDate.now();
-        LocalDate from = to.minusDays(30);
-        DateTimeFormatter fmt = DateTimeFormatter.ISO_LOCAL_DATE;
         String level = child.getLevelCode() != null && !child.getLevelCode().isBlank()
                 ? child.getLevelCode().trim() : defaultLevelCode;
-        JsonNode root = agentClient.miniStatement(childMobile, level, from.format(fmt), to.format(fmt));
+        // Same as Onboarded: omit dates so AgentApp returns the latest credits.
+        JsonNode root = agentClient.miniStatement(childMobile, level, null, null);
         List<JsonNode> rows = extractRows(root);
+        log.info("Commission scan child={} mobile={} statementRows={}", child.getId(), childMobile, rows.size());
         int scanned = 0;
         int created = 0;
         for (JsonNode row : rows) {
             if (!isInboundCredit(row)) continue;
             if (isOwnCommissionNarration(row)) continue;
+            if (isFundingCredit(row)) continue;
             BigDecimal gross = decimal(row, "txnAmt", "txnAmount", "amount");
             if (gross == null || gross.compareTo(BigDecimal.ZERO) <= 0) continue;
             scanned++;
@@ -300,8 +298,20 @@ public class FranchiseCommissionSettlementService {
     }
 
     private static boolean isOwnCommissionNarration(JsonNode row) {
-        String d = text(row, "transDocsDescr", "narration", "description", "remarks");
+        String d = descr(row);
         return d != null && d.toUpperCase(Locale.ROOT).contains(NARRATION_PREFIX);
+    }
+
+    /** Opening / GL loads are not franchise collections. */
+    private static boolean isFundingCredit(JsonNode row) {
+        String d = descr(row);
+        if (d == null) return false;
+        String u = d.toUpperCase(Locale.ROOT);
+        return u.contains("GL TO WALLET") || u.contains("GL-") || u.contains("OPENING");
+    }
+
+    private static String descr(JsonNode row) {
+        return text(row, "transDocsDescr", "narration", "description", "remarks");
     }
 
     private static String sourceRef(Long childId, JsonNode row) {
@@ -316,29 +326,54 @@ public class FranchiseCommissionSettlementService {
 
     private static List<JsonNode> extractRows(JsonNode root) {
         List<JsonNode> out = new ArrayList<>();
-        if (root == null) return out;
-        JsonNode data = root.has("data") && !root.get("data").isNull() ? root.get("data") : root;
-        if (data.isArray()) {
-            data.forEach(out::add);
-            return out;
-        }
-        for (String key : List.of("transactions", "list", "records", "data", "items")) {
-            if (data.has(key) && data.get(key).isArray()) {
-                data.get(key).forEach(out::add);
-                return out;
-            }
-        }
+        collectTxnRows(root, out);
         return out;
     }
 
-    private static BigDecimal decimal(JsonNode n, String... keys) {
-        String t = text(n, keys);
-        if (t == null) return null;
-        try {
-            return new BigDecimal(t.trim());
-        } catch (Exception e) {
-            return null;
+    private static void collectTxnRows(JsonNode n, List<JsonNode> out) {
+        if (n == null || n.isNull()) return;
+        if (n.isArray()) {
+            n.forEach(item -> {
+                if (looksLikeTxn(item)) out.add(item);
+                else collectTxnRows(item, out);
+            });
+            return;
         }
+        if (!n.isObject()) return;
+        for (String key : List.of("transactions", "list", "records", "data", "items",
+                "transactionList", "miniStatement", "statement", "stmt")) {
+            if (n.has(key)) collectTxnRows(n.get(key), out);
+        }
+        if (out.isEmpty()) {
+            n.fields().forEachRemaining(e -> {
+                if (e.getValue() != null && e.getValue().isArray()) {
+                    collectTxnRows(e.getValue(), out);
+                }
+            });
+        }
+    }
+
+    private static boolean looksLikeTxn(JsonNode n) {
+        if (n == null || !n.isObject()) return false;
+        return n.has("txnAmt") || n.has("transRefnum") || n.has("amountType")
+                || n.has("transDate") || n.has("transDocsDescr");
+    }
+
+    private static BigDecimal decimal(JsonNode n, String... keys) {
+        if (n == null || n.isNull()) return null;
+        for (String k : keys) {
+            if (!n.has(k) || n.get(k).isNull()) continue;
+            JsonNode v = n.get(k);
+            if (v.isNumber()) return v.decimalValue();
+            String t = v.asText(null);
+            if (t == null || t.isBlank()) continue;
+            try {
+                return new BigDecimal(t.trim());
+            } catch (Exception ignored) {
+                /* next key */
+            }
+        }
+        return null;
     }
 
     private static String text(JsonNode n, String... keys) {

@@ -21,12 +21,12 @@ public class FranchiseCommissionSettleJob {
         this.enabled = enabled;
     }
 
-    @Scheduled(initialDelay = 60_000, fixedDelayString = "${app.commission.settle-interval-ms:300000}")
+    @Scheduled(initialDelay = 15_000, fixedDelayString = "${app.commission.settle-interval-ms:30000}")
     public void run() {
         if (!enabled) return;
         try {
             var r = settlementService.settleAllLocked();
-            if (r.getCreated() > 0 || r.getPosted() > 0 || r.getFailed() > 0) {
+            if (r.getScannedCredits() > 0 || r.getCreated() > 0 || r.getPosted() > 0 || r.getFailed() > 0) {
                 log.info("Franchise commission settle: {}", r.getMessage());
             }
         } catch (Exception ex) {

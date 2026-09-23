@@ -154,8 +154,8 @@ export function TransactionsPage() {
           <div>
             <h2 className="panel-title">Settle inbound commission</h2>
             <p className="muted panel-subtitle">
-              Reads each locked child’s last 30 days of credits, then FT the % to your wallet.
-              Auto-runs every 5 minutes when DFS portal APIs are on.
+              Reads the same latest AgentApp credits as Onboarded (Wallet to Wallet). GL funding is skipped.
+              Auto-scans about every 30 seconds when DFS portal APIs are on.
             </p>
           </div>
         </div>
