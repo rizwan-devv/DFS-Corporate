@@ -1,10 +1,12 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import QRCode from 'qrcode';
 import { PageHeader } from '../../components/PageHeader';
 import { BeneficiaryPicker } from '../../components/BeneficiaryPicker';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import type { Beneficiary, MockTransfer } from '../../lib/transferTypes';
+import { fetchLiveStatus, type LiveStatus } from '../../lib/liveTransfers';
 
 const emptyForm = {
   accountNumber: '',
@@ -16,15 +18,34 @@ const emptyForm = {
   raastId: '',
 };
 
+type RaastAccountDetails = {
+  responsecode?: string;
+  messages?: string;
+  accountNo?: string;
+  mobileNo?: string;
+  nidNo?: string;
+  iban?: string;
+  qrCode?: string;
+  accountTitle?: string;
+  currentBalance?: number;
+  accountStatusDescr?: string;
+};
+
 export function RaastTransferPage() {
   const { session } = useAuth();
   const [form, setForm] = useState(emptyForm);
   const [selectedBenId, setSelectedBenId] = useState<string | null>(null);
   const [history, setHistory] = useState<MockTransfer[]>([]);
   const [last, setLast] = useState<MockTransfer | null>(null);
+  const [live, setLive] = useState<LiveStatus | null>(null);
+  const [account, setAccount] = useState<RaastAccountDetails | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
+
+  const liveOn = !!live?.liveEnabled || !!live?.appConfigured || !!live?.raastLive;
 
   const load = useCallback(async () => {
     if (!session?.token) return;
@@ -38,9 +59,48 @@ export function RaastTransferPage() {
     }
   }, [session?.token]);
 
+  const loadLiveQr = useCallback(async () => {
+    if (!session?.token) return;
+    setQrLoading(true);
+    setError('');
+    try {
+      const status = await fetchLiveStatus(session.token);
+      setLive(status);
+      if (!status.appConfigured && !status.liveEnabled && !status.raastLive) {
+        setAccount(null);
+        setQrDataUrl(null);
+        return;
+      }
+      const details = await api<RaastAccountDetails>('/api/transfers/live/raast/account-details', {
+        token: session.token,
+      });
+      setAccount(details);
+      if (details.qrCode) {
+        const url = await QRCode.toDataURL(details.qrCode, {
+          width: 240,
+          margin: 2,
+          color: { dark: '#0f172a', light: '#ffffff' },
+          errorCorrectionLevel: 'M',
+        });
+        setQrDataUrl(url);
+        setOk('Live Raast QR loaded from DFS accountDetails');
+      } else {
+        setQrDataUrl(null);
+        setError('DFS returned account details without qrCode');
+      }
+    } catch (e) {
+      setAccount(null);
+      setQrDataUrl(null);
+      setError(e instanceof Error ? e.message : 'Failed to load Raast QR');
+    } finally {
+      setQrLoading(false);
+    }
+  }, [session?.token]);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadLiveQr();
+  }, [load, loadLiveQr]);
 
   function applyBeneficiary(b: Beneficiary | null) {
     setSelectedBenId(b?.publicId ?? null);
@@ -64,15 +124,15 @@ export function RaastTransferPage() {
     try {
       const amount = Number(form.amount);
       if (!Number.isFinite(amount) || amount <= 0) throw new Error('Enter a valid amount (PKR)');
-      const account = form.raastId.trim() || form.accountNumber.trim();
-      if (!account) throw new Error('Raast ID or IBAN / account is required');
+      const accountNo = form.raastId.trim() || form.accountNumber.trim();
+      if (!accountNo) throw new Error('Raast ID or IBAN / account is required');
 
       const res = await api<MockTransfer>('/api/transfers/mock/single', {
         method: 'POST',
         token: session.token,
         body: JSON.stringify({
           productType: 'RAAST',
-          accountNumber: account,
+          accountNumber: accountNo,
           amount,
           cnic: form.cnic || undefined,
           mobile: form.mobile || undefined,
@@ -102,16 +162,25 @@ export function RaastTransferPage() {
   }
 
   return (
-    <div className="portal-page">
+    <div className="portal-page raast-page">
       <PageHeader
         eyebrow="Transfers"
         title="Raast"
-        subtitle="Instant payment via Raast ID / IBAN. Single payment with mock QR — no bulk."
+        subtitle={
+          qrDataUrl
+            ? 'Live receive QR from DFS accountDetails · outbound pay still mock'
+            : 'Load live receive QR when portal key is enabled · outbound pay is mock'
+        }
         actions={
           <div className="actions" style={{ marginTop: 0 }}>
             <Link className="btn btn-ghost btn-sm" to="/beneficiaries">Beneficiaries</Link>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()}>
-              Refresh
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={qrLoading}
+              onClick={() => { void load(); void loadLiveQr(); }}
+            >
+              {qrLoading ? 'Loading…' : 'Refresh'}
             </button>
           </div>
         }
@@ -120,9 +189,67 @@ export function RaastTransferPage() {
       {error && <div className="alert alert-error">{error}</div>}
       {ok && <div className="alert alert-ok">{ok}</div>}
 
+      <div className="panel panel--wide raast-receive-panel">
+        <div className="raast-receive-head">
+          <div>
+            <h3 className="form-section-title" style={{ marginTop: 0 }}>My Raast QR</h3>
+            <p className="muted" style={{ margin: 0 }}>
+              Others can scan this to pay your corporate wallet. Source: DFS <code>accountDetails</code>.
+            </p>
+          </div>
+          <button type="button" className="btn btn-primary btn-sm" disabled={qrLoading} onClick={() => void loadLiveQr()}>
+            {qrLoading ? 'Fetching…' : 'Reload QR'}
+          </button>
+        </div>
+
+        {!liveOn && !qrLoading && (
+          <div className="alert alert-info">
+            Enable live portal key (<code>DFS_PORTAL_API_ENABLED</code> + <code>CORPORATE_PORTAL_API_KEY</code>) to load QR.
+          </div>
+        )}
+
+        {qrDataUrl && account && (
+          <div className="raast-qr-card">
+            <div className="raast-qr-frame">
+              <img src={qrDataUrl} alt="Raast QR code" width={240} height={240} />
+            </div>
+            <div className="raast-qr-meta">
+              <p className="raast-qr-title">{account.accountTitle || 'Corporate account'}</p>
+              {account.accountStatusDescr && (
+                <span className={`status ${account.accountStatusDescr === 'ACTIVE' ? 'status-ACTIVE' : 'status-PENDING'}`}>
+                  {account.accountStatusDescr}
+                </span>
+              )}
+              <dl className="raast-qr-dl">
+                {account.iban && (
+                  <>
+                    <dt>IBAN</dt>
+                    <dd className="txn-mono">{account.iban}</dd>
+                  </>
+                )}
+                {(account.mobileNo || account.accountNo) && (
+                  <>
+                    <dt>Wallet</dt>
+                    <dd className="txn-mono">{account.mobileNo || account.accountNo}</dd>
+                  </>
+                )}
+                {account.currentBalance != null && (
+                  <>
+                    <dt>Balance</dt>
+                    <dd>PKR {Number(account.currentBalance).toLocaleString()}</dd>
+                  </>
+                )}
+              </dl>
+              <p className="muted raast-qr-hint">Scan with a Raast-enabled banking app</p>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="panel panel--wide" style={{ marginTop: '1.25rem' }}>
         <form className="form-grid" onSubmit={submitSingle}>
-          <h3 className="form-section-title">Raast — single payment</h3>
+          <h3 className="form-section-title">Raast — send (mock)</h3>
+          <p className="muted" style={{ margin: 0 }}>Outbound Raast payment is still mock until DFS provides a pay API.</p>
           <BeneficiaryPicker
             product="RAAST"
             selectedPublicId={selectedBenId}
@@ -177,7 +304,7 @@ export function RaastTransferPage() {
 
       {last && (
         <div className="panel panel--wide" style={{ marginTop: '1.25rem' }}>
-          <h3>Last result</h3>
+          <h3>Last mock result</h3>
           <p>
             <span className="status status-ACTIVE">{last.status}</span>{' '}
             <strong>{last.mockTxnRef}</strong>

@@ -11,6 +11,7 @@ export type LiveStatus = {
   note?: string;
   products: string[];
   raastLive: boolean;
+  raastQrAvailable?: boolean;
 };
 
 export type DfsTxnResponse = {

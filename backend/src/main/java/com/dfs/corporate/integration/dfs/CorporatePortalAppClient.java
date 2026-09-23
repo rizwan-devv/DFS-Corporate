@@ -75,6 +75,40 @@ public class CorporatePortalAppClient {
         }
     }
 
+    /**
+     * Corporate account details including Raast {@code qrCode} / IBAN.
+     * {@code POST /v1/corporate/accountDetails}
+     */
+    public JsonNode accountDetails(String mobileNumber) {
+        ensureReady();
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("mobileNumber", mobileNumber);
+
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("channel", channel);
+        body.set("payload", payload);
+
+        try {
+            log.info("Calling DFS app accountDetails → {}/v1/corporate/accountDetails mobile={}", baseUrl, mobileNumber);
+            String raw = restClient.post()
+                    .uri("/v1/corporate/accountDetails")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("X-Portal-Key", portalKey)
+                    .body(body)
+                    .retrieve()
+                    .body(String.class);
+            return objectMapper.readTree(raw != null ? raw : "{}");
+        } catch (RestClientResponseException ex) {
+            String msg = "DFS app HTTP " + ex.getStatusCode().value() + ": " + truncate(ex.getResponseBodyAsString());
+            log.warn(msg);
+            throw new IllegalStateException(msg);
+        } catch (IllegalStateException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalStateException("DFS accountDetails failed: " + ex.getMessage(), ex);
+        }
+    }
+
     private void ensureReady() {
         if (!enabled) {
             throw new IllegalStateException(

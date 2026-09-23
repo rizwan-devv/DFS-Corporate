@@ -89,4 +89,10 @@ public class LiveTransferController {
             @Valid @RequestBody LiveMpinVerifyRequest req) {
         return liveTransferService.verifyMpin(principal, req);
     }
+
+    /** Live DFS accountDetails — Raast receive QR for the corporate wallet. */
+    @GetMapping("/raast/account-details")
+    public RaastAccountDetailsResponse raastAccountDetails(@AuthenticationPrincipal AccountPrincipal principal) {
+        return liveTransferService.raastAccountDetails(principal);
+    }
 }

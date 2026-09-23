@@ -65,8 +65,70 @@ public class LiveTransferService {
                 "IBFT bankList downstream is POST (Postman). Portal exposes GET /api/transfers/live/ibft/banks for convenience. "
                         + "getbiller is GET. Branch on responsecode=000.");
         out.put("products", List.of("FT", "IBFT", "UBP"));
-        out.put("raastLive", false);
+        // Receive QR via accountDetails; outbound Raast pay still mock
+        out.put("raastLive", appClient.isEnabled());
+        out.put("raastQrAvailable", appClient.isEnabled());
         return out;
+    }
+
+    /**
+     * Live DFS accountDetails for the party's wallet — includes Raast {@code qrCode}.
+     */
+    public RaastAccountDetailsResponse raastAccountDetails(AccountPrincipal principal) {
+        if (!appClient.isEnabled()) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Live DFS app disabled. Set DFS_PORTAL_API_ENABLED and CORPORATE_PORTAL_API_KEY.");
+        }
+        Party party = requireActiveParty(principal);
+        String mobile = requireMobile(party);
+        JsonNode root = call(() -> appClient.accountDetails(mobile));
+        RaastAccountDetailsResponse r = new RaastAccountDetailsResponse();
+        if (root == null) {
+            r.setResponsecode("999");
+            r.setMessages("Empty DFS response");
+            return r;
+        }
+        r.setResponsecode(text(root, "responsecode", "responseCode"));
+        r.setMessages(text(root, "messages", "message"));
+        JsonNode data = root.has("data") && !root.get("data").isNull() ? root.get("data") : root;
+        r.setAccountNo(text(data, "accountNo", "accountNumber"));
+        r.setMobileNo(text(data, "mobileNo", "mobileNumber"));
+        r.setNidNo(text(data, "nidNo"));
+        r.setGender(text(data, "gender"));
+        r.setSegmentDescr(text(data, "segmentDescr"));
+        r.setIban(text(data, "iban"));
+        r.setQrCode(text(data, "qrCode", "qrString", "raastQr"));
+        r.setAccountTitle(text(data, "accountTitle"));
+        r.setAccountStatusDescr(text(data, "accountStatusDescr"));
+        if (data.has("currentBalance") && !data.get("currentBalance").isNull()) {
+            try {
+                r.setCurrentBalance(data.get("currentBalance").decimalValue());
+            } catch (Exception ignored) {
+                try {
+                    r.setCurrentBalance(new BigDecimal(data.get("currentBalance").asText()));
+                } catch (Exception ignored2) { /* leave null */ }
+            }
+        }
+        String code = r.getResponsecode();
+        if (code != null && !code.isBlank() && !"000".equals(code) && !"00".equals(code)) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY,
+                    r.getMessages() != null ? r.getMessages() : ("DFS accountDetails failed (" + code + ")"));
+        }
+        if (r.getQrCode() == null || r.getQrCode().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "DFS accountDetails returned no qrCode");
+        }
+        return r;
+    }
+
+    private static String text(JsonNode node, String... keys) {
+        if (node == null || node.isNull()) return null;
+        for (String k : keys) {
+            if (node.has(k) && !node.get(k).isNull()) {
+                String v = node.get(k).asText(null);
+                if (v != null && !v.isBlank()) return v.trim();
+            }
+        }
+        return null;
     }
 
     public DfsPortalTxnResponse ibftBanks(AccountPrincipal principal) {
