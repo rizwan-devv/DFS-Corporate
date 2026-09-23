@@ -20,6 +20,8 @@ export type DfsTxnResponse = {
   raw?: unknown;
   fromAccountNo?: string;
   product?: string;
+  /** Set by backend after live persist */
+  portalTxnRef?: string;
 };
 
 export type IbftBank = {

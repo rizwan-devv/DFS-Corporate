@@ -244,6 +244,7 @@ public class LiveTransferService {
         t.setStatus(ok ? "LIVE_SUCCESS" : "LIVE_FAIL_" + (code != null ? code : "UNKNOWN"));
         t.setMockTxnRef("LIVE-" + (code != null ? code : "NA") + "-"
                 + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        resp.setPortalTxnRef(t.getMockTxnRef());
         String msg = resp.getMessages();
         if (msg != null) {
             t.setNotes((t.getNotes() != null ? t.getNotes() + " · " : "") + msg);

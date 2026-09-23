@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
 import { BeneficiaryPicker } from '../../components/BeneficiaryPicker';
 import { LiveBulkPanel } from '../../components/LiveBulkPanel';
+import { PaymentReceipt } from '../../components/PaymentReceipt';
 import { api, apiUrl } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import type { Beneficiary, MockTransfer } from '../../lib/transferTypes';
@@ -27,6 +28,11 @@ import {
   shortRequestId,
   type ApprovalRow,
 } from '../../lib/transferWorkflow';
+import {
+  buildReceiptFromHistory,
+  buildReceiptFromLive,
+  type PaymentReceiptModel,
+} from '../../lib/paymentReceipt';
 
 const emptyForm = {
   accountNumber: '',
@@ -63,6 +69,7 @@ export function AccountRailTransferPage({ product }: Props) {
   const [titleResult, setTitleResult] = useState<DfsTxnResponse | null>(null);
   const [ftInitResult, setFtInitResult] = useState<DfsTxnResponse | null>(null);
   const [lastLive, setLastLive] = useState<DfsTxnResponse | null>(null);
+  const [receipt, setReceipt] = useState<PaymentReceiptModel | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
@@ -298,12 +305,30 @@ export function AccountRailTransferPage({ product }: Props) {
       });
       setLastLive(r);
       if (isLiveOk(r)) {
-        setOk(r.messages || 'IBFT advice success — money moved');
+        setReceipt(buildReceiptFromLive(r, {
+          product: 'IBFT',
+          amount: form.amount,
+          accountNumber: form.accountNumber,
+          beneficiaryName: form.beneficiaryName || undefined,
+          bankName: form.bankName || undefined,
+          bankImd: form.bankImd || undefined,
+          portalTxnRef: r.portalTxnRef,
+        }));
+        setOk(r.messages || 'IBFT success — receipt ready');
         setForm(emptyForm);
         setTitleResult(null);
         setSelectedBenId(null);
         await loadHistory();
       } else {
+        setReceipt(buildReceiptFromLive(r, {
+          product: 'IBFT',
+          amount: form.amount,
+          accountNumber: form.accountNumber,
+          beneficiaryName: form.beneficiaryName || undefined,
+          bankName: form.bankName || undefined,
+          bankImd: form.bankImd || undefined,
+          portalTxnRef: r.portalTxnRef,
+        }));
         setError(r.messages || `IBFT failed (${r.responsecode})`);
       }
     } catch (err) {
@@ -364,12 +389,26 @@ export function AccountRailTransferPage({ product }: Props) {
       });
       setLastLive(r);
       if (isLiveOk(r)) {
-        setOk(r.messages || 'Local FT success — money moved');
+        setReceipt(buildReceiptFromLive(r, {
+          product: 'FT',
+          amount: form.amount,
+          accountNumber: form.accountNumber,
+          beneficiaryName: form.beneficiaryName || undefined,
+          portalTxnRef: r.portalTxnRef,
+        }));
+        setOk(r.messages || 'Local FT success — receipt ready');
         setForm(emptyForm);
         setFtInitResult(null);
         setSelectedBenId(null);
         await loadHistory();
       } else {
+        setReceipt(buildReceiptFromLive(r, {
+          product: 'FT',
+          amount: form.amount,
+          accountNumber: form.accountNumber,
+          beneficiaryName: form.beneficiaryName || undefined,
+          portalTxnRef: r.portalTxnRef,
+        }));
         setError(r.messages || `FT confirm failed (${r.responsecode})`);
       }
     } catch (err) {
@@ -662,15 +701,19 @@ export function AccountRailTransferPage({ product }: Props) {
             <div className="txn-legacy">
               <h4>Direct live / mock pays (bypass workflow)</h4>
               <p className="muted" style={{ marginTop: 0 }}>
-                These are payments sent with <strong>Direct live pay</strong> or mock rails — not linked to the approval queue above.
+                Tap a row for a payment receipt. These are Direct live / mock pays — not linked to the approval queue above.
               </p>
               {history.slice(0, 8).map((t) => (
                 <div className="doc-row" key={t.id}>
-                  <div>
+                  <button
+                    type="button"
+                    className="history-receipt-btn"
+                    onClick={() => setReceipt(buildReceiptFromHistory(t))}
+                  >
                     <strong>{t.mockTxnRef}</strong>
                     <div className="muted">{t.amount != null ? `PKR ${t.amount}` : '—'}{t.accountNumber ? ` · ${t.accountNumber}` : ''}</div>
-                  </div>
-                  <span className="status status-ACTIVE">{t.status}</span>
+                  </button>
+                  <span className={`status ${t.status === 'LIVE_SUCCESS' ? 'status-ACTIVE' : 'status-REJECTED'}`}>{t.status}</span>
                 </div>
               ))}
             </div>
@@ -927,12 +970,26 @@ export function AccountRailTransferPage({ product }: Props) {
 
           {lastLive && (
             <div style={{ marginTop: '1.25rem' }}>
-              <h4>Last live response</h4>
-              <p><span className={`status ${isLiveOk(lastLive) ? 'status-ACTIVE' : 'status-REJECTED'}`}>{lastLive.responsecode}</span> {lastLive.messages}</p>
-              <pre className="transfer-pre">{JSON.stringify(lastLive.data ?? lastLive.raw, null, 2)}</pre>
+              <h4>Last live payment</h4>
+              <p>
+                <span className={`status ${isLiveOk(lastLive) ? 'status-ACTIVE' : 'status-REJECTED'}`}>{lastLive.responsecode}</span>{' '}
+                {lastLive.messages}
+                {lastLive.portalTxnRef ? ` · ${lastLive.portalTxnRef}` : ''}
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setReceipt(buildReceiptFromLive(lastLive, { product, portalTxnRef: lastLive.portalTxnRef }))}
+              >
+                View receipt
+              </button>
             </div>
           )}
         </div>
+      )}
+
+      {receipt && (
+        <PaymentReceipt receipt={receipt} onClose={() => setReceipt(null)} />
       )}
 
       {pageTab === 'bulk' && (

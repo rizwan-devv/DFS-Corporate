@@ -13,6 +13,8 @@ public class DfsPortalTxnResponse {
     private JsonNode raw;
     private String fromAccountNo;
     private String product;
+    /** Portal ledger ref after persist (e.g. LIVE-000-B61C5D92). */
+    private String portalTxnRef;
 
     public static DfsPortalTxnResponse from(JsonNode root) {
         DfsPortalTxnResponse r = new DfsPortalTxnResponse();
@@ -59,4 +61,6 @@ public class DfsPortalTxnResponse {
     public void setFromAccountNo(String fromAccountNo) { this.fromAccountNo = fromAccountNo; }
     public String getProduct() { return product; }
     public void setProduct(String product) { this.product = product; }
+    public String getPortalTxnRef() { return portalTxnRef; }
+    public void setPortalTxnRef(String portalTxnRef) { this.portalTxnRef = portalTxnRef; }
 }

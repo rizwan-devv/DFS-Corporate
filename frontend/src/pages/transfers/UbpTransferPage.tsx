@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
 import { LiveBulkPanel } from '../../components/LiveBulkPanel';
+import { PaymentReceipt } from '../../components/PaymentReceipt';
 import { api, apiUrl } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import type { MockTransfer, UbpBill, UbpCategory } from '../../lib/transferTypes';
@@ -20,6 +21,11 @@ import {
   categoryCounts,
   type LiveUbpStep,
 } from '../../lib/ubpCategories';
+import {
+  buildReceiptFromHistory,
+  buildReceiptFromLive,
+  type PaymentReceiptModel,
+} from '../../lib/paymentReceipt';
 
 const emptyForm = {
   amount: '',
@@ -97,6 +103,7 @@ export function UbpTransferPage() {
   const [history, setHistory] = useState<MockTransfer[]>([]);
   const [last, setLast] = useState<MockTransfer | null>(null);
   const [lastLive, setLastLive] = useState<DfsTxnResponse | null>(null);
+  const [receipt, setReceipt] = useState<PaymentReceiptModel | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchingBill, setFetchingBill] = useState(false);
   const [error, setError] = useState('');
@@ -303,10 +310,29 @@ export function UbpTransferPage() {
       });
       setLastLive(r);
       if (isLiveOk(r)) {
-        setOk(r.messages || 'Bill payment success');
+        const companyName =
+          liveBillers.find((b) => (b.code || '') === form.utilityCompanyCode)?.name
+          || form.ubpCompany
+          || form.utilityCompanyCode;
+        setReceipt(buildReceiptFromLive(r, {
+          product: 'UBP',
+          amount: form.amount,
+          utilityCompanyCode: form.utilityCompanyCode,
+          utilityCompanyName: companyName,
+          consumerNo: form.consumerNumber,
+          portalTxnRef: r.portalTxnRef,
+        }));
+        setOk(r.messages || 'Bill payment success — receipt ready');
         resetLiveWizard('category');
         await load();
       } else {
+        setReceipt(buildReceiptFromLive(r, {
+          product: 'UBP',
+          amount: form.amount,
+          utilityCompanyCode: form.utilityCompanyCode,
+          consumerNo: form.consumerNumber,
+          portalTxnRef: r.portalTxnRef,
+        }));
         setError(r.messages || `Payment failed (${r.responsecode})`);
       }
     } catch (err) {
@@ -739,11 +765,27 @@ export function UbpTransferPage() {
         )}
       </div>
 
-      {lastLive && (
+      {receipt && (
+        <PaymentReceipt receipt={receipt} onClose={() => setReceipt(null)} />
+      )}
+
+      {lastLive && !receipt && (
         <div className="panel panel--wide" style={{ marginTop: '1.25rem' }}>
-          <h3>Last live response</h3>
-          <p><span className="status status-ACTIVE">{lastLive.responsecode}</span> {lastLive.messages}</p>
-          <pre className="transfer-pre">{JSON.stringify(lastLive.data ?? lastLive.raw, null, 2)}</pre>
+          <h3>Last live payment</h3>
+          <p>
+            <span className={`status ${isLiveOk(lastLive) ? 'status-ACTIVE' : 'status-REJECTED'}`}>
+              {lastLive.responsecode}
+            </span>{' '}
+            {lastLive.messages}
+            {lastLive.portalTxnRef ? ` · ${lastLive.portalTxnRef}` : ''}
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => setReceipt(buildReceiptFromLive(lastLive, { product: 'UBP', portalTxnRef: lastLive.portalTxnRef }))}
+          >
+            View receipt
+          </button>
         </div>
       )}
 
@@ -756,18 +798,24 @@ export function UbpTransferPage() {
 
       <div className="panel panel--wide" style={{ marginTop: '1.25rem' }}>
         <h3>UBP history</h3>
+        <p className="muted" style={{ marginTop: 0 }}>Tap a row to open the payment receipt.</p>
         {history.length === 0 && <p className="muted">No UBP payments yet.</p>}
         {history.map((t) => (
           <div className="doc-row" key={t.id}>
-            <div>
+            <button
+              type="button"
+              className="history-receipt-btn"
+              onClick={() => setReceipt(buildReceiptFromHistory(t, t.status.startsWith('LIVE') ? lastLive : null))}
+            >
               <strong>{t.mockTxnRef}</strong>
               <div className="muted">
                 {t.amount != null ? `PKR ${t.amount}` : '—'}
                 {t.consumerNumber ? ` · ${t.consumerNumber}` : ''}
+                {t.ubpCompany ? ` · ${t.ubpCompany}` : ''}
                 {t.createdAt ? ` · ${new Date(t.createdAt).toLocaleString()}` : ''}
               </div>
-            </div>
-            <span className="status status-ACTIVE">{t.status}</span>
+            </button>
+            <span className={`status ${t.status === 'LIVE_SUCCESS' ? 'status-ACTIVE' : 'status-REJECTED'}`}>{t.status}</span>
           </div>
         ))}
       </div>
