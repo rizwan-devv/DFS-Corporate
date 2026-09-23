@@ -4477,7 +4477,11 @@ html[data-theme="payfast"] body {
   letter-spacing: 0.02em;
 }
 
-.txn-status--authorized,
+.txn-status--released {
+  color: var(--teal);
+}
+
+.txn-status--pending_release,
 .txn-status--checked {
   color: var(--teal);
 }

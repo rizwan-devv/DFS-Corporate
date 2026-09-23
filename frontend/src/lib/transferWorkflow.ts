@@ -36,13 +36,13 @@ export function parsePayload(json?: string): PaymentPayload {
 }
 
 export function displayStatus(row: ApprovalRow): string {
-  if (row.status === 'APPROVED') return 'AUTHORIZED';
+  if (row.status === 'APPROVED' || row.currentStep === 'DONE') return 'RELEASED';
   if (row.status === 'REJECTED') {
     const stop = row.actions?.some((a) => (a.comment || '').toUpperCase().includes('STOP'));
     return stop ? 'STOPPED' : 'REJECTED';
   }
   if (row.status === 'IN_PROGRESS') {
-    if (row.currentStep === 'RELEASER') return 'AUTHORIZED';
+    if (row.currentStep === 'RELEASER') return 'PENDING_RELEASE';
     if (row.currentStep === 'APPROVER') return 'CHECKED';
     if (row.currentStep === 'CHECKER') return 'PENDING_CHECK';
     return row.currentStep || 'IN_PROGRESS';
@@ -50,10 +50,18 @@ export function displayStatus(row: ApprovalRow): string {
   return row.status || '—';
 }
 
+/** Progress toward release: short path (≤5k) is submit+release; full path is check+approve+release. */
 export function approvalCount(row: ApprovalRow): string {
-  const approved = (row.actions || []).filter((a) => a.decision === 'APPROVE' || a.decision === 'SUBMIT').length;
-  const needed = 3; // checker + approver + releaser (approx)
-  return `${Math.min(approved, needed)}/${needed}`;
+  const actions = row.actions || [];
+  const skippedMid =
+    actions.some((a) => (a.comment || '').toLowerCase().includes('skipped checker/approver')) ||
+    (actions.some((a) => a.step === 'MAKER' && a.decision === 'SUBMIT') &&
+      !actions.some((a) => a.step === 'CHECKER' || a.step === 'APPROVER') &&
+      (row.currentStep === 'RELEASER' || row.currentStep === 'DONE' || row.status === 'APPROVED'));
+
+  const needed = skippedMid ? 2 : 3; // submit+release vs check+approve+release
+  const done = actions.filter((a) => a.decision === 'APPROVE' || a.decision === 'SUBMIT').length;
+  return `${Math.min(done, needed)}/${needed}`;
 }
 
 export function roleFlags(roles: string[] | undefined) {

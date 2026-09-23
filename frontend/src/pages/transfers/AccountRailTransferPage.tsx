@@ -489,7 +489,8 @@ export function AccountRailTransferPage({ product }: Props) {
                 <option value="ALL">All statuses</option>
                 <option value="PENDING_CHECK">PENDING_CHECK</option>
                 <option value="CHECKED">CHECKED</option>
-                <option value="AUTHORIZED">AUTHORIZED</option>
+                <option value="PENDING_RELEASE">PENDING_RELEASE</option>
+                <option value="RELEASED">RELEASED</option>
                 <option value="REJECTED">REJECTED</option>
                 <option value="STOPPED">STOPPED</option>
               </select>
