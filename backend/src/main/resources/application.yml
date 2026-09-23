@@ -51,6 +51,13 @@ app:
     # When false, credentials/OTP are logged instead of SMTP send (easy local testing)
     enabled: ${MAIL_ENABLED:false}
 
+# Payment approval workflow (Maker → Checker → Approver → Releaser)
+approvals:
+  payment:
+    # Amounts at or below this skip Checker & Approver → go straight to Releaser after Maker submit.
+    # Above this: full Checker → Approver → Releaser. Env: APPROVAL_DIRECT_RELEASE_MAX
+    direct-release-max-amount: ${APPROVAL_DIRECT_RELEASE_MAX:5000}
+
 # External DFS backend corporate account create API
 dfs:
   account-api:

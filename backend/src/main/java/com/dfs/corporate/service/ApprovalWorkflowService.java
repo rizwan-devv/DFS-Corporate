@@ -7,17 +7,28 @@ import com.dfs.corporate.repository.PartyRepository;
 import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.web.dto.*;
 import com.dfs.corporate.web.error.ApiException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * Maker → Checker → Approver → Releaser workflow.
- * If the Checker also has APPROVER role, Approver step is skipped → Releaser.
+ * <p>
+ * Amount routing (configurable {@code approvals.payment.direct-release-max-amount}, default 5000):
+ * <ul>
+ *   <li>≤ max → after Maker submit, skip Checker/Approver → Releaser</li>
+ *   <li>&gt; max → full Checker → Approver → Releaser</li>
+ * </ul>
+ * Payment is not considered complete until Releaser approves (status APPROVED).
+ * If Checker also has APPROVER role, Approver step is skipped → Releaser.
  */
 @Service
 public class ApprovalWorkflowService {
@@ -26,15 +37,21 @@ public class ApprovalWorkflowService {
     private final ApprovalActionRepository actionRepository;
     private final PartyRepository partyRepository;
     private final PortalUserService portalUserService;
+    private final ObjectMapper objectMapper;
+    private final BigDecimal directReleaseMaxAmount;
 
     public ApprovalWorkflowService(ApprovalRequestRepository requestRepository,
                                    ApprovalActionRepository actionRepository,
                                    PartyRepository partyRepository,
-                                   PortalUserService portalUserService) {
+                                   PortalUserService portalUserService,
+                                   ObjectMapper objectMapper,
+                                   @Value("${approvals.payment.direct-release-max-amount:5000}") String directReleaseMax) {
         this.requestRepository = requestRepository;
         this.actionRepository = actionRepository;
         this.partyRepository = partyRepository;
         this.portalUserService = portalUserService;
+        this.objectMapper = objectMapper;
+        this.directReleaseMaxAmount = parseAmount(directReleaseMax, "5000");
     }
 
     public List<ApprovalRequestResponse> list(AccountPrincipal principal) {
@@ -79,6 +96,22 @@ public class ApprovalWorkflowService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid requestType");
         }
 
+        BigDecimal amount = extractAmount(body.getPayloadJson());
+        boolean directToReleaser = amount != null && amount.compareTo(directReleaseMaxAmount) <= 0;
+        // GENERIC without amount → full chain (safer default)
+        if (amount == null && type == ApprovalRequestType.PAYMENT) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "PAYMENT payloadJson must include numeric \"amount\" for workflow routing");
+        }
+        if (directToReleaser) {
+            requirePartyRoles(party.getId(), PortalRole.RELEASER);
+        } else if (type == ApprovalRequestType.PAYMENT || amount != null) {
+            // Full chain: Checker, Approver, Releaser all required on the party
+            requirePartyRoles(party.getId(), PortalRole.CHECKER, PortalRole.APPROVER, PortalRole.RELEASER);
+        }
+
+        ApprovalStep firstStep = directToReleaser ? ApprovalStep.RELEASER : ApprovalStep.CHECKER;
+
         ApprovalRequest req = new ApprovalRequest();
         req.setPublicId(UUID.randomUUID().toString());
         req.setPartyId(party.getId());
@@ -87,11 +120,17 @@ public class ApprovalWorkflowService {
         req.setTitle(body.getTitle().trim());
         req.setPayloadJson(body.getPayloadJson());
         req.setStatus(ApprovalRequestStatus.IN_PROGRESS);
-        req.setCurrentStep(ApprovalStep.CHECKER);
+        req.setCurrentStep(firstStep);
         req.setCreatedByAccountId(principal.getAccountId());
         requestRepository.save(req);
 
-        recordAction(req, ApprovalStep.MAKER, ApprovalDecision.SUBMIT, principal, body.getComment());
+        String submitNote = body.getComment();
+        if (directToReleaser) {
+            String auto = "Amount " + amount + " ≤ " + directReleaseMaxAmount
+                    + " — skipped Checker/Approver; awaiting Releaser";
+            submitNote = submitNote == null || submitNote.isBlank() ? auto : submitNote + " · " + auto;
+        }
+        recordAction(req, ApprovalStep.MAKER, ApprovalDecision.SUBMIT, principal, submitNote);
         return toResponse(req, true);
     }
 
@@ -127,8 +166,12 @@ public class ApprovalWorkflowService {
         if (step == ApprovalStep.CHECKER
                 && ObjectsEqualsMaker(principal, req)
                 && !portalUserService.hasRole(principal.getAccountId(), PortalRole.PARTY_ADMIN)) {
-            // soft segregation: maker should not check own item unless admin
             throw new ApiException(HttpStatus.FORBIDDEN, "Maker cannot check their own request");
+        }
+        if (step == ApprovalStep.RELEASER
+                && ObjectsEqualsMaker(principal, req)
+                && !portalUserService.hasRole(principal.getAccountId(), PortalRole.PARTY_ADMIN)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Maker cannot release their own request");
         }
 
         recordAction(req, step, ApprovalDecision.APPROVE, principal, body.getComment());
@@ -148,7 +191,7 @@ public class ApprovalWorkflowService {
 
     /**
      * After Checker approve: if actor also has APPROVER → skip to RELEASER.
-     * After Approver → RELEASER. After Releaser → DONE.
+     * After Approver → RELEASER. After Releaser → DONE (payment authorized / released).
      */
     private ApprovalStep nextStepAfterApprove(ApprovalStep current, AccountPrincipal actor) {
         return switch (current) {
@@ -162,6 +205,41 @@ public class ApprovalWorkflowService {
             case RELEASER -> ApprovalStep.DONE;
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Cannot approve at step " + current);
         };
+    }
+
+    private void requirePartyRoles(Long partyId, PortalRole... roles) {
+        for (PortalRole role : roles) {
+            if (!portalUserService.partyHasRole(partyId, role)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        "Party has no user with role " + role.name()
+                                + ". Create portal users (Users menu) with Checker, Approver, and Releaser before submitting "
+                                + (role == PortalRole.RELEASER ? "or releasing " : "")
+                                + "payments.");
+            }
+        }
+    }
+
+    private BigDecimal extractAmount(String payloadJson) {
+        if (payloadJson == null || payloadJson.isBlank()) return null;
+        try {
+            JsonNode root = objectMapper.readTree(payloadJson);
+            JsonNode amt = root.get("amount");
+            if (amt == null || amt.isNull()) return null;
+            if (amt.isNumber()) return amt.decimalValue();
+            String s = amt.asText("").trim().replace(",", "");
+            if (s.isEmpty()) return null;
+            return new BigDecimal(s);
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid payloadJson amount: " + e.getMessage());
+        }
+    }
+
+    private static BigDecimal parseAmount(String raw, String fallback) {
+        try {
+            return new BigDecimal(raw != null ? raw.trim() : fallback);
+        } catch (Exception e) {
+            return new BigDecimal(fallback);
+        }
     }
 
     private void requireStepRole(AccountPrincipal principal, ApprovalStep step) {
@@ -180,10 +258,6 @@ public class ApprovalWorkflowService {
     }
 
     private ApprovalStep stepForActor(AccountPrincipal principal) {
-        if (portalUserService.hasAnyRole(principal.getAccountId(), PortalRole.CHECKER, PortalRole.PARTY_ADMIN)) {
-            // inbox prefers earliest pending for any role they hold — return null and filter multi
-        }
-        // Collect inbox by scanning steps they can act on — handled in inbox() one step at a time
         if (portalUserService.hasRole(principal.getAccountId(), PortalRole.CHECKER)
                 || portalUserService.hasRole(principal.getAccountId(), PortalRole.PARTY_ADMIN)) {
             return ApprovalStep.CHECKER;

@@ -198,7 +198,11 @@ export function AccountRailTransferPage({ product }: Props) {
           comment: 'Submitted from transfer New Request',
         }),
       });
-      setOk(`${product} request submitted for checker → approver → releaser`);
+      if (Number(amount) <= 5000) {
+        setOk(`${product} PKR ${amount} ≤ 5,000 — sent straight to Releaser (Checker/Approver skipped)`);
+      } else {
+        setOk(`${product} request submitted — awaiting Checker → Approver → Releaser`);
+      }
       setForm(emptyForm);
       setTitleResult(null);
       setFtInitResult(null);
@@ -598,7 +602,7 @@ export function AccountRailTransferPage({ product }: Props) {
               <h3>{product} — New Request</h3>
               <p className="muted">
                 {flags.canMake
-                  ? 'Fill the form and Submit for approval (checker → approver → releaser).'
+                  ? `Fill the form and Submit for approval. Amount ≤ 5,000 PKR skips Checker/Approver → Releaser; above that requires Checker → Approver → Releaser. Payment completes only when Releaser releases.`
                   : 'You need MAKER (or PARTY_ADMIN) to submit for approval. Direct live pay may still be available below.'}
               </p>
             </div>

@@ -56,6 +56,18 @@ public class PortalUserService {
         return false;
     }
 
+    /** True if any ACTIVE account on this party holds the role (or PARTY_ADMIN as fallback). */
+    public boolean partyHasRole(Long partyId, PortalRole role) {
+        List<Account> accounts = accountRepository.findAllByPartyIdOrderByCreatedAtAsc(partyId);
+        for (Account a : accounts) {
+            if (a.getStatus() != AccountStatus.ACTIVE) continue;
+            if (hasRole(a.getId(), role) || hasRole(a.getId(), PortalRole.PARTY_ADMIN)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Ensure ACTIVE master owner accounts have admin + workflow roles (idempotent). */
     @Transactional
     public void ensureOwnerRoles(Account account, Party party) {
