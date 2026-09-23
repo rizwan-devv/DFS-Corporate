@@ -46,7 +46,8 @@ public class PartyCmsIdentitySync {
             return;
         }
         boolean changed = false;
-        if (party.getCnicNumber() == null || party.getCnicNumber().isBlank()) {
+        if (party.getCnicNumber() == null || party.getCnicNumber().isBlank()
+                || !DfsWalletIdentityService.isUsableCnic(IdentityFormats.cnicDigits(party.getCnicNumber()))) {
             party.setCnicNumber(cnic);
             changed = true;
         }

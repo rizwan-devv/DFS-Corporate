@@ -24,15 +24,18 @@ public class AccountProvisioningService {
     private final PartnerAppUserRepository appUserRepository;
     private final DfsAccountClient dfsAccountClient;
     private final SanctionsScreeningService sanctionsScreeningService;
+    private final DfsWalletIdentityService walletIdentityService;
 
     public AccountProvisioningService(PartyRepository partyRepository,
                                       PartnerAppUserRepository appUserRepository,
                                       DfsAccountClient dfsAccountClient,
-                                      SanctionsScreeningService sanctionsScreeningService) {
+                                      SanctionsScreeningService sanctionsScreeningService,
+                                      DfsWalletIdentityService walletIdentityService) {
         this.partyRepository = partyRepository;
         this.appUserRepository = appUserRepository;
         this.dfsAccountClient = dfsAccountClient;
         this.sanctionsScreeningService = sanctionsScreeningService;
+        this.walletIdentityService = walletIdentityService;
     }
 
     @Transactional
@@ -106,6 +109,8 @@ public class AccountProvisioningService {
             party.setDfsAccountId(result.dfsAccountId());
             party.setAccountProvisionedAt(Instant.now());
             party.setAccountProvisionError(null);
+            party = walletIdentityService.applyCreateResult(party, result);
+            party = walletIdentityService.refreshFromDfs(party);
             clearPartnerPlainPasswords(party.getId());
         } else if (result.deferred()) {
             party.setAccountProvisionStatus(AccountProvisionStatus.PENDING);

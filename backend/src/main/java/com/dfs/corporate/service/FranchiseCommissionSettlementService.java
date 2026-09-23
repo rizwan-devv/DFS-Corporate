@@ -49,6 +49,7 @@ public class FranchiseCommissionSettlementService {
     private final PartnerAppUserRepository partnerAppUserRepository;
     private final CorporatePortalAgentAppClient agentClient;
     private final CorporatePortalTxnClient txnClient;
+    private final DfsWalletIdentityService walletIdentityService;
     private final ObjectMapper objectMapper;
     private final boolean portalEnabled;
     private final String defaultLevelCode;
@@ -60,6 +61,7 @@ public class FranchiseCommissionSettlementService {
             PartnerAppUserRepository partnerAppUserRepository,
             CorporatePortalAgentAppClient agentClient,
             CorporatePortalTxnClient txnClient,
+            DfsWalletIdentityService walletIdentityService,
             ObjectMapper objectMapper,
             @Value("${dfs.portal-api.enabled:false}") boolean portalEnabled,
             @Value("${dfs.account-api.level-code:L4}") String defaultLevelCode) {
@@ -69,6 +71,7 @@ public class FranchiseCommissionSettlementService {
         this.partnerAppUserRepository = partnerAppUserRepository;
         this.agentClient = agentClient;
         this.txnClient = txnClient;
+        this.walletIdentityService = walletIdentityService;
         this.objectMapper = objectMapper;
         this.portalEnabled = portalEnabled;
         this.defaultLevelCode = defaultLevelCode;
@@ -148,6 +151,11 @@ public class FranchiseCommissionSettlementService {
             return ScanResult.empty();
         }
 
+        child = walletIdentityService.refreshFromDfs(child);
+        parent = walletIdentityService.refreshFromDfs(parent);
+        childMobile = IdentityFormats.phoneDigits(child.getPhone());
+        parentMobile = IdentityFormats.phoneDigits(parent.getPhone());
+
         String level = child.getLevelCode() != null && !child.getLevelCode().isBlank()
                 ? child.getLevelCode().trim() : defaultLevelCode;
         // Same as Onboarded: omit dates so AgentApp returns the latest credits.
@@ -217,36 +225,48 @@ public class FranchiseCommissionSettlementService {
     private void postToParent(Party child, Party parent, String parentMobile, String mpin,
                               FranchiseCommissionEntry e) {
         String nid = requireNid(child);
-        String appUserId = resolveAppUserId(child);
+        String appUserId = DfsWalletIdentityService.requireDfsAppUserId(child);
         if (appUserId == null) {
-            throw new IllegalStateException("Child dfs_app_user_id is required for commission FT");
+            throw new IllegalStateException(
+                    "Child DFS APP_USER_ID missing after accountDetails — cannot use local partner id");
         }
-        ObjectNode payload = objectMapper.createObjectNode();
-        payload.put("mobileNumber", IdentityFormats.phoneDigits(child.getPhone()));
-        payload.put("nidNo", nid);
-        payload.put("accountNo", parentMobile);
-        payload.put("accountType", "W");
-        payload.put("amount", e.getCommissionAmount().stripTrailingZeros().toPlainString());
-        payload.put("appUserId", appUserId);
-        payload.put("mpin", mpin);
-        payload.put("transPurposeId", "1");
-        payload.put("narration", NARRATION_PREFIX + " " + e.getPublicId().substring(0, 8));
+        if (!DfsWalletIdentityService.isUsableCnic(nid)) {
+            throw new IllegalStateException("Child CNIC from DFS is missing or invalid");
+        }
+        String lastError = null;
+        for (String accountType : List.of("W", "10")) {
+            ObjectNode payload = objectMapper.createObjectNode();
+            payload.put("mobileNumber", IdentityFormats.phoneDigits(child.getPhone()));
+            payload.put("nidNo", nid);
+            payload.put("accountNo", parentMobile);
+            payload.put("accountType", accountType);
+            payload.put("amount", e.getCommissionAmount().stripTrailingZeros().toPlainString());
+            payload.put("appUserId", appUserId);
+            payload.put("mpin", mpin);
+            payload.put("transPurposeId", "1");
+            payload.put("narration", NARRATION_PREFIX + " " + e.getPublicId().substring(0, 8));
 
-        JsonNode root = txnClient.fundsTransferLocal(payload);
-        String code = text(root, "responsecode", "responseCode");
-        if (code == null && root != null && root.has("data")) {
-            code = text(root.get("data"), "responsecode", "responseCode");
+            JsonNode root = txnClient.fundsTransferLocal(payload);
+            String code = text(root, "responsecode", "responseCode");
+            if (code == null && root != null && root.has("data")) {
+                code = text(root.get("data"), "responsecode", "responseCode");
+            }
+            if ("000".equals(code) || "00".equals(code)) {
+                JsonNode data = root != null && root.has("data") ? root.get("data") : root;
+                e.setStatus("POSTED");
+                e.setDfsAuthId(text(data, "authIdResponse", "authId"));
+                e.setErrorMessage(null);
+                e.setSettledAt(Instant.now());
+                entryRepository.save(e);
+                return;
+            }
+            lastError = text(root, "messages", "message");
+            if (lastError == null) lastError = "DFS FT " + code;
+            if (lastError != null && !lastError.toLowerCase(Locale.ROOT).contains("account not found")) {
+                break;
+            }
         }
-        if (!"000".equals(code) && !"00".equals(code)) {
-            String msg = text(root, "messages", "message");
-            throw new IllegalStateException(msg != null ? msg : ("DFS FT " + code));
-        }
-        JsonNode data = root != null && root.has("data") ? root.get("data") : root;
-        e.setStatus("POSTED");
-        e.setDfsAuthId(text(data, "authIdResponse", "authId"));
-        e.setErrorMessage(null);
-        e.setSettledAt(Instant.now());
-        entryRepository.save(e);
+        throw new IllegalStateException(lastError != null ? lastError : "DFS FT failed");
     }
 
     private Party requireActiveMaster(AccountPrincipal principal) {
@@ -279,15 +299,6 @@ public class FranchiseCommissionSettlementService {
             if (nid != null && nid.length() >= 12) return nid;
         }
         throw new IllegalStateException("Child CNIC is required for commission FT");
-    }
-
-    private String resolveAppUserId(Party child) {
-        if (child.getDfsAppUserId() != null && !child.getDfsAppUserId().isBlank()) {
-            return child.getDfsAppUserId().trim();
-        }
-        List<PartnerAppUser> users = partnerAppUserRepository.findByPartyIdOrderByIdAsc(child.getId());
-        if (!users.isEmpty()) return String.valueOf(users.get(0).getId());
-        return null;
     }
 
     private static boolean isInboundCredit(JsonNode row) {

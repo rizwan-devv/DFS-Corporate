@@ -4,7 +4,6 @@ import com.dfs.corporate.domain.*;
 import com.dfs.corporate.integration.dfs.CorporatePortalAppClient;
 import com.dfs.corporate.integration.dfs.CorporatePortalTxnClient;
 import com.dfs.corporate.repository.MockTransferRepository;
-import com.dfs.corporate.repository.PartnerAppUserRepository;
 import com.dfs.corporate.repository.PartyRepository;
 import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.util.IdentityFormats;
@@ -33,20 +32,17 @@ public class LiveTransferService {
     private final CorporatePortalTxnClient txnClient;
     private final CorporatePortalAppClient appClient;
     private final PartyRepository partyRepository;
-    private final PartnerAppUserRepository partnerAppUserRepository;
     private final MockTransferRepository transferRepository;
     private final ObjectMapper objectMapper;
 
     public LiveTransferService(CorporatePortalTxnClient txnClient,
                                CorporatePortalAppClient appClient,
                                PartyRepository partyRepository,
-                               PartnerAppUserRepository partnerAppUserRepository,
                                MockTransferRepository transferRepository,
                                ObjectMapper objectMapper) {
         this.txnClient = txnClient;
         this.appClient = appClient;
         this.partyRepository = partyRepository;
-        this.partnerAppUserRepository = partnerAppUserRepository;
         this.transferRepository = transferRepository;
         this.objectMapper = objectMapper;
     }
@@ -363,15 +359,7 @@ public class LiveTransferService {
         if (override != null && !override.isBlank()) {
             return override.trim();
         }
-        if (party.getDfsAppUserId() != null && !party.getDfsAppUserId().isBlank()) {
-            return party.getDfsAppUserId().trim();
-        }
-        // Last-resort: local partner app user id (may not match DFS APP_USER_ID — prefer setting dfs_app_user_id)
-        List<PartnerAppUser> users = partnerAppUserRepository.findByPartyIdOrderByIdAsc(party.getId());
-        if (!users.isEmpty()) {
-            return String.valueOf(users.get(0).getId());
-        }
-        return null;
+        return DfsWalletIdentityService.requireDfsAppUserId(party);
     }
 
     private String levelOf(Party party) {

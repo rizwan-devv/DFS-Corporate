@@ -144,7 +144,16 @@ public class CorporateOnboardingHttpClient implements DfsAccountClient {
                 if (accountId == null || accountId.isBlank()) {
                     accountId = "DFS-" + (code != null ? code : "OK");
                 }
-                return DfsAccountCreateResult.ok(accountId);
+                JsonNode data = root.has("data") && root.get("data").isObject() ? root.get("data") : root;
+                String appUserId = text(data, "appUserId", "customerAppUserId", "APP_USER_ID", "userId");
+                if (appUserId == null) {
+                    appUserId = text(root, "appUserId", "customerAppUserId", "APP_USER_ID", "userId");
+                }
+                String nidNo = text(data, "nidNo", "cnic", "cnicNumber");
+                if (nidNo == null) {
+                    nidNo = text(root, "nidNo", "cnic", "cnicNumber");
+                }
+                return DfsAccountCreateResult.ok(accountId, appUserId, nidNo);
             }
             return DfsAccountCreateResult.failed(
                     firstNonBlank(message, "DFS backend rejected: " + truncate(raw)));
