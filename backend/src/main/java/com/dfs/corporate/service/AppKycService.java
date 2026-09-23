@@ -35,21 +35,18 @@ public class AppKycService {
     public static final String DOC_SIGNATURE_SHEET_PNG = "SIGNATURE_SHEET_PNG";
     public static final String DOC_SIGNATURE_SHEET_JPEG = "SIGNATURE_SHEET_JPEG";
     public static final String DOC_SIGNATURE_SHEET_PDF = "SIGNATURE_SHEET_PDF";
-    /** 8 non-thumb fingers (KycApp left/right × 4). */
-    public static final List<String> DOC_FINGERS = List.of(
+    /**
+     * Legacy finger image codes — no longer accepted or required.
+     * Fingerprints are verified via NADRA; DFS stores only a biometric/NADRA ref, not images.
+     */
+    public static final List<String> DOC_FINGERS_LEGACY = List.of(
             "FINGER_L1", "FINGER_L2", "FINGER_L3", "FINGER_L4",
             "FINGER_R1", "FINGER_R2", "FINGER_R3", "FINGER_R4"
     );
-    public static final List<String> DOC_KYC_KINDS;
-
-    static {
-        List<String> kinds = new ArrayList<>();
-        kinds.add(DOC_CNIC_FRONT);
-        kinds.add(DOC_CNIC_BACK);
-        kinds.add(DOC_SELFIE);
-        kinds.addAll(DOC_FINGERS);
-        DOC_KYC_KINDS = List.copyOf(kinds);
-    }
+    /** Required mobile KYC media stored in DFS (CNIC + selfie). */
+    public static final List<String> DOC_KYC_KINDS = List.of(
+            DOC_CNIC_FRONT, DOC_CNIC_BACK, DOC_SELFIE
+    );
 
     private static final int VIDEO_CHALLENGE_TTL_MINUTES = 10;
     private static final int VIDEO_DURATION_SECONDS = 10;
@@ -351,7 +348,7 @@ public class AppKycService {
 
         String msg = "Video received"
                 + (durationMs != null && !durationMs.isBlank() ? " (" + durationMs.trim() + " ms)" : "")
-                + "; complete CNIC/biometric submit next";
+                + "; complete CNIC front/back + selfie submit next";
         return new AppKycVideoVerificationResponse(toSession(user), msg);
     }
 
@@ -389,7 +386,8 @@ public class AppKycService {
     }
 
     /**
-     * All-in-one KYC submit: profile + CNIC F/B + selfie + 8 fingers → KYC_COMPLETED.
+     * All-in-one KYC submit: profile + CNIC front/back + selfie → KYC_COMPLETED.
+     * Fingerprints are not stored; NADRA verification sets biometricRef separately.
      */
     @Transactional
     public AppKycSessionResponse submitAll(
@@ -410,15 +408,7 @@ public class AppKycService {
             String appVersion,
             MultipartFile cnicFront,
             MultipartFile cnicBack,
-            MultipartFile selfie,
-            MultipartFile fingerL1,
-            MultipartFile fingerL2,
-            MultipartFile fingerL3,
-            MultipartFile fingerL4,
-            MultipartFile fingerR1,
-            MultipartFile fingerR2,
-            MultipartFile fingerR3,
-            MultipartFile fingerR4) {
+            MultipartFile selfie) {
 
         PartnerAppUser user = requireEditable(sessionToken);
         requireMobileGate(user);
@@ -432,14 +422,6 @@ public class AppKycService {
         files.put(DOC_CNIC_FRONT, cnicFront);
         files.put(DOC_CNIC_BACK, cnicBack);
         files.put(DOC_SELFIE, selfie);
-        files.put("FINGER_L1", fingerL1);
-        files.put("FINGER_L2", fingerL2);
-        files.put("FINGER_L3", fingerL3);
-        files.put("FINGER_L4", fingerL4);
-        files.put("FINGER_R1", fingerR1);
-        files.put("FINGER_R2", fingerR2);
-        files.put("FINGER_R3", fingerR3);
-        files.put("FINGER_R4", fingerR4);
 
         List<String> missingFiles = new ArrayList<>();
         for (Map.Entry<String, MultipartFile> e : files.entrySet()) {
@@ -450,7 +432,7 @@ public class AppKycService {
         if (!missingFiles.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Missing files: " + String.join(", ", missingFiles)
-                            + " (need cnicFront, cnicBack, selfie, fingerL1..L4, fingerR1..R4)");
+                            + " (need cnicFront, cnicBack, selfie)");
         }
 
         user.setCnicNumber(normalizeRequiredCnic(cnicNumber));
@@ -482,7 +464,6 @@ public class AppKycService {
             storeDoc(user, e.getKey(), e.getValue());
         }
         user.setSelfieUploaded(true);
-        user.setBiometricRef("FINGERS-8/8");
         appUserRepository.save(user);
 
         validateReady(user);
@@ -490,6 +471,10 @@ public class AppKycService {
     }
 
     private void storeDoc(PartnerAppUser user, String kind, MultipartFile file) {
+        if (DOC_FINGERS_LEGACY.contains(kind) || kind.startsWith("FINGER_")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Fingerprint images are not stored in DFS; verify via NADRA and set biometricRef only");
+        }
         String code = docCode(user.getId(), kind);
         String path = fileStorageService.store(user.getPartyId(), code, file);
         PartyDocument doc = documentRepository.findByPartyIdAndDocumentCode(user.getPartyId(), code)
@@ -506,9 +491,6 @@ public class AppKycService {
         }
         if (DOC_SIGNATURE.equals(kind)) {
             user.setSignatureUploaded(true);
-        }
-        if (DOC_FINGERS.contains(kind)) {
-            user.setBiometricRef("FINGERS-CAPTURED");
         }
     }
 
@@ -546,11 +528,14 @@ public class AppKycService {
         return toSession(user);
     }
 
+    /**
+     * Placeholder until live NADRA BV is wired — stores a verification ref only (no finger images).
+     */
     @Transactional
     public AppKycSessionResponse stubBiometric(String sessionToken) {
         PartnerAppUser user = requireEditable(sessionToken);
         requireMobileGate(user);
-        user.setBiometricRef("STUB-BIO-" + UUID.randomUUID().toString().substring(0, 8));
+        user.setBiometricRef("NADRA-STUB-" + UUID.randomUUID().toString().substring(0, 8));
         appUserRepository.save(user);
         return toSession(user);
     }
@@ -567,7 +552,7 @@ public class AppKycService {
     @Transactional
     public AppKycSessionResponse completeNative(String sessionToken) {
         throw new ApiException(HttpStatus.BAD_REQUEST,
-                "Use POST /submit as multipart with profile fields + CNIC/selfie/8 fingers");
+                "Use POST /submit as multipart with profile fields + cnicFront, cnicBack, selfie");
     }
 
     private AppKycSessionResponse finalizeCompleted(PartnerAppUser user) {
@@ -575,7 +560,7 @@ public class AppKycService {
         user.setCompletedAt(Instant.now());
         user.setFailureReason(null);
         if (isBlank(user.getBiometricRef())) {
-            user.setBiometricRef("FINGERS-8/8");
+            user.setBiometricRef("NADRA_PENDING");
         }
         user.setSelfieUploaded(true);
         appUserRepository.save(user);
@@ -831,7 +816,7 @@ public class AppKycService {
         if (!missing.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Upload before submit: " + String.join(", ", missing)
-                            + " (CNIC front/back, selfie, and 8 fingers)");
+                            + " (CNIC front/back and selfie required; fingerprints verified via NADRA)");
         }
         if (isBlank(user.getCnicNumber()) || isBlank(user.getCnicFullName()) || user.getDateOfBirth() == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
@@ -857,9 +842,6 @@ public class AppKycService {
         docs.add(docItem(DOC_VIDEO_READALOUD, "Video read-aloud",
                 user.getVideoVerificationStatus() == VideoVerificationStatus.UPLOADED
                         || uploaded.contains(docCode(user.getId(), DOC_VIDEO_READALOUD))));
-        for (String finger : DOC_FINGERS) {
-            docs.add(docItem(finger, finger.replace('_', ' '), uploaded.contains(docCode(user.getId(), finger))));
-        }
         boolean signatureOk = Boolean.TRUE.equals(user.getSignatureUploaded())
                 || uploaded.contains(docCode(user.getId(), DOC_SIGNATURE));
         docs.add(docItem(DOC_SIGNATURE, "Signature", signatureOk));
@@ -927,6 +909,10 @@ public class AppKycService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Document kind required");
         }
         String k = kind.trim().toUpperCase();
+        if (DOC_FINGERS_LEGACY.contains(k) || k.startsWith("FINGER_")) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Fingerprint images are not stored; verify via NADRA");
+        }
         if (!DOC_KYC_KINDS.contains(k)) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Invalid kind. Allowed: " + String.join(", ", DOC_KYC_KINDS));

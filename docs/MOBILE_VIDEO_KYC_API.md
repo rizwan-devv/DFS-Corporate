@@ -97,7 +97,7 @@ curl -X POST "http://46.224.146.158:8050/api/public/app-kyc/video-verification" 
 }
 ```
 
-Then call existing **`POST /submit`** (CNIC + selfie + 8 fingers).
+Then call existing **`POST /submit`** (CNIC front + back + selfie). Fingerprints are **not** uploaded — verify via NADRA and store `biometricRef` only.
 
 ---
 

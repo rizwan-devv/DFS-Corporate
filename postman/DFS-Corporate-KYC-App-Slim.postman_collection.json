@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "DFS Corporate — KYC App (Latest)",
-    "description": "Mobile KYC app APIs.\n\n**Base URL**\n- Local: http://localhost:8090\n- Server: http://46.224.146.158:8050\n\n**Required flow**\n1. POST login (phone+PIN) OR GET invite/{token}\n2. POST otp/send → POST otp/verify (OTP first; returns session + DFS getAllLovs in lovs)\n3. POST change-password (after OTP; temp PIN → password for DFS Account API)\n4. POST video-challenge → record ~10s → POST video-verification (multipart)\n5. Capture CNIC/selfie/8 fingers on device\n6. **ONE** POST /submit (multipart) = profile fields + all 11 files → KYC_COMPLETED\n\nAuth: Authorization: Bearer {{sessionToken}}",
+    "description": "Mobile KYC app APIs.\n\n**Base URL**\n- Local: http://localhost:8090\n- Server: http://46.224.146.158:8050\n\n**Required flow**\n1. POST login (phone+PIN) OR GET invite/{token}\n2. POST otp/send → POST otp/verify (OTP first; returns session + DFS getAllLovs in lovs)\n3. POST change-password (after OTP; temp PIN → password for DFS Account API)\n4. POST video-challenge → record ~10s → POST video-verification (multipart)\n5. Capture CNIC front/back + selfie on device (fingerprints via NADRA — not uploaded)\n6. **ONE** POST /submit (multipart) = profile fields + cnicFront, cnicBack, selfie → KYC_COMPLETED\n\nAuth: Authorization: Bearer {{sessionToken}}",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -207,7 +207,7 @@
       "name": "4 — Submit KYC (all-in-one)",
       "item": [
         {
-          "name": "POST submit (profile + CNIC + selfie + 8 fingers)",
+          "name": "POST submit (profile + CNIC front/back + selfie)",
           "event": [{
             "listen": "test",
             "script": {
@@ -241,19 +241,11 @@
                 { "key": "appVersion", "type": "text", "value": "1.0.0" },
                 { "key": "cnicFront", "type": "file", "src": [], "description": "CNIC front image" },
                 { "key": "cnicBack", "type": "file", "src": [], "description": "CNIC back image" },
-                { "key": "selfie", "type": "file", "src": [], "description": "Live selfie" },
-                { "key": "fingerL1", "type": "file", "src": [] },
-                { "key": "fingerL2", "type": "file", "src": [] },
-                { "key": "fingerL3", "type": "file", "src": [] },
-                { "key": "fingerL4", "type": "file", "src": [] },
-                { "key": "fingerR1", "type": "file", "src": [] },
-                { "key": "fingerR2", "type": "file", "src": [] },
-                { "key": "fingerR3", "type": "file", "src": [] },
-                { "key": "fingerR4", "type": "file", "src": [] }
+                { "key": "selfie", "type": "file", "src": [], "description": "Live selfie" }
               ]
             },
             "url": "{{baseUrl}}/api/public/app-kyc/submit",
-            "description": "multipart/form-data — attach all 11 files before Send.\n\nRequired text: cnicNumber, cnicFullName, dateOfBirth\nRequired files: cnicFront, cnicBack, selfie, fingerL1..L4, fingerR1..R4\nOptional: fatherName, gender, cityId, walletPin, imeiNo, deviceModel, appVersion, provinceId, permanentAddress, presentAddress, nidIssuanceDate"
+            "description": "multipart/form-data — attach 3 files before Send.\n\nRequired text: cnicNumber, cnicFullName, dateOfBirth\nRequired files: cnicFront, cnicBack, selfie\nFingerprints are NOT accepted (NADRA verify → biometricRef only).\nOptional: fatherName, gender, cityId, walletPin, imeiNo, deviceModel, appVersion, provinceId, permanentAddress, presentAddress, nidIssuanceDate"
           }
         }
       ]

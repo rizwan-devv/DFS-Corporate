@@ -162,7 +162,7 @@ fun MainMenuScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Run ID / OCR / face / fingerprint first, then submit. After submit, capture your signature.",
+                text = "Run ID / OCR / face first, then submit CNIC + selfie. Fingerprints verify via NADRA (not stored in DFS). After submit, capture signature.",
                 color = DfsColors.MutedText,
                 fontSize = 11.sp,
                 lineHeight = 14.sp

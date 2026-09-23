@@ -86,8 +86,8 @@ public class AppKycController {
     }
 
     /**
-     * Single KYC finish call: profile fields + CNIC front/back + selfie + 8 fingers.
-     * multipart/form-data — see AppKycService.submitAll.
+     * Single KYC finish call: profile fields + CNIC front/back + selfie.
+     * Fingerprints are not accepted — verify via NADRA (biometricRef only).
      */
     @PostMapping(value = "/submit", consumes = "multipart/form-data")
     public AppKycSessionResponse submit(
@@ -108,23 +108,13 @@ public class AppKycController {
             @RequestParam(required = false) String appVersion,
             @RequestParam("cnicFront") MultipartFile cnicFront,
             @RequestParam("cnicBack") MultipartFile cnicBack,
-            @RequestParam("selfie") MultipartFile selfie,
-            @RequestParam("fingerL1") MultipartFile fingerL1,
-            @RequestParam("fingerL2") MultipartFile fingerL2,
-            @RequestParam("fingerL3") MultipartFile fingerL3,
-            @RequestParam("fingerL4") MultipartFile fingerL4,
-            @RequestParam("fingerR1") MultipartFile fingerR1,
-            @RequestParam("fingerR2") MultipartFile fingerR2,
-            @RequestParam("fingerR3") MultipartFile fingerR3,
-            @RequestParam("fingerR4") MultipartFile fingerR4) {
+            @RequestParam("selfie") MultipartFile selfie) {
         return appKycService.submitAll(
                 bearer(authorization),
                 cnicNumber, cnicFullName, dateOfBirth,
                 fatherName, gender, permanentAddress, presentAddress, nidIssuanceDate,
                 cityId, provinceId, walletPin, imeiNo, deviceModel, appVersion,
-                cnicFront, cnicBack, selfie,
-                fingerL1, fingerL2, fingerL3, fingerL4,
-                fingerR1, fingerR2, fingerR3, fingerR4);
+                cnicFront, cnicBack, selfie);
     }
 
     @PostMapping("/fail")

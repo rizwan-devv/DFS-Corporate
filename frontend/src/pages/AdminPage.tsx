@@ -91,6 +91,10 @@ function isPreviewable(doc: Doc) {
   return /\.(jpe?g|png|gif|webp|mp4|webm|mov|3gp|pdf)$/i.test(doc.originalName || '');
 }
 
+function isFingerprintDoc(code: string): boolean {
+  return /(?:^|_)FINGER_/i.test(code);
+}
+
 function humanizeDocKind(code: string): string {
   const stripped = code.replace(/^PARTNER_\d+_/, '').replace(/^APP_\d+_/, '');
   return stripped.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -99,7 +103,7 @@ function humanizeDocKind(code: string): string {
 type DocGroup = { title: string; docs: Doc[] };
 
 function buildDocGroups(party: Party): DocGroup[] {
-  const docs = party.documents ?? [];
+  const docs = (party.documents ?? []).filter((d) => !isFingerprintDoc(d.documentCode));
   const used = new Set<number>();
   const groups: DocGroup[] = [];
 

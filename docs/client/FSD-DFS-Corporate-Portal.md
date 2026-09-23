@@ -174,7 +174,7 @@ Assigned via `account_portal_roles`:
 | 5 | Submit multipart profile + media | `KYC_COMPLETED` |
 | 6 | Optional fail / refresh LOVs | Ops |
 
-**Media codes:** `CNIC_FRONT`, `CNIC_BACK`, `SELFIE`, `FINGER_L1`–`L4`, `FINGER_R1`–`R4`  
+**Media codes:** `CNIC_FRONT`, `CNIC_BACK`, `SELFIE` (fingerprints verified via NADRA — not stored)  
 **CNIC normalisation:** stored/sent **without dashes** (13 digits).
 
 When **all** required partner app KYCs complete → party moves to `PENDING_APPROVAL`.

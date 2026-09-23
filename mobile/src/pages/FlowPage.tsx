@@ -107,7 +107,7 @@ export function FlowPage() {
     setError(''); setOk(''); setLoading(true);
     try {
       await refresh(await stubBiometric(session!.sessionToken));
-      setOk('Biometric stub completed');
+      setOk('NADRA biometric stub recorded (ref only — no finger images stored)');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     } finally {
@@ -237,9 +237,9 @@ export function FlowPage() {
 
       {step === 3 && (
         <div key={`s-${animKey}`} className="card step-panel">
-          <h3>Video KYC & biometric</h3>
+          <h3>Video KYC &amp; NADRA biometric</h3>
           <p className="hint" style={{ marginTop: 0 }}>
-            MVP stubs until vendor / NADRA SDKs are wired.
+            Fingerprints are verified via NADRA — DFS does not store finger images. Stubs until NADRA is wired.
           </p>
           <div className="doc">
             <div>
@@ -252,11 +252,11 @@ export function FlowPage() {
           </div>
           <div className="doc">
             <div>
-              <strong>Biometric</strong>
+              <strong>NADRA biometric</strong>
               <span className="muted">{session.biometricRef || 'Not done'}</span>
             </div>
             <button className="btn btn-ghost" type="button" disabled={loading} onClick={() => void doBio()}>
-              Run biometric stub
+              Run NADRA stub
             </button>
           </div>
           <button className="btn btn-primary" type="button" onClick={() => goStep(4)}>
@@ -274,7 +274,7 @@ export function FlowPage() {
             <li>DOB: {session.dateOfBirth || '—'}</li>
             <li>Docs: {docs.filter((d) => d.uploaded).length}/{docs.length}</li>
             <li>Video: {session.videoKycRef ? 'Done' : 'Missing'}</li>
-            <li>Biometric: {session.biometricRef ? 'Done' : 'Missing'}</li>
+            <li>NADRA: {session.biometricRef ? 'Done' : 'Pending'}</li>
           </ul>
           <button
             className="btn btn-primary"
