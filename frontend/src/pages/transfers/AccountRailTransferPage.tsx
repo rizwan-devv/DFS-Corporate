@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
 import { BeneficiaryPicker } from '../../components/BeneficiaryPicker';
+import { LiveBulkPanel } from '../../components/LiveBulkPanel';
 import { api, apiUrl } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import type { Beneficiary, MockTransfer } from '../../lib/transferTypes';
@@ -384,21 +385,37 @@ export function AccountRailTransferPage({ product }: Props) {
       {error && <div className="alert alert-error">{error}</div>}
       {ok && <div className="alert alert-ok">{ok}</div>}
 
-      {!liveOn && (
-        <div className="transfer-mode-tabs" style={{ marginTop: '0.25rem' }}>
-          <button type="button" className={`btn btn-sm ${tab === 'single' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('single')}>
-            Single
-          </button>
-          <button type="button" className={`btn btn-sm ${tab === 'bulk' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('bulk')} style={{ marginLeft: '0.5rem' }}>
-            Bulk (CSV mock)
-          </button>
-        </div>
-      )}
+      <div className="transfer-mode-tabs" style={{ marginTop: '0.25rem' }}>
+        <button type="button" className={`btn btn-sm ${tab === 'single' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('single')}>
+          Single {product}
+        </button>
+        <button type="button" className={`btn btn-sm ${tab === 'bulk' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('bulk')} style={{ marginLeft: '0.5rem' }}>
+          Bulk CSV {liveOn ? '(live)' : '(mock)'}
+        </button>
+      </div>
 
       <div className="panel panel--wide" style={{ marginTop: '1.25rem' }}>
-        {liveOn && product === 'IBFT' ? (
+        {tab === 'bulk' && liveOn ? (
+          <LiveBulkPanel product={product} token={session.token} />
+        ) : tab === 'bulk' && !liveOn ? (
+          <form className="form-grid" onSubmit={submitBulk}>
+            <h3 className="form-section-title">{product} — bulk CSV (mock)</h3>
+            <div className="actions" style={{ marginTop: 0 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={downloadTemplate}>Download CSV template</button>
+            </div>
+            <div className="form-row">
+              <label>CSV file</label>
+              <input type="file" accept=".csv,.txt" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            </div>
+            <div className="actions">
+              <button className="btn btn-primary" type="submit" disabled={loading || !file}>
+                {loading ? 'Uploading…' : `Upload mock bulk ${product}`}
+              </button>
+            </div>
+          </form>
+        ) : liveOn && product === 'IBFT' ? (
           <form className="form-grid" onSubmit={titleResult && isLiveOk(titleResult) ? ibftAdvice : ibftTitleFetch}>
-            <h3 className="form-section-title">IBFT — live (bank list → title → advice)</h3>
+            <h3 className="form-section-title">IBFT — live single (bank list → title → advice)</h3>
             <BeneficiaryPicker product="IBFT" selectedPublicId={selectedBenId} onSelect={applyBeneficiary} />
             <div className="form-row">
               <label>Bank</label>
@@ -456,7 +473,7 @@ export function AccountRailTransferPage({ product }: Props) {
           </form>
         ) : liveOn && product === 'FT' ? (
           <form className="form-grid" onSubmit={ftInitResult && isLiveOk(ftInitResult) ? ftConfirm : ftInitiate}>
-            <h3 className="form-section-title">Fund Transfer — live (initiate → MPIN confirm)</h3>
+            <h3 className="form-section-title">Fund Transfer — live single (initiate → MPIN confirm)</h3>
             <BeneficiaryPicker product="FT" selectedPublicId={selectedBenId} onSelect={applyBeneficiary} />
             <div className="form-row">
               <label>Beneficiary wallet / mobile</label>
@@ -498,7 +515,7 @@ export function AccountRailTransferPage({ product }: Props) {
               )}
             </div>
           </form>
-        ) : tab === 'single' ? (
+        ) : (
           <form className="form-grid" onSubmit={submitMockSingle}>
             <h3 className="form-section-title">{product} — single (mock)</h3>
             <BeneficiaryPicker product={product} selectedPublicId={selectedBenId} onSelect={applyBeneficiary} />
@@ -521,22 +538,6 @@ export function AccountRailTransferPage({ product }: Props) {
             <div className="actions">
               <button className="btn btn-primary" type="submit" disabled={loading}>
                 {loading ? 'Submitting…' : `Submit mock ${product}`}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <form className="form-grid" onSubmit={submitBulk}>
-            <h3 className="form-section-title">{product} — bulk CSV (mock)</h3>
-            <div className="actions" style={{ marginTop: 0 }}>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={downloadTemplate}>Download CSV template</button>
-            </div>
-            <div className="form-row">
-              <label>CSV file</label>
-              <input type="file" accept=".csv,.txt" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            </div>
-            <div className="actions">
-              <button className="btn btn-primary" type="submit" disabled={loading || !file}>
-                {loading ? 'Uploading…' : `Upload mock bulk ${product}`}
               </button>
             </div>
           </form>

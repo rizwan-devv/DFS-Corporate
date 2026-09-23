@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/PageHeader';
+import { LiveBulkPanel } from '../../components/LiveBulkPanel';
 import { api, apiUrl } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import type { MockTransfer, UbpBill, UbpCategory } from '../../lib/transferTypes';
@@ -312,17 +313,54 @@ export function UbpTransferPage() {
       {error && <div className="alert alert-error">{error}</div>}
       {ok && <div className="alert alert-ok">{ok}</div>}
 
-      {!liveOn && (
-        <div className="transfer-mode-tabs">
-          <button type="button" className={`btn btn-sm ${tab === 'single' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('single')}>Single bill</button>
-          <button type="button" className={`btn btn-sm ${tab === 'bulk' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('bulk')} style={{ marginLeft: '0.5rem' }}>Bulk (CSV mock)</button>
-        </div>
-      )}
+      <div className="transfer-mode-tabs">
+        <button type="button" className={`btn btn-sm ${tab === 'single' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('single')}>
+          Single UBP
+        </button>
+        <button type="button" className={`btn btn-sm ${tab === 'bulk' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('bulk')} style={{ marginLeft: '0.5rem' }}>
+          Bulk CSV {liveOn ? '(live)' : '(mock)'}
+        </button>
+      </div>
 
       <div className="panel panel--wide" style={{ marginTop: '1.25rem' }}>
-        {liveOn ? (
+        {tab === 'bulk' && liveOn ? (
+          <LiveBulkPanel product="UBP" token={session.token} />
+        ) : tab === 'bulk' && !liveOn ? (
+          <form className="form-grid" onSubmit={submitBulk}>
+            <h3 className="form-section-title">UBP — bulk CSV (mock)</h3>
+            <div className="actions" style={{ marginTop: 0 }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  if (!session.token) return;
+                  void fetch(apiUrl('/api/transfers/mock/template.csv?productType=UBP'), {
+                    headers: { Authorization: `Bearer ${session.token}` },
+                  }).then(async (res) => {
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'dfs-ubp-bulk-template.csv';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  });
+                }}
+              >
+                Download CSV template
+              </button>
+            </div>
+            <div className="form-row">
+              <label>CSV file</label>
+              <input type="file" accept=".csv,.txt" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            </div>
+            <div className="actions">
+              <button className="btn btn-primary" type="submit" disabled={loading || !file}>Upload mock bulk UBP</button>
+            </div>
+          </form>
+        ) : liveOn ? (
           <form className="form-grid" onSubmit={inquiry && isLiveOk(inquiry) ? livePay : liveInquiry}>
-            <h3 className="form-section-title">UBP — live (billers → inquiry → pay)</h3>
+            <h3 className="form-section-title">UBP — live single (billers → inquiry → pay)</h3>
             <div className="form-row">
               <label>Biller</label>
               <select
@@ -382,7 +420,7 @@ export function UbpTransferPage() {
               )}
             </div>
           </form>
-        ) : tab === 'single' ? (
+        ) : (
           <form className="form-grid" onSubmit={submitMockSingle}>
             <h3 className="form-section-title">Pay a bill (mock)</h3>
             <div className="form-row">
@@ -423,39 +461,6 @@ export function UbpTransferPage() {
             </div>
             <div className="actions">
               <button className="btn btn-primary" type="submit" disabled={loading}>{loading ? 'Submitting…' : 'Pay bill (mock)'}</button>
-            </div>
-          </form>
-        ) : (
-          <form className="form-grid" onSubmit={submitBulk}>
-            <h3 className="form-section-title">UBP — bulk CSV (mock)</h3>
-            <div className="actions" style={{ marginTop: 0 }}>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  if (!session.token) return;
-                  void fetch(apiUrl('/api/transfers/mock/template.csv?productType=UBP'), {
-                    headers: { Authorization: `Bearer ${session.token}` },
-                  }).then(async (res) => {
-                    const blob = await res.blob();
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'dfs-ubp-bulk-template.csv';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  });
-                }}
-              >
-                Download CSV template
-              </button>
-            </div>
-            <div className="form-row">
-              <label>CSV file</label>
-              <input type="file" accept=".csv,.txt" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            </div>
-            <div className="actions">
-              <button className="btn btn-primary" type="submit" disabled={loading || !file}>Upload mock bulk UBP</button>
             </div>
           </form>
         )}
