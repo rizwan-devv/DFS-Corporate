@@ -34,9 +34,9 @@ spring:
     properties:
       mail:
         smtp:
-          auth: false
+          auth: ${MAIL_SMTP_AUTH:false}
           starttls:
-            enable: false
+            enable: ${MAIL_SMTP_STARTTLS:false}
 
 app:
   brand-name: ${APP_BRAND_NAME:PayFast Corporate}
@@ -48,7 +48,7 @@ app:
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
   mobile-app-base-url: ${MOBILE_APP_BASE_URL:dfscorporate://kyc}
   mail:
-    from: noreply@dfscorporate.local
+    from: ${MAIL_FROM:noreply@dfscorporate.local}
     # When false, credentials/OTP are logged instead of SMTP send (easy local testing)
     enabled: ${MAIL_ENABLED:false}
   # Inbound franchise commission. Mock settle = no DFS FT; scheduler off.

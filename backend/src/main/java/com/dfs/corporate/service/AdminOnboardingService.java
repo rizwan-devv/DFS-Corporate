@@ -164,8 +164,7 @@ public class AdminOnboardingService {
             party.setIdentityVerificationStatus(IdentityVerificationStatus.WAIVED_MANUAL);
             party.setIdentityVerificationMethod("ADMIN_MANUAL_PENDING_NADRA");
         }
-        Account account = accountRepository.findByPartyId(party.getId())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Account missing"));
+        Account account = firstAccount(party.getId());
 
         boolean hadPassword = account.getPasswordHash() != null && !account.getPasswordHash().isBlank();
         String rawPassword = null;
@@ -189,6 +188,8 @@ public class AdminOnboardingService {
 
         // Seed portal roles for master corporates; lock franchise commission for children
         portalUserService.ensureOwnerRoles(account, party);
+        portalUserService.ensurePartnerPortalLogins(party);
+        activatePartyPortalAccounts(party.getId());
         if (party.getPartyType() == PartyType.SUB_MERCHANT) {
             franchiseCommissionService.lockForChild(party.getId(), admin.getAccountId(), "BACKOFFICE");
         }
@@ -267,16 +268,22 @@ public class AdminOnboardingService {
                 && party.getStatus() != PartyStatus.INCOMPLETE) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Party must be SUBMITTED, INCOMPLETE, or PENDING_APPROVAL");
         }
-        Account account = accountRepository.findByPartyId(party.getId())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Account missing"));
+        List<Account> accounts = accountRepository.findAllByPartyIdOrderByCreatedAtAsc(party.getId());
+        if (accounts.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Account missing");
+        }
 
         party.setStatus(PartyStatus.REJECTED);
         party.setRejectionReason(req.getReason());
         party.setApprovedBy(admin.getUsername());
         partyRepository.save(party);
 
-        account.setStatus(AccountStatus.LOCKED);
-        accountRepository.save(account);
+        for (Account account : accounts) {
+            if (account.getRole() == Role.PARTY_USER) {
+                account.setStatus(AccountStatus.LOCKED);
+                accountRepository.save(account);
+            }
+        }
 
         mailService.send(party.getEmail(), "PayFast Corporate — Application Rejected",
                 """
@@ -484,6 +491,21 @@ public class AdminOnboardingService {
             return PartyStatus.valueOf(status.trim().toUpperCase());
         } catch (Exception e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid status filter");
+        }
+    }
+
+    private Account firstAccount(Long partyId) {
+        return accountRepository.findAllByPartyIdOrderByCreatedAtAsc(partyId).stream()
+                .findFirst()
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Account missing"));
+    }
+
+    private void activatePartyPortalAccounts(Long partyId) {
+        for (Account account : accountRepository.findAllByPartyIdOrderByCreatedAtAsc(partyId)) {
+            if (account.getRole() == Role.PARTY_USER && account.getStatus() != AccountStatus.ACTIVE) {
+                account.setStatus(AccountStatus.ACTIVE);
+                accountRepository.save(account);
+            }
         }
     }
 

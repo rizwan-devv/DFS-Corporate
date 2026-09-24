@@ -102,7 +102,8 @@ export function PortalUsersPage() {
           <h2 style={{ marginTop: 0 }}>Corporate users (Maker / Checker / Approver / Releaser)</h2>
           <p className="muted">
             One person can hold multiple roles. If Checker also has Approver, after Check the workflow
-            skips Approver and goes to Releaser.
+            skips Approver and goes to Releaser. Partnership / LLP partners each get their own login
+            (same corporate, separate email).
           </p>
           <p className="muted">Your roles: {(session.portalRoles || []).join(', ') || '—'}</p>
           {error && <div className="alert alert-error">{error}</div>}

@@ -247,7 +247,7 @@ export function OnboardingPage() {
     try {
       const data = await api<Party>('/api/onboarding/submit', { method: 'POST', token: session!.token });
       setParty(data);
-      setOk(`Submitted. Tracking ${data.trackingId}. Check your email for portal login (temporary password — change on first login). Partners will get mobile app KYC emails. Status: ${data.status}`);
+      setOk(`Submitted. Tracking ${data.trackingId}. Each partner email gets its own corporate portal login (temporary password — change on first login). Partners also get mobile app KYC emails. Status: ${data.status}`);
       setStep(5);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Submit failed');
@@ -395,8 +395,8 @@ export function OnboardingPage() {
             <div className="section-block">
               <h3>Partner roster</h3>
               <p className="muted">
-                Add each partner (name, phone = app user ID, email). After submit, <strong>each partner</strong> completes
-                KYC in the mobile app — no separate authorized-person form.
+                Add each partner (name, phone = app user ID, unique email). After submit, <strong>each partner</strong> gets
+                their own corporate portal login and completes KYC in the mobile app — no separate authorized-person form.
               </p>
               {(party?.associatedPersons || []).map((p) => (
                 <div className="doc-row" key={p.id}>

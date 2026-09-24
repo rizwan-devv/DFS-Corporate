@@ -40,6 +40,7 @@ public class OnboardingService {
     private final PartyStatusSyncService partyStatusSyncService;
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
+    private final PortalUserService portalUserService;
     private final SecureRandom random = new SecureRandom();
 
     public OnboardingService(PartyRepository partyRepository,
@@ -51,7 +52,8 @@ public class OnboardingService {
                              FileStorageService fileStorageService,
                              PartyStatusSyncService partyStatusSyncService,
                              PasswordEncoder passwordEncoder,
-                             MailService mailService) {
+                             MailService mailService,
+                             PortalUserService portalUserService) {
         this.partyRepository = partyRepository;
         this.documentRepository = documentRepository;
         this.requiredDocumentRepository = requiredDocumentRepository;
@@ -62,6 +64,7 @@ public class OnboardingService {
         this.partyStatusSyncService = partyStatusSyncService;
         this.passwordEncoder = passwordEncoder;
         this.mailService = mailService;
+        this.portalUserService = portalUserService;
     }
 
     public PartyResponse me(AccountPrincipal principal) {
@@ -249,13 +252,13 @@ public class OnboardingService {
 
         // Portal login credentials so applicant can return for re-upload before final approve
         issuePortalCredentialsOnSubmit(party);
+        portalUserService.ensurePartnerPortalLogins(party);
 
         return enrich(partyRepository.findById(party.getId()).orElse(party));
     }
 
     private void issuePortalCredentialsOnSubmit(Party party) {
-        Account account = accountRepository.findByPartyId(party.getId())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Account missing"));
+        Account account = firstAccount(party.getId());
         String rawPassword = generateTempPassword();
         account.setPasswordHash(passwordEncoder.encode(rawPassword));
         account.setFirstLogin(true);
@@ -550,6 +553,12 @@ public class OnboardingService {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Document already uploaded and awaiting review. Only rejected documents can be re-uploaded.");
         }
+    }
+
+    private Account firstAccount(Long partyId) {
+        return accountRepository.findAllByPartyIdOrderByCreatedAtAsc(partyId).stream()
+                .findFirst()
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Account missing"));
     }
 
     private boolean isBlank(String s) { return s == null || s.isBlank(); }

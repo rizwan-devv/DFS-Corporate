@@ -3,12 +3,16 @@ package com.dfs.corporate.service;
 import com.dfs.corporate.domain.*;
 import com.dfs.corporate.repository.AccountPortalRoleRepository;
 import com.dfs.corporate.repository.AccountRepository;
+import com.dfs.corporate.repository.AssociatedPersonRepository;
+import com.dfs.corporate.repository.PartnerAppUserRepository;
 import com.dfs.corporate.repository.PartyRepository;
 import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.web.dto.PortalUserCreateRequest;
 import com.dfs.corporate.web.dto.PortalUserResponse;
 import com.dfs.corporate.web.dto.PortalUserRolesUpdateRequest;
 import com.dfs.corporate.web.error.ApiException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -20,19 +24,30 @@ import java.util.stream.Collectors;
 @Service
 public class PortalUserService {
 
+    private static final Logger log = LoggerFactory.getLogger(PortalUserService.class);
+    private static final Set<PortalRole> FULL_PORTAL_ROLES = EnumSet.of(
+            PortalRole.PARTY_ADMIN, PortalRole.MAKER, PortalRole.CHECKER,
+            PortalRole.APPROVER, PortalRole.RELEASER);
+
     private final AccountRepository accountRepository;
     private final AccountPortalRoleRepository portalRoleRepository;
+    private final AssociatedPersonRepository associatedPersonRepository;
+    private final PartnerAppUserRepository partnerAppUserRepository;
     private final PartyRepository partyRepository;
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
 
     public PortalUserService(AccountRepository accountRepository,
                              AccountPortalRoleRepository portalRoleRepository,
+                             AssociatedPersonRepository associatedPersonRepository,
+                             PartnerAppUserRepository partnerAppUserRepository,
                              PartyRepository partyRepository,
                              PasswordEncoder passwordEncoder,
                              MailService mailService) {
         this.accountRepository = accountRepository;
         this.portalRoleRepository = portalRoleRepository;
+        this.associatedPersonRepository = associatedPersonRepository;
+        this.partnerAppUserRepository = partnerAppUserRepository;
         this.partyRepository = partyRepository;
         this.passwordEncoder = passwordEncoder;
         this.mailService = mailService;
@@ -74,9 +89,92 @@ public class PortalUserService {
         if (account.getRole() != Role.PARTY_USER) return;
         if (party.getPartyType() != PartyType.MERCHANT) return;
         if (portalRoleRepository.findByAccountId(account.getId()).isEmpty()) {
-            assignRoles(account.getId(), EnumSet.of(
-                    PortalRole.PARTY_ADMIN, PortalRole.MAKER, PortalRole.CHECKER,
-                    PortalRole.APPROVER, PortalRole.RELEASER));
+            assignRoles(account.getId(), FULL_PORTAL_ROLES);
+        }
+    }
+
+    /**
+     * Partnership / LLP: one Party, one {@code accounts} row per partner email.
+     * The signup email already has a row; remaining partners get their own login.
+     */
+    @Transactional
+    public void ensurePartnerPortalLogins(Party party) {
+        if (party == null || party.getId() == null
+                || !ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
+            return;
+        }
+        Set<String> emails = collectPartnerEmails(party);
+        if (emails.isEmpty()) {
+            return;
+        }
+        String partyName = party.getBusinessName() != null && !party.getBusinessName().isBlank()
+                ? party.getBusinessName() : "PayFast Corporate";
+        for (String email : emails) {
+            accountRepository.findByEmailIgnoreCase(email).ifPresentOrElse(existing -> {
+                if (!party.getId().equals(existing.getPartyId())) {
+                    log.warn("Skip partner portal login for {} — email belongs to party {}",
+                            email, existing.getPartyId());
+                    return;
+                }
+                grantMissingFullRoles(existing.getId());
+            }, () -> createPartnerPortalAccount(party.getId(), email, partyName));
+        }
+    }
+
+    private Set<String> collectPartnerEmails(Party party) {
+        Set<String> emails = new LinkedHashSet<>();
+        for (AssociatedPerson person : associatedPersonRepository.findByPartyIdOrderByIdAsc(party.getId())) {
+            if (person.getRoleType() == AssociatedPersonRole.PARTNER) {
+                addEmail(emails, person.getEmail());
+            }
+        }
+        for (PartnerAppUser user : partnerAppUserRepository.findByPartyIdOrderByIdAsc(party.getId())) {
+            addEmail(emails, user.getEmail());
+        }
+        if (Boolean.TRUE.equals(party.getApplicantIsPartner())) {
+            addEmail(emails, party.getEmail());
+        }
+        return emails;
+    }
+
+    private static void addEmail(Set<String> emails, String raw) {
+        if (raw == null || raw.isBlank()) {
+            return;
+        }
+        emails.add(raw.trim().toLowerCase());
+    }
+
+    private void createPartnerPortalAccount(Long partyId, String email, String partyName) {
+        Account account = new Account();
+        account.setPublicId(UUID.randomUUID().toString());
+        account.setPartyId(partyId);
+        account.setEmail(email);
+        account.setRole(Role.PARTY_USER);
+        account.setStatus(AccountStatus.ACTIVE);
+        account.setFirstLogin(true);
+        String temp = generatePassword();
+        account.setPasswordHash(passwordEncoder.encode(temp));
+        accountRepository.save(account);
+        assignRoles(account.getId(), FULL_PORTAL_ROLES);
+        mailService.send(email, "PayFast Corporate — partner portal login",
+                "Hello,\n\nYou have a corporate portal login for " + partyName + ".\n\n"
+                        + "Login email: " + email + "\n"
+                        + "Temporary password: " + temp + "\n\n"
+                        + "Change this password on first login.\n\n— PayFast Corporate");
+        log.info("Created partner portal account {} for party {}", email, partyId);
+    }
+
+    private void grantMissingFullRoles(Long accountId) {
+        Set<PortalRole> have = portalRoleRepository.findByAccountId(accountId).stream()
+                .map(AccountPortalRole::getPortalRole)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        for (PortalRole role : FULL_PORTAL_ROLES) {
+            if (have.add(role)) {
+                AccountPortalRole row = new AccountPortalRole();
+                row.setAccountId(accountId);
+                row.setPortalRole(role);
+                portalRoleRepository.save(row);
+            }
         }
     }
 

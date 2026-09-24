@@ -209,6 +209,7 @@ public class AuthService {
         accountRepository.save(account);
 
         portalUserService.ensureOwnerRoles(account, party);
+        portalUserService.ensurePartnerPortalLogins(party);
         var portalRoles = portalUserService.rolesOf(account.getId()).stream().map(Enum::name).toList();
 
         Map<String, Object> claims = new HashMap<>();

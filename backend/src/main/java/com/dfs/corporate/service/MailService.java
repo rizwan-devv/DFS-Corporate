@@ -30,11 +30,19 @@ public class MailService {
             log.info("[MAIL-DEV] to={} subject={} body=\n{}", to, subject, body);
             return;
         }
-        SimpleMailMessage msg = new SimpleMailMessage();
-        msg.setFrom(from);
-        msg.setTo(to);
-        msg.setSubject(subject);
-        msg.setText(body);
-        mailSender.send(msg);
+        try {
+            SimpleMailMessage msg = new SimpleMailMessage();
+            msg.setFrom(from);
+            msg.setTo(to);
+            msg.setSubject(subject);
+            msg.setText(body);
+            mailSender.send(msg);
+            log.info("Mail sent from={} to={} subject={}", from, to, subject);
+            log.info("[MAIL-DEV] to={} subject={} body=\n{}", to, subject, body);
+        } catch (Exception e) {
+            // Demo-safe: SMTP failure must not fail signup / submit / approve
+            log.error("Mail send failed from={} to={} subject={}: {}", from, to, subject, e.getMessage());
+            log.info("[MAIL-FALLBACK] to={} subject={} body=\n{}", to, subject, body);
+        }
     }
 }
