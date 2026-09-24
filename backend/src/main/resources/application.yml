@@ -100,7 +100,7 @@ dfs:
     txn-base-url: ${DFS_TXN_API_BASE_URL:http://46.225.160.93:18009/transactions}
     # App service (customer MPIN verify). Include /app context path.
     app-base-url: ${DFS_APP_API_BASE_URL:http://46.225.160.93:18002/app}
-    channel: ${DFS_PORTAL_API_CHANNEL:MOB}
+    channel: ${DFS_PORTAL_API_CHANNEL:COP}
   # CMS card system (server-to-server). See docs/DFS-Corporate-CMS-API.postman_collection.json
   cms-api:
     enabled: ${DFS_CMS_API_ENABLED:false}

@@ -34,7 +34,7 @@ public class CorporatePortalAgentAppClient {
             @Value("${dfs.portal-api.enabled:false}") boolean enabled,
             @Value("${dfs.account-api.base-url:http://46.225.160.93:18001}") String baseUrl,
             @Value("${dfs.portal-api.portal-key:}") String portalKey,
-            @Value("${dfs.portal-api.channel:MOB}") String channel,
+            @Value("${dfs.portal-api.channel:COP}") String channel,
             @Value("${dfs.portal-api.get-balance-path:/agentapp/v1/corporate/getbalance}") String getBalancePath,
             @Value("${dfs.portal-api.mini-statement-path:/agentapp/v1/corporate/miniStatment}") String miniStatementPath,
             @Value("${dfs.portal-api.change-mpin-path:/agentapp/v1/corporate/changempin}") String changeMpinPath,
@@ -42,7 +42,7 @@ public class CorporatePortalAgentAppClient {
         this.enabled = enabled;
         this.baseUrl = trimSlash(baseUrl);
         this.portalKey = portalKey != null ? portalKey.trim() : "";
-        this.channel = channel;
+        this.channel = channel != null && !channel.isBlank() ? channel : "COP";
         this.getBalancePath = normalizePath(getBalancePath);
         this.miniStatementPath = normalizePath(miniStatementPath);
         this.changeMpinPath = normalizePath(changeMpinPath);

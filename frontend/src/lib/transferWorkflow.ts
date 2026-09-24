@@ -24,6 +24,10 @@ export type PaymentPayload = {
   notes?: string;
   purposeOfPayment?: string;
   mobile?: string;
+  payoutStatus?: string;
+  portalTxnRef?: string;
+  dfsAuthId?: string;
+  dfsResponseCode?: string;
 };
 
 export function parsePayload(json?: string): PaymentPayload {

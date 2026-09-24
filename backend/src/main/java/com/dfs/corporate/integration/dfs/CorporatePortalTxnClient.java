@@ -37,12 +37,12 @@ public class CorporatePortalTxnClient {
             @Value("${dfs.portal-api.enabled:false}") boolean enabled,
             @Value("${dfs.portal-api.txn-base-url:http://46.225.160.93:18009/transactions}") String baseUrl,
             @Value("${dfs.portal-api.portal-key:}") String portalKey,
-            @Value("${dfs.portal-api.channel:MOB}") String channel,
+            @Value("${dfs.portal-api.channel:COP}") String channel,
             ObjectMapper objectMapper) {
         this.enabled = enabled;
         this.baseUrl = trimSlash(baseUrl);
         this.portalKey = portalKey != null ? portalKey.trim() : "";
-        this.channel = channel != null && !channel.isBlank() ? channel : "MOB";
+        this.channel = channel != null && !channel.isBlank() ? channel : "COP";
         this.objectMapper = objectMapper;
         this.restClient = RestClient.builder().baseUrl(this.baseUrl).build();
     }
@@ -97,11 +97,11 @@ public class CorporatePortalTxnClient {
     }
 
     public JsonNode initiateLocalFt(ObjectNode payload) {
-        return post("/v1/corporate/initiateLocalFT", payload, "COP");
+        return post("/v1/corporate/initiateLocalFT", payload);
     }
 
     public JsonNode fundsTransferLocal(ObjectNode payload) {
-        return post("/v1/corporate/fundsTransferLocal", payload, "COP");
+        return post("/v1/corporate/fundsTransferLocal", payload);
     }
 
     private JsonNode post(String path, ObjectNode payload) {

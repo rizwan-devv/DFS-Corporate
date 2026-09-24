@@ -24,7 +24,7 @@ services:
       CORPORATE_PORTAL_API_KEY: ""
       DFS_TXN_API_BASE_URL: http://46.225.160.93:18009/transactions
       DFS_APP_API_BASE_URL: http://46.225.160.93:18002/app
-      DFS_PORTAL_API_CHANNEL: MOB
+      DFS_PORTAL_API_CHANNEL: COP
       # CMS card APIs — recreate backend after changing these
       DFS_CMS_API_ENABLED: "false"
       DFS_CMS_PORTAL_BASE_URL: http://46.224.146.158:7070

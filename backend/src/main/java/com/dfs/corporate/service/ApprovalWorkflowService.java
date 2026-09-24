@@ -3,12 +3,15 @@ package com.dfs.corporate.service;
 import com.dfs.corporate.domain.*;
 import com.dfs.corporate.repository.ApprovalActionRepository;
 import com.dfs.corporate.repository.ApprovalRequestRepository;
+import com.dfs.corporate.repository.PartnerAppUserRepository;
 import com.dfs.corporate.repository.PartyRepository;
+import com.dfs.corporate.util.IdentityFormats;
 import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.web.dto.*;
 import com.dfs.corporate.web.error.ApiException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,6 +31,7 @@ import java.util.UUID;
  *   <li>&gt; max → full Checker → Approver → Releaser</li>
  * </ul>
  * Payment is not considered complete until Releaser approves (status APPROVED).
+ * FT PAYMENT Release calls live DFS initiateLocalFT + fundsTransferLocal (COP).
  * If Checker also has APPROVER role, Approver step is skipped → Releaser.
  */
 @Service
@@ -36,20 +40,26 @@ public class ApprovalWorkflowService {
     private final ApprovalRequestRepository requestRepository;
     private final ApprovalActionRepository actionRepository;
     private final PartyRepository partyRepository;
+    private final PartnerAppUserRepository partnerAppUserRepository;
     private final PortalUserService portalUserService;
+    private final LiveTransferService liveTransferService;
     private final ObjectMapper objectMapper;
     private final BigDecimal directReleaseMaxAmount;
 
     public ApprovalWorkflowService(ApprovalRequestRepository requestRepository,
                                    ApprovalActionRepository actionRepository,
                                    PartyRepository partyRepository,
+                                   PartnerAppUserRepository partnerAppUserRepository,
                                    PortalUserService portalUserService,
+                                   LiveTransferService liveTransferService,
                                    ObjectMapper objectMapper,
                                    @Value("${approvals.payment.direct-release-max-amount:5000}") String directReleaseMax) {
         this.requestRepository = requestRepository;
         this.actionRepository = actionRepository;
         this.partyRepository = partyRepository;
+        this.partnerAppUserRepository = partnerAppUserRepository;
         this.portalUserService = portalUserService;
+        this.liveTransferService = liveTransferService;
         this.objectMapper = objectMapper;
         this.directReleaseMaxAmount = parseAmount(directReleaseMax, "5000");
     }
@@ -177,6 +187,9 @@ public class ApprovalWorkflowService {
         recordAction(req, step, ApprovalDecision.APPROVE, principal, body.getComment());
         ApprovalStep next = nextStepAfterApprove(step, principal);
         if (next == ApprovalStep.DONE) {
+            if (isFtPayment(req)) {
+                executeLiveFtRelease(principal, req, body);
+            }
             req.setCurrentStep(ApprovalStep.DONE);
             req.setStatus(ApprovalRequestStatus.APPROVED);
             req.setCompletedAt(Instant.now());
@@ -217,6 +230,125 @@ public class ApprovalWorkflowService {
                                 + "payments.");
             }
         }
+    }
+
+    private boolean isFtPayment(ApprovalRequest req) {
+        if (req.getRequestType() != ApprovalRequestType.PAYMENT) {
+            return false;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(req.getPayloadJson() != null ? req.getPayloadJson() : "{}");
+            String product = text(root, "product");
+            if (product == null || product.isBlank()) {
+                return text(root, "accountNumber") != null && text(root, "bankImd") == null;
+            }
+            return "FT".equalsIgnoreCase(product.trim());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void executeLiveFtRelease(AccountPrincipal principal, ApprovalRequest req, ApprovalDecisionRequest body) {
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(req.getPayloadJson() != null ? req.getPayloadJson() : "{}");
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid payment payload");
+        }
+        String accountNo = firstNonBlank(text(root, "accountNumber"), text(root, "accountNo"), req.getReferenceKey());
+        String amount = text(root, "amount");
+        if (accountNo == null || amount == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "FT Release needs accountNumber and amount");
+        }
+        String mpin = IdentityFormats.pinPlain(body != null ? body.getMpin() : null);
+        if (mpin == null) {
+            Party party = partyRepository.findById(req.getPartyId()).orElse(null);
+            if (party != null) {
+                mpin = IdentityFormats.pinPlain(party.getWalletPin());
+                if (mpin == null) {
+                    for (PartnerAppUser u : partnerAppUserRepository.findByPartyIdOrderByIdAsc(party.getId())) {
+                        mpin = IdentityFormats.pinPlain(u.getWalletPin());
+                        if (mpin != null) break;
+                    }
+                }
+            }
+        }
+        if (mpin == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Customer MPIN required to release FT to DFS. Enter MPIN on Release.");
+        }
+
+        LiveFtInitiateRequest init = new LiveFtInitiateRequest();
+        init.setAccountNo(accountNo);
+        init.setAmount(amount);
+        init.setAccountType("W");
+        DfsPortalTxnResponse initResp = liveTransferService.ftInitiate(principal, init);
+        if (!isDfsOk(initResp)) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY,
+                    "DFS initiate FT failed: " + dfsMsg(initResp));
+        }
+
+        LiveFtConfirmRequest conf = new LiveFtConfirmRequest();
+        conf.setAccountNo(accountNo);
+        conf.setAmount(amount);
+        conf.setAccountType("W");
+        conf.setMpin(mpin);
+        conf.setNarration(firstNonBlank(text(root, "notes"), "FT release " + shortId(req.getPublicId())));
+        conf.setBeneficiaryName(text(root, "beneficiaryName"));
+        DfsPortalTxnResponse confResp = liveTransferService.ftConfirm(principal, conf);
+        if (!isDfsOk(confResp)) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY,
+                    "DFS funds transfer failed: " + dfsMsg(confResp));
+        }
+
+        try {
+            ObjectNode out = root.isObject()
+                    ? (ObjectNode) root.deepCopy()
+                    : objectMapper.createObjectNode();
+            out.put("payoutStatus", "SENT");
+            if (confResp.getPortalTxnRef() != null) {
+                out.put("portalTxnRef", confResp.getPortalTxnRef());
+            }
+            if (confResp.getResponsecode() != null) {
+                out.put("dfsResponseCode", confResp.getResponsecode());
+            }
+            if (confResp.getData() != null && confResp.getData().has("authIdResponse")) {
+                out.put("dfsAuthId", confResp.getData().get("authIdResponse").asText());
+            }
+            req.setPayloadJson(objectMapper.writeValueAsString(out));
+        } catch (Exception e) {
+            // Money already moved; still complete release
+        }
+    }
+
+    private static boolean isDfsOk(DfsPortalTxnResponse r) {
+        if (r == null || r.getResponsecode() == null) return false;
+        return "000".equals(r.getResponsecode()) || "00".equals(r.getResponsecode());
+    }
+
+    private static String dfsMsg(DfsPortalTxnResponse r) {
+        if (r == null) return "no response";
+        if (r.getMessages() != null && !r.getMessages().isBlank()) return r.getMessages();
+        return "responsecode " + r.getResponsecode();
+    }
+
+    private static String text(JsonNode n, String key) {
+        if (n == null || !n.has(key) || n.get(key).isNull()) return null;
+        String v = n.get(key).asText(null);
+        return v != null && !v.isBlank() ? v.trim() : null;
+    }
+
+    private static String firstNonBlank(String... vals) {
+        if (vals == null) return null;
+        for (String v : vals) {
+            if (v != null && !v.isBlank()) return v.trim();
+        }
+        return null;
+    }
+
+    private static String shortId(String publicId) {
+        if (publicId == null || publicId.length() < 8) return publicId != null ? publicId : "";
+        return publicId.substring(publicId.length() - 8);
     }
 
     private BigDecimal extractAmount(String payloadJson) {

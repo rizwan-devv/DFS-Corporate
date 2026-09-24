@@ -76,6 +76,7 @@ export function AccountRailTransferPage({ product }: Props) {
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [directLive, setDirectLive] = useState(false);
+  const [releaseMpin, setReleaseMpin] = useState('');
   const [showTechJson, setShowTechJson] = useState(false);
 
   const liveOn = !!live?.liveEnabled;
@@ -232,7 +233,7 @@ export function AccountRailTransferPage({ product }: Props) {
     }
   }
 
-  async function decide(publicId: string, decision: 'APPROVE' | 'REJECT', comment?: string) {
+  async function decide(publicId: string, decision: 'APPROVE' | 'REJECT', comment?: string, mpin?: string) {
     if (!session?.token) return;
     setLoading(true);
     setError('');
@@ -240,9 +241,12 @@ export function AccountRailTransferPage({ product }: Props) {
       await api(`/api/approvals/${publicId}/decide`, {
         method: 'POST',
         token: session.token,
-        body: JSON.stringify({ decision, comment }),
+        body: JSON.stringify({ decision, comment, mpin: mpin || undefined }),
       });
-      setOk(decision === 'APPROVE' ? 'Decision recorded' : 'Request stopped / rejected');
+      setOk(decision === 'APPROVE'
+        ? (comment === 'RELEASE' ? 'Released — live DFS payout sent' : 'Decision recorded')
+        : 'Request stopped / rejected');
+      if (comment === 'RELEASE') setReleaseMpin('');
       await loadApprovals();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed');
@@ -531,8 +535,8 @@ export function AccountRailTransferPage({ product }: Props) {
             <div>
               <h3>{product} — Approval queue</h3>
               <p className="muted">
-                Maker → Checker → Approver → Releaser. <strong>RELEASED</strong> means the request is approved —
-                DFS payout on Release is not wired yet, so money does not move from this queue.
+                Maker → Checker → Approver → Releaser. <strong>Release</strong> on FT sends live DFS
+                initiate + confirm (<code>COP</code>). Enter customer MPIN if it is not stored on the party.
               </p>
             </div>
             <div className="txn-panel-tools">
@@ -548,6 +552,17 @@ export function AccountRailTransferPage({ product }: Props) {
               </select>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => void loadApprovals()}>Refresh</button>
             </div>
+          </div>
+          <div className="form-row" style={{ maxWidth: 280, margin: '0.75rem 0 0' }}>
+            <label>Customer MPIN (for Release → DFS)</label>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              value={releaseMpin}
+              onChange={(e) => setReleaseMpin(e.target.value)}
+              placeholder="If not stored on party"
+            />
           </div>
 
           <div className="alert alert-info txn-info">
@@ -613,7 +628,7 @@ export function AccountRailTransferPage({ product }: Props) {
                             </button>
                           )}
                           {acts.release && (
-                            <button type="button" className="btn btn-primary btn-sm" disabled={loading} onClick={() => void decide(row.publicId, 'APPROVE', 'RELEASE')}>
+                            <button type="button" className="btn btn-primary btn-sm" disabled={loading} onClick={() => void decide(row.publicId, 'APPROVE', 'RELEASE', releaseMpin.trim())}>
                               Release
                             </button>
                           )}
@@ -650,7 +665,16 @@ export function AccountRailTransferPage({ product }: Props) {
                   <div><span className="muted">To</span><strong className="txn-mono">{p.accountNumber || '—'}</strong></div>
                   <div><span className="muted">Beneficiary</span><strong>{p.beneficiaryName || '—'}</strong></div>
                   <div><span className="muted">Steps</span><strong>{progressLabel(detailsRow)}</strong></div>
-                  <div><span className="muted">Payout</span><strong className="muted">Not sent (DFS on Release pending)</strong></div>
+                  <div>
+                    <span className="muted">Payout</span>
+                    <strong className={p.payoutStatus === 'SENT' ? undefined : 'muted'}>
+                      {p.payoutStatus === 'SENT'
+                        ? `Sent ${p.portalTxnRef || p.dfsAuthId || ''}`.trim()
+                        : st === 'RELEASED'
+                          ? 'Not sent (IBFT/UBP Release has no DFS hook, or older row)'
+                          : 'Awaiting Release'}
+                    </strong>
+                  </div>
                 </div>
 
                 <h5 className="txn-timeline-title">Lifecycle</h5>
@@ -673,9 +697,14 @@ export function AccountRailTransferPage({ product }: Props) {
                   </ol>
                 )}
 
-                {st === 'RELEASED' && (
+                {st === 'RELEASED' && p.payoutStatus === 'SENT' && (
+                  <p className="alert alert-ok" style={{ marginTop: '0.85rem' }}>
+                    Live DFS payout sent{p.portalTxnRef ? ` · ${p.portalTxnRef}` : ''}. Same row also appears under Direct live pays.
+                  </p>
+                )}
+                {st === 'RELEASED' && p.payoutStatus !== 'SENT' && (
                   <p className="alert alert-info" style={{ marginTop: '0.85rem' }}>
-                    Workflow complete. Live DFS debit/credit is not hooked to Release yet — this row will not appear in Direct live pays below.
+                    Workflow complete. This row was released before live FT payout, or it is not an FT payment.
                   </p>
                 )}
 
