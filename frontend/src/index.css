@@ -932,17 +932,18 @@ h2 {
 .portal-link-chevron {
   display: inline-block;
   margin-left: auto;
-  font-size: 1.15rem;
-  font-weight: 400;
+  font-size: 1.25rem;
+  font-weight: 700;
   line-height: 1;
-  color: var(--muted);
+  color: inherit;
+  opacity: 0.95;
   transition: transform 0.15s ease;
   transform: rotate(0deg);
 }
 
 .portal-link-chevron.is-open {
   transform: rotate(90deg);
-  color: var(--text);
+  opacity: 1;
 }
 
 .portal-nav-sub {
@@ -3746,6 +3747,12 @@ h2 {
 }
 
 [data-theme="payfast"] .portal-link.active .portal-link-icon {
+  opacity: 1;
+}
+
+[data-theme="payfast"] .portal-link-chevron,
+[data-theme="payfast"] .portal-link.active .portal-link-chevron {
+  color: #ffffff;
   opacity: 1;
 }
 

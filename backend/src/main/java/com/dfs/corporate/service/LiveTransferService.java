@@ -229,12 +229,6 @@ public class LiveTransferService {
         Party party = requireActiveParty(principal);
         String mobile = requireMobile(party);
         String nid = requireNid(party);
-        String appUserId = resolveAppUserId(party, req.getAppUserId());
-        if (appUserId == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "Payer appUserId is required. Set parties.dfs_app_user_id or pass appUserId in the request "
-                            + "(DFS APP_USER_ID of the corporate wallet — see Postman customerAppUserId).");
-        }
         String mpin = IdentityFormats.pinPlain(req.getMpin());
         if (mpin == null || mpin.length() < 4) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Valid customer MPIN is required");
@@ -246,7 +240,6 @@ public class LiveTransferService {
         payload.put("accountNo", IdentityFormats.phoneDigits(req.getAccountNo()));
         payload.put("accountType", blankTo(req.getAccountType(), "W"));
         payload.put("amount", normalizeAmount(req.getAmount()));
-        payload.put("appUserId", appUserId);
         payload.put("mpin", mpin);
         payload.put("transPurposeId", blankTo(req.getTransPurposeId(), "1"));
         payload.put("narration", blankToEmpty(req.getNarration()));

@@ -45,7 +45,6 @@ const emptyForm = {
   beneficiaryName: '',
   notes: '',
   mpin: '',
-  appUserId: '',
   purposeOfPayment: '',
 };
 
@@ -392,7 +391,6 @@ export function AccountRailTransferPage({ product }: Props) {
           amount: form.amount,
           accountType: 'W',
           mpin: form.mpin,
-          appUserId: form.appUserId || undefined,
           narration: form.notes || undefined,
           beneficiaryName: form.beneficiaryName || undefined,
         }),
@@ -972,14 +970,7 @@ export function AccountRailTransferPage({ product }: Props) {
                     <label>Customer reference</label>
                     <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
                   </div>
-                  {!live?.hasDfsAppUserId ? (
-                    <div className="form-row">
-                      <label>APP_USER_ID <span className="txn-req">*</span></label>
-                      <input required value={form.appUserId} onChange={(e) => setForm({ ...form, appUserId: e.target.value })} />
-                    </div>
-                  ) : (
-                    <div className="form-row" />
-                  )}
+                  <div className="form-row" />
                   <div className="txn-span-3 txn-form-actions">
                     <button className="btn btn-primary" type="submit" disabled={loading}>
                       {loading ? 'Working…' : 'Confirm FT'}
