@@ -191,6 +191,9 @@ export function AccountRailTransferPage({ product }: Props) {
       if (!amount || Number(amount) <= 0) throw new Error('Enter a valid amount');
       if (!form.accountNumber.trim()) throw new Error(product === 'FT' ? 'Beneficiary mobile is required' : 'IBAN / account is required');
       if (product === 'IBFT' && !form.bankImd && !form.bankName) throw new Error('Select beneficiary bank');
+      if (product === 'IBFT' && liveOn && !form.purposeOfPayment.trim()) {
+        throw new Error('Purpose of payment is required for live IBFT');
+      }
 
       const payload = {
         product,
@@ -295,6 +298,9 @@ export function AccountRailTransferPage({ product }: Props) {
     setOk('');
     setLoading(true);
     try {
+      if (!form.purposeOfPayment.trim()) {
+        throw new Error('Purpose of payment is required for live IBFT');
+      }
       const r = await api<DfsTxnResponse>('/api/transfers/live/ibft/advice', {
         method: 'POST',
         token: session.token,
@@ -302,7 +308,7 @@ export function AccountRailTransferPage({ product }: Props) {
           beneficiaryAccountNo: form.accountNumber,
           beneficiaryBankImd: form.bankImd,
           amount: form.amount,
-          purposeOfPayment: form.purposeOfPayment || '',
+          purposeOfPayment: form.purposeOfPayment.trim(),
           beneficiaryName: form.beneficiaryName || undefined,
           notes: form.notes || undefined,
         }),
@@ -856,8 +862,13 @@ export function AccountRailTransferPage({ product }: Props) {
 
               {product === 'IBFT' && (
                 <div className="form-row">
-                  <label>Purpose</label>
-                  <input value={form.purposeOfPayment} onChange={(e) => setForm({ ...form, purposeOfPayment: e.target.value })} />
+                  <label>Purpose of payment {liveOn ? <span className="txn-req">*</span> : null}</label>
+                  <input
+                    required={liveOn}
+                    value={form.purposeOfPayment}
+                    onChange={(e) => setForm({ ...form, purposeOfPayment: e.target.value })}
+                    placeholder="e.g. Vendor payment"
+                  />
                 </div>
               )}
 
@@ -913,6 +924,15 @@ export function AccountRailTransferPage({ product }: Props) {
               <div className="form-row">
                 <label>Customer reference</label>
                 <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+              </div>
+              <div className="form-row">
+                <label>Purpose of payment <span className="txn-req">*</span></label>
+                <input
+                  required
+                  value={form.purposeOfPayment}
+                  onChange={(e) => setForm({ ...form, purposeOfPayment: e.target.value })}
+                  placeholder="e.g. Vendor payment"
+                />
               </div>
               {titleResult && isLiveOk(titleResult) && (
                 <div className="txn-span-3 txn-form-actions">

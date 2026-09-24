@@ -9,6 +9,7 @@ public class LiveIbftAdviceRequest {
     private String beneficiaryBankImd;
     @NotBlank
     private String amount;
+    @NotBlank
     private String purposeOfPayment;
     private String transactionReference;
     private String beneficiaryName;

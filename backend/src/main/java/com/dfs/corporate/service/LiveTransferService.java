@@ -156,7 +156,11 @@ public class LiveTransferService {
         payload.put("beneficiaryAccountNo", req.getBeneficiaryAccountNo().trim());
         payload.put("beneficiaryBankImd", req.getBeneficiaryBankImd().trim());
         payload.put("amount", normalizeAmount(req.getAmount()));
-        payload.put("purposeOfPayment", blankToEmpty(req.getPurposeOfPayment()));
+        String purpose = req.getPurposeOfPayment() != null ? req.getPurposeOfPayment().trim() : "";
+        if (purpose.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Purpose of payment is required for live IBFT");
+        }
+        payload.put("purposeOfPayment", purpose);
         payload.put("transactionReference", blankToEmpty(req.getTransactionReference()));
 
         DfsPortalTxnResponse resp = wrap("IBFT", from, call(() -> txnClient.ibftAdvice(payload)));
