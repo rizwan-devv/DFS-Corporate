@@ -7,6 +7,7 @@ public class FranchiseCommissionSettleResponse {
     private int failed;
     private int skipped;
     private String message;
+    private boolean mock;
 
     public int getScannedCredits() { return scannedCredits; }
     public void setScannedCredits(int scannedCredits) { this.scannedCredits = scannedCredits; }
@@ -20,4 +21,6 @@ public class FranchiseCommissionSettleResponse {
     public void setSkipped(int skipped) { this.skipped = skipped; }
     public String getMessage() { return message; }
     public void setMessage(String message) { this.message = message; }
+    public boolean isMock() { return mock; }
+    public void setMock(boolean mock) { this.mock = mock; }
 }

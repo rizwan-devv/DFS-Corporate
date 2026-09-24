@@ -16,7 +16,7 @@ public class FranchiseCommissionSettleJob {
 
     public FranchiseCommissionSettleJob(
             FranchiseCommissionSettlementService settlementService,
-            @Value("${app.commission.settle-enabled:true}") boolean enabled) {
+            @Value("${app.commission.settle-enabled:false}") boolean enabled) {
         this.settlementService = settlementService;
         this.enabled = enabled;
     }

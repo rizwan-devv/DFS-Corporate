@@ -52,6 +52,7 @@ public class FranchiseCommissionSettlementService {
     private final DfsWalletIdentityService walletIdentityService;
     private final ObjectMapper objectMapper;
     private final boolean portalEnabled;
+    private final boolean settleMock;
     private final String defaultLevelCode;
 
     public FranchiseCommissionSettlementService(
@@ -64,6 +65,7 @@ public class FranchiseCommissionSettlementService {
             DfsWalletIdentityService walletIdentityService,
             ObjectMapper objectMapper,
             @Value("${dfs.portal-api.enabled:false}") boolean portalEnabled,
+            @Value("${app.commission.settle-mock:true}") boolean settleMock,
             @Value("${dfs.account-api.level-code:L4}") String defaultLevelCode) {
         this.planRepository = planRepository;
         this.entryRepository = entryRepository;
@@ -74,6 +76,7 @@ public class FranchiseCommissionSettlementService {
         this.walletIdentityService = walletIdentityService;
         this.objectMapper = objectMapper;
         this.portalEnabled = portalEnabled;
+        this.settleMock = settleMock;
         this.defaultLevelCode = defaultLevelCode;
     }
 
@@ -87,7 +90,7 @@ public class FranchiseCommissionSettlementService {
     public FranchiseCommissionSettleResponse settleForParent(AccountPrincipal principal,
                                                              FranchiseCommissionSettleRequest req) {
         Party parent = requireActiveMaster(principal);
-        if (!portalEnabled || !txnClient.isEnabled() || !agentClient.isEnabled()) {
+        if (!settleMock && (!portalEnabled || !txnClient.isEnabled() || !agentClient.isEnabled())) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Live DFS portal APIs must be enabled to settle commission");
         }
@@ -96,12 +99,9 @@ public class FranchiseCommissionSettlementService {
         return settleLockedPlans(parent.getId(), onlyChild, overrideMpin);
     }
 
-    /** Scheduler — all locked plans. */
+    /** Scheduler hook — left as a no-op so auto-settle never calls DFS. */
     public FranchiseCommissionSettleResponse settleAllLocked() {
-        if (!portalEnabled || !txnClient.isEnabled() || !agentClient.isEnabled()) {
-            return emptyRun("Live DFS portal APIs disabled");
-        }
-        return settleLockedPlans(null, null, null);
+        return emptyRun("Commission auto-settle is disabled");
     }
 
     private FranchiseCommissionSettleResponse settleLockedPlans(Long parentId, Long onlyChild, String overrideMpin) {
@@ -132,8 +132,13 @@ public class FranchiseCommissionSettlementService {
         out.setPosted(posted);
         out.setFailed(failed);
         out.setSkipped(skipped);
-        out.setMessage("Inbound credits: " + scanned + " · new " + created
-                + " · paid to parent " + posted + " · failed " + failed);
+        out.setMock(settleMock);
+        if (settleMock) {
+            out.setMessage("Mock settle (no DFS): " + posted + " row(s) POSTED · wallets unchanged");
+        } else {
+            out.setMessage("Inbound credits: " + scanned + " · new " + created
+                    + " · paid to parent " + posted + " · failed " + failed);
+        }
         return out;
     }
 
@@ -151,57 +156,59 @@ public class FranchiseCommissionSettlementService {
             return ScanResult.empty();
         }
 
-        child = walletIdentityService.refreshFromDfs(child);
-        parent = walletIdentityService.refreshFromDfs(parent);
-        childMobile = IdentityFormats.phoneDigits(child.getPhone());
-        parentMobile = IdentityFormats.phoneDigits(parent.getPhone());
-
-        String level = child.getLevelCode() != null && !child.getLevelCode().isBlank()
-                ? child.getLevelCode().trim() : defaultLevelCode;
-        // Same as Onboarded: omit dates so AgentApp returns the latest credits.
-        JsonNode root = agentClient.miniStatement(childMobile, level, null, null);
-        List<JsonNode> rows = extractRows(root);
-        log.info("Commission scan child={} mobile={} statementRows={}", child.getId(), childMobile, rows.size());
         int scanned = 0;
         int created = 0;
-        for (JsonNode row : rows) {
-            if (!isInboundCredit(row)) continue;
-            if (isOwnCommissionNarration(row)) continue;
-            if (isFundingCredit(row)) continue;
-            BigDecimal gross = decimal(row, "txnAmt", "txnAmount", "amount");
-            if (gross == null || gross.compareTo(BigDecimal.ZERO) <= 0) continue;
-            scanned++;
-            String sourceRef = sourceRef(child.getId(), row);
-            if (entryRepository.existsByChildPartyIdAndSourceRef(child.getId(), sourceRef)) continue;
-            BigDecimal rate = plan.getCommissionRatePercent();
-            BigDecimal commission = gross.multiply(rate)
-                    .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
-            if (commission.compareTo(MIN_COMMISSION) < 0) continue;
-            FranchiseCommissionEntry e = new FranchiseCommissionEntry();
-            e.setPublicId(java.util.UUID.randomUUID().toString());
-            e.setParentPartyId(parent.getId());
-            e.setChildPartyId(child.getId());
-            e.setPlanId(plan.getId());
-            e.setSourceRef(sourceRef);
-            e.setInboundRef(text(row, "transRefnum", "authIdResponse", "txnRef"));
-            e.setInboundAt(text(row, "transDate"));
-            e.setGrossAmount(gross);
-            e.setRatePercent(rate);
-            e.setCommissionAmount(commission);
-            e.setStatus("PENDING");
-            e.setPostedAt(Instant.now());
-            entryRepository.save(e);
-            created++;
+        if (!settleMock) {
+            child = walletIdentityService.refreshFromDfs(child);
+            parent = walletIdentityService.refreshFromDfs(parent);
+            childMobile = IdentityFormats.phoneDigits(child.getPhone());
+            parentMobile = IdentityFormats.phoneDigits(parent.getPhone());
+
+            String level = child.getLevelCode() != null && !child.getLevelCode().isBlank()
+                    ? child.getLevelCode().trim() : defaultLevelCode;
+            // Same as Onboarded: omit dates so AgentApp returns the latest credits.
+            JsonNode root = agentClient.miniStatement(childMobile, level, null, null);
+            List<JsonNode> rows = extractRows(root);
+            log.info("Commission scan child={} mobile={} statementRows={}", child.getId(), childMobile, rows.size());
+            for (JsonNode row : rows) {
+                if (!isInboundCredit(row)) continue;
+                if (isOwnCommissionNarration(row)) continue;
+                if (isFundingCredit(row)) continue;
+                BigDecimal gross = decimal(row, "txnAmt", "txnAmount", "amount");
+                if (gross == null || gross.compareTo(BigDecimal.ZERO) <= 0) continue;
+                scanned++;
+                String sourceRef = sourceRef(child.getId(), row);
+                if (entryRepository.existsByChildPartyIdAndSourceRef(child.getId(), sourceRef)) continue;
+                BigDecimal rate = plan.getCommissionRatePercent();
+                BigDecimal commission = gross.multiply(rate)
+                        .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+                if (commission.compareTo(MIN_COMMISSION) < 0) continue;
+                FranchiseCommissionEntry e = new FranchiseCommissionEntry();
+                e.setPublicId(java.util.UUID.randomUUID().toString());
+                e.setParentPartyId(parent.getId());
+                e.setChildPartyId(child.getId());
+                e.setPlanId(plan.getId());
+                e.setSourceRef(sourceRef);
+                e.setInboundRef(text(row, "transRefnum", "authIdResponse", "txnRef"));
+                e.setInboundAt(text(row, "transDate"));
+                e.setGrossAmount(gross);
+                e.setRatePercent(rate);
+                e.setCommissionAmount(commission);
+                e.setStatus("PENDING");
+                e.setPostedAt(Instant.now());
+                entryRepository.save(e);
+                created++;
+            }
         }
 
-        String mpin = overrideMpin != null ? overrideMpin : resolveMpin(child);
+        String mpin = settleMock ? "MOCK" : (overrideMpin != null ? overrideMpin : resolveMpin(child));
         int posted = 0;
         int failed = 0;
         int skipped = 0;
         List<FranchiseCommissionEntry> open = entryRepository.findByChildPartyIdAndStatusIn(
                 child.getId(), OPEN_STATUSES);
         for (FranchiseCommissionEntry e : open) {
-            if (mpin == null) {
+            if (!settleMock && mpin == null) {
                 e.setStatus("NEEDS_MPIN");
                 e.setErrorMessage("Child wallet MPIN not on file — enter MPIN and settle again");
                 entryRepository.save(e);
@@ -224,6 +231,10 @@ public class FranchiseCommissionSettlementService {
 
     private void postToParent(Party child, Party parent, String parentMobile, String mpin,
                               FranchiseCommissionEntry e) {
+        if (settleMock) {
+            markMockPosted(e);
+            return;
+        }
         String nid = requireNid(child);
         String appUserId = DfsWalletIdentityService.requireDfsAppUserId(child);
         if (appUserId == null) {
@@ -267,6 +278,20 @@ public class FranchiseCommissionSettlementService {
             }
         }
         throw new IllegalStateException(lastError != null ? lastError : "DFS FT failed");
+    }
+
+    /** One row stays one row — no merge. DFS is not called. */
+    private void markMockPosted(FranchiseCommissionEntry e) {
+        String ref = e.getInboundRef() != null && !e.getInboundRef().isBlank()
+                ? e.getInboundRef().trim()
+                : e.getPublicId().substring(0, Math.min(8, e.getPublicId().length()));
+        e.setStatus("POSTED");
+        e.setDfsAuthId("MOCK-" + ref);
+        e.setErrorMessage(null);
+        e.setSettledAt(Instant.now());
+        entryRepository.save(e);
+        log.info("Mock commission POSTED entry={} inbound={} amount={}",
+                e.getId(), e.getInboundRef(), e.getCommissionAmount());
     }
 
     private Party requireActiveMaster(AccountPrincipal principal) {

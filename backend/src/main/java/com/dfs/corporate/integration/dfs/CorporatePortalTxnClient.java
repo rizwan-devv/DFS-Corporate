@@ -97,21 +97,25 @@ public class CorporatePortalTxnClient {
     }
 
     public JsonNode initiateLocalFt(ObjectNode payload) {
-        return post("/v1/corporate/initiateLocalFT", payload);
+        return post("/v1/corporate/initiateLocalFT", payload, "COP");
     }
 
     public JsonNode fundsTransferLocal(ObjectNode payload) {
-        return post("/v1/corporate/fundsTransferLocal", payload);
+        return post("/v1/corporate/fundsTransferLocal", payload, "COP");
     }
 
     private JsonNode post(String path, ObjectNode payload) {
+        return post(path, payload, channel);
+    }
+
+    private JsonNode post(String path, ObjectNode payload, String requestChannel) {
         ensureReady();
         ObjectNode body = objectMapper.createObjectNode();
-        body.put("channel", channel);
+        body.put("channel", requestChannel != null && !requestChannel.isBlank() ? requestChannel : channel);
         body.set("payload", payload != null ? payload : objectMapper.createObjectNode());
 
         try {
-            log.info("Calling DFS txn POST → {}{}", baseUrl, path);
+            log.info("Calling DFS txn POST channel={} → {}{}", body.get("channel").asText(), baseUrl, path);
             String raw = restClient.post()
                     .uri(path)
                     .contentType(MediaType.APPLICATION_JSON)

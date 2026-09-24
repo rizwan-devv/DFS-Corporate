@@ -49,7 +49,6 @@ export function TransactionsPage() {
   const [ok, setOk] = useState('');
   const [loading, setLoading] = useState(false);
   const [settling, setSettling] = useState(false);
-  const [mpin, setMpin] = useState('');
 
   const load = useCallback(async () => {
     if (!session?.token) {
@@ -88,10 +87,9 @@ export function TransactionsPage() {
       const r = await api<SettleResult>('/api/franchises/commission/settle', {
         method: 'POST',
         token: session.token,
-        body: JSON.stringify(mpin.trim() ? { mpin: mpin.trim() } : {}),
+        body: JSON.stringify({}),
       });
       setOk(r.message || 'Settle finished');
-      setMpin('');
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Settle failed');
@@ -101,7 +99,6 @@ export function TransactionsPage() {
   }
 
   const postedAmt = entries.filter((e) => e.status === 'POSTED').reduce((s, e) => s + Number(e.commissionAmount || 0), 0);
-  const needsMpin = entries.some((e) => e.status === 'NEEDS_MPIN');
 
   return (
     <div className="portal-page">
@@ -154,27 +151,9 @@ export function TransactionsPage() {
           <div>
             <h2 className="panel-title">Settle inbound commission</h2>
             <p className="muted panel-subtitle">
-              Reads the same latest AgentApp credits as Onboarded (Wallet to Wallet). GL funding is skipped.
-              Auto-scans about every 30 seconds when DFS portal APIs are on.
+              Demo mock: Settle now marks each inbound row POSTED. DFS is not called and wallets do not change.
+              Auto-settle is off.
             </p>
-          </div>
-        </div>
-        {needsMpin && (
-          <div className="alert alert-warn">
-            Some rows need the <strong>child wallet MPIN</strong> (or set <code>parties.wallet_pin</code> on the franchise).
-          </div>
-        )}
-        <div className="form-grid" style={{ maxWidth: 360 }}>
-          <div className="form-row">
-            <label>Child MPIN (if not stored)</label>
-            <input
-              type="password"
-              inputMode="numeric"
-              autoComplete="off"
-              value={mpin}
-              onChange={(e) => setMpin(e.target.value)}
-              placeholder="Optional — used for all open rows"
-            />
           </div>
         </div>
         <div className="actions">
@@ -186,7 +165,9 @@ export function TransactionsPage() {
 
       <section className="glass-panel animate-in animate-in-delay-2">
         <h2 className="panel-title">Per-transaction entries</h2>
-        <p className="muted panel-subtitle">Each inbound credit on a locked franchise becomes one row. POSTED = paid to parent.</p>
+        <p className="muted panel-subtitle">
+          One row per inbound credit. POSTED = mock settled (per transaction). Wallets unchanged.
+        </p>
         {entries.length === 0 ? (
           <p className="muted">No inbound commission yet. Lock a rate, receive money on the child wallet, then Settle now.</p>
         ) : (
