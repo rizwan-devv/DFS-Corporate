@@ -8,7 +8,9 @@ type VirtualOrder = {
   relationshipNum?: string;
   embossName: string;
   status: string;
+  pan?: string;
   maskedPan?: string;
+  cvv?: string;
   last4?: string;
   expiry?: string;
   decisionNote?: string;
@@ -23,6 +25,7 @@ export function VirtualCardsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
+  const [flipped, setFlipped] = useState(false);
 
   const load = useCallback(async () => {
     if (!session?.token) return;
@@ -75,7 +78,7 @@ export function VirtualCardsPage() {
       <PageHeader
         eyebrow="Cards · Virtual"
         title="Virtual card"
-        subtitle="Order here. Back office approves it in this portal. A virtual card is not printed."
+        subtitle="Order here. Back office approves a PayFast virtual card. It is not printed."
       />
 
       {error && <p className="api-banner">{error}</p>}
@@ -88,14 +91,22 @@ export function VirtualCardsPage() {
 
       {approved && order && (
         <section className="card-stage">
-          <div className="plastic-card card-grad-2" aria-label="Virtual card">
+          <button
+            type="button"
+            className={`plastic-card card-payfast ${flipped ? 'is-flipped' : ''}`}
+            onClick={() => setFlipped((f) => !f)}
+            aria-label="Flip PayFast virtual card"
+          >
             <div className="plastic-face plastic-front">
               <div className="plastic-top">
-                <span className="plastic-network">DFS Pay</span>
-                <span className="plastic-product">Virtual · not printable</span>
+                <span className="plastic-brand">
+                  <img src="/payfast-mark.svg" alt="" className="plastic-brand-mark" />
+                  PayFast
+                </span>
+                <span className="plastic-product">Virtual</span>
               </div>
               <div className="plastic-chip" aria-hidden />
-              <div className="plastic-pan mono">{order.maskedPan || `•••• •••• •••• ${order.last4}`}</div>
+              <div className="plastic-pan mono">{order.pan || order.maskedPan || '—'}</div>
               <div className="plastic-bottom">
                 <div>
                   <span className="plastic-label">Card holder</span>
@@ -107,8 +118,16 @@ export function VirtualCardsPage() {
                 </div>
               </div>
             </div>
-          </div>
-          <p className="muted center-hint">Mock card approved in back office. Printing is disabled for virtual cards.</p>
+            <div className="plastic-face plastic-back">
+              <div className="plastic-stripe" />
+              <div className="plastic-cvv-box">
+                <span>CVV</span>
+                <strong className="mono">{order.cvv || '—'}</strong>
+              </div>
+              <p className="plastic-back-note">PayFast virtual card. Not printable.</p>
+            </div>
+          </button>
+          <p className="muted center-hint">Click the card to see the CVV. Printing is disabled for virtual cards.</p>
         </section>
       )}
 

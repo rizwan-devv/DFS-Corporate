@@ -2967,6 +2967,24 @@ h2 {
     radial-gradient(380px 160px at 80% 20%, rgba(255,255,255,0.22), transparent 50%),
     linear-gradient(150deg, #115e59 0%, #1e3a8a 50%, #164e63 100%);
 }
+.plastic-card.card-payfast .plastic-front,
+.plastic-card.card-payfast .plastic-back {
+  background:
+    radial-gradient(420px 180px at 100% -10%, rgba(255,255,255,0.28), transparent 48%),
+    linear-gradient(145deg, #00b67a 0%, #0c6e62 46%, #00457c 100%);
+}
+.plastic-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  letter-spacing: 0.06em;
+}
+.plastic-brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: block;
+}
 
 .plastic-top {
   display: flex;

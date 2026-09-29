@@ -29,6 +29,12 @@ public class VirtualCardOrder {
     @Column(name = "masked_pan", length = 32)
     private String maskedPan;
 
+    @Column(length = 19)
+    private String pan;
+
+    @Column(length = 3)
+    private String cvv;
+
     @Column(length = 4)
     private String last4;
 
@@ -63,6 +69,10 @@ public class VirtualCardOrder {
     public void setStatus(String status) { this.status = status; }
     public String getMaskedPan() { return maskedPan; }
     public void setMaskedPan(String maskedPan) { this.maskedPan = maskedPan; }
+    public String getPan() { return pan; }
+    public void setPan(String pan) { this.pan = pan; }
+    public String getCvv() { return cvv; }
+    public void setCvv(String cvv) { this.cvv = cvv; }
     public String getLast4() { return last4; }
     public void setLast4(String last4) { this.last4 = last4; }
     public String getExpiry() { return expiry; }

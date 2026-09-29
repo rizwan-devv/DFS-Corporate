@@ -507,7 +507,7 @@ export function AdminPage() {
         body: approve ? undefined : JSON.stringify({ note: 'Rejected by back office' }),
       });
       setVirtualOrders((rows) => rows.filter((r) => r.id !== id));
-      setOk(approve ? 'Virtual card approved (mock, not sent to CMS)' : 'Virtual card request rejected');
+      setOk(approve ? 'PayFast virtual card approved. The company can see the full number and CVV.' : 'Virtual card request rejected');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update virtual card');
     }

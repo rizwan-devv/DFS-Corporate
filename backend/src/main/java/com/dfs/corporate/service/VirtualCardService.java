@@ -31,12 +31,16 @@ public class VirtualCardService {
         this.partyRepository = partyRepository;
     }
 
+    @Transactional
     public Map<String, Object> mine(AccountPrincipal principal) {
         Party party = requireParty(principal);
         VirtualCardOrder current = orderRepository.findByPartyIdOrderByIdDesc(party.getId()).stream()
                 .filter(o -> "PENDING".equals(o.getStatus()) || "APPROVED".equals(o.getStatus()))
                 .findFirst()
                 .orElse(null);
+        if (current != null) {
+            issueIfMissing(current);
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("relationshipNum", relationshipOf(party));
         out.put("printable", false);
@@ -83,15 +87,11 @@ public class VirtualCardService {
         if (!"PENDING".equals(row.getStatus())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Only a pending request can be approved");
         }
-        String last4 = String.format("%04d", random.nextInt(10000));
-        YearMonth exp = YearMonth.now().plusYears(3);
-        row.setLast4(last4);
-        row.setMaskedPan("4532 **** **** " + last4);
-        row.setExpiry(String.format("%02d/%02d", exp.getMonthValue(), exp.getYear() % 100));
+        issueNew(row);
         row.setStatus("APPROVED");
         row.setDecidedBy(officer != null ? officer : "BACKOFFICE");
         row.setDecidedAt(Instant.now());
-        row.setDecisionNote("Mock virtual card. Not sent to CMS. Not printable.");
+        row.setDecisionNote("Mock PayFast virtual card. Not sent to CMS. Not printable.");
         orderRepository.save(row);
         return toView(row, partyRepository.findById(row.getPartyId()).orElse(null));
     }
@@ -109,6 +109,82 @@ public class VirtualCardService {
         row.setDecisionNote(note == null || note.isBlank() ? "Rejected by back office" : note.trim());
         orderRepository.save(row);
         return toView(row, partyRepository.findById(row.getPartyId()).orElse(null));
+    }
+
+    private void issueNew(VirtualCardOrder row) {
+        String pan = newPan();
+        YearMonth exp = YearMonth.now().plusYears(3);
+        row.setPan(pan);
+        row.setMaskedPan(pan);
+        row.setLast4(pan.substring(pan.length() - 4));
+        row.setCvv(newCvv());
+        row.setExpiry(String.format("%02d/%02d", exp.getMonthValue(), exp.getYear() % 100));
+    }
+
+    /** Cards approved before the full number existed get one the next time they are opened. */
+    private void issueIfMissing(VirtualCardOrder row) {
+        if (!"APPROVED".equals(row.getStatus())) {
+            return;
+        }
+        boolean missingPan = row.getPan() == null || row.getPan().isBlank();
+        boolean missingCvv = row.getCvv() == null || row.getCvv().isBlank();
+        if (!missingPan && !missingCvv) {
+            return;
+        }
+        if (missingPan) {
+            String pan = newPan();
+            row.setPan(pan);
+            row.setMaskedPan(pan);
+            row.setLast4(pan.substring(pan.length() - 4));
+        }
+        if (missingCvv) {
+            row.setCvv(newCvv());
+        }
+        if (row.getExpiry() == null || row.getExpiry().isBlank()) {
+            YearMonth exp = YearMonth.now().plusYears(3);
+            row.setExpiry(String.format("%02d/%02d", exp.getMonthValue(), exp.getYear() % 100));
+        }
+        orderRepository.save(row);
+    }
+
+    private String newPan() {
+        int[] digits = new int[16];
+        digits[0] = 4;
+        digits[1] = 5;
+        digits[2] = 3;
+        digits[3] = 2;
+        for (int i = 4; i < 15; i++) {
+            digits[i] = random.nextInt(10);
+        }
+        digits[15] = luhnCheck(digits);
+        StringBuilder pan = new StringBuilder(19);
+        for (int i = 0; i < digits.length; i++) {
+            if (i > 0 && i % 4 == 0) {
+                pan.append(' ');
+            }
+            pan.append(digits[i]);
+        }
+        return pan.toString();
+    }
+
+    private String newCvv() {
+        return String.format("%03d", random.nextInt(1000));
+    }
+
+    /** Check digit for a 16-digit payload whose last element is unused. */
+    private static int luhnCheck(int[] digits) {
+        int sum = 0;
+        for (int i = 0; i < 15; i++) {
+            int n = digits[i];
+            if ((15 - i) % 2 == 1) {
+                n *= 2;
+                if (n > 9) {
+                    n -= 9;
+                }
+            }
+            sum += n;
+        }
+        return (10 - (sum % 10)) % 10;
     }
 
     private Party requireParty(AccountPrincipal principal) {
@@ -138,13 +214,16 @@ public class VirtualCardService {
         m.put("businessName", party != null ? party.getBusinessName() : null);
         m.put("relationshipNum", row.getRelationshipNum());
         m.put("embossName", row.getEmbossName());
+        String pan = row.getPan() != null && !row.getPan().isBlank() ? row.getPan() : row.getMaskedPan();
         m.put("status", row.getStatus());
         m.put("cardForm", "VIRTUAL");
         m.put("printable", false);
-        m.put("maskedPan", row.getMaskedPan());
+        m.put("pan", pan);
+        m.put("maskedPan", pan);
+        m.put("cvv", row.getCvv());
         m.put("last4", row.getLast4());
         m.put("expiry", row.getExpiry());
-        m.put("network", "DFS Pay");
+        m.put("network", "PayFast");
         m.put("productName", "Virtual");
         m.put("requestedBy", row.getRequestedBy());
         m.put("decidedBy", row.getDecidedBy());
