@@ -2,7 +2,9 @@ package com.dfs.corporate.web;
 
 import com.dfs.corporate.domain.PartyType;
 import com.dfs.corporate.security.AccountPrincipal;
+import com.dfs.corporate.domain.CorporateEntityType;
 import com.dfs.corporate.service.AuthService;
+import com.dfs.corporate.service.EntityKycPolicyService;
 import com.dfs.corporate.service.OnboardingService;
 import com.dfs.corporate.web.dto.ChangePasswordRequest;
 import com.dfs.corporate.web.dto.LoginRequest;
@@ -23,10 +25,14 @@ public class AuthController {
 
     private final AuthService authService;
     private final OnboardingService onboardingService;
+    private final EntityKycPolicyService entityKycPolicyService;
 
-    public AuthController(AuthService authService, OnboardingService onboardingService) {
+    public AuthController(AuthService authService,
+                          OnboardingService onboardingService,
+                          EntityKycPolicyService entityKycPolicyService) {
         this.authService = authService;
         this.onboardingService = onboardingService;
+        this.entityKycPolicyService = entityKycPolicyService;
     }
 
     @GetMapping("/party-types")
@@ -39,17 +45,8 @@ public class AuthController {
 
     @GetMapping("/entity-types")
     public List<Map<String, String>> entityTypes() {
-        return Arrays.stream(com.dfs.corporate.domain.CorporateEntityType.values())
-                .map(t -> Map.of("code", t.name(), "label", switch (t) {
-                    case SOLE_PROPRIETORSHIP -> "Sole Proprietorship";
-                    case SMALL_BUSINESS -> "Small business / freelance profession";
-                    case PARTNERSHIP -> "Partnership";
-                    case LLP -> "Limited Liability Partnership (LLP)";
-                    case LIMITED_COMPANY -> "Limited company / corporation";
-                    case FOREIGN_BRANCH -> "Corporate";
-                    case TRUST_SOCIETY -> "Trust, club, society or association";
-                    case NGO_NPO -> "INGO / NGO / NPO / charity";
-                }))
+        return Arrays.stream(CorporateEntityType.values())
+                .map(t -> Map.of("code", t.name(), "label", entityKycPolicyService.displayLabel(t)))
                 .toList();
     }
 

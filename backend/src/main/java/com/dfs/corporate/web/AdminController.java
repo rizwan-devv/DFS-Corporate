@@ -4,6 +4,7 @@ import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.service.AdminOnboardingService;
 import com.dfs.corporate.service.AmlWatchlistImportService;
 import com.dfs.corporate.service.EntityKycPolicyService;
+import com.dfs.corporate.service.EntityOnboardingConfigService;
 import com.dfs.corporate.service.VirtualCardService;
 import com.dfs.corporate.web.dto.PartnerAppUserResponse;
 import com.dfs.corporate.web.dto.PartnerInviteResponse;
@@ -29,15 +30,18 @@ public class AdminController {
     private final AdminOnboardingService adminOnboardingService;
     private final AmlWatchlistImportService amlWatchlistImportService;
     private final EntityKycPolicyService entityKycPolicyService;
+    private final EntityOnboardingConfigService entityOnboardingConfigService;
     private final VirtualCardService virtualCardService;
 
     public AdminController(AdminOnboardingService adminOnboardingService,
                            AmlWatchlistImportService amlWatchlistImportService,
                            EntityKycPolicyService entityKycPolicyService,
+                           EntityOnboardingConfigService entityOnboardingConfigService,
                            VirtualCardService virtualCardService) {
         this.adminOnboardingService = adminOnboardingService;
         this.amlWatchlistImportService = amlWatchlistImportService;
         this.entityKycPolicyService = entityKycPolicyService;
+        this.entityOnboardingConfigService = entityOnboardingConfigService;
         this.virtualCardService = virtualCardService;
     }
 
@@ -73,6 +77,43 @@ public class AdminController {
                 || "true".equalsIgnoreCase(String.valueOf(body.get("kycRequired")));
         String who = admin != null ? admin.getUsername() : "BACKOFFICE";
         return entityKycPolicyService.setRequired(entityType, required, who);
+    }
+
+    @PutMapping("/entity-kyc-policy/{entityType}/label")
+    public Map<String, Object> renameEntity(@PathVariable String entityType,
+                                            @RequestBody Map<String, Object> body,
+                                            @AuthenticationPrincipal AccountPrincipal admin) {
+        String label = body.get("displayLabel") != null ? String.valueOf(body.get("displayLabel")) : "";
+        String who = admin != null ? admin.getUsername() : "BACKOFFICE";
+        return entityKycPolicyService.rename(entityType, label, who);
+    }
+
+    @GetMapping("/entity-documents/{entityType}")
+    public List<Map<String, Object>> entityDocuments(@PathVariable String entityType) {
+        return entityOnboardingConfigService.list(entityType);
+    }
+
+    @PutMapping("/entity-documents/{id}")
+    public Map<String, Object> updateEntityDocument(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        String label = body.get("documentLabel") != null ? String.valueOf(body.get("documentLabel")) : "";
+        Boolean mandatory = body.containsKey("mandatory") ? Boolean.TRUE.equals(body.get("mandatory"))
+                || "true".equalsIgnoreCase(String.valueOf(body.get("mandatory"))) : null;
+        return entityOnboardingConfigService.update(id, label, mandatory);
+    }
+
+    @PostMapping("/entity-documents")
+    public Map<String, Object> addEntityDocument(@RequestBody Map<String, Object> body) {
+        String entityType = body.get("entityType") != null ? String.valueOf(body.get("entityType")) : "";
+        String label = body.get("documentLabel") != null ? String.valueOf(body.get("documentLabel")) : "";
+        boolean mandatory = !body.containsKey("mandatory") || Boolean.TRUE.equals(body.get("mandatory"))
+                || "true".equalsIgnoreCase(String.valueOf(body.get("mandatory")));
+        return entityOnboardingConfigService.add(entityType, label, mandatory);
+    }
+
+    @DeleteMapping("/entity-documents/{id}")
+    public ResponseEntity<Void> removeEntityDocument(@PathVariable Long id) {
+        entityOnboardingConfigService.remove(id);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping(value = "/parties/{id}/manual-kyc", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

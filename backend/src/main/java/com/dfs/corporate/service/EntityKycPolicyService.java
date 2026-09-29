@@ -70,7 +70,7 @@ public class EntityKycPolicyService {
             EntityKycPolicy row = saved.get(type.name());
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("entityType", type.name());
-            item.put("label", LABELS.getOrDefault(type.name(), type.name()));
+            item.put("label", labelOf(row, type));
             boolean backOfficeOnly = ConsolidatedKycRules.backOfficeKycOnly(type);
             item.put("kycRequired", backOfficeOnly || row == null || row.isKycRequired());
             item.put("backOfficeKycOnly", backOfficeOnly);
@@ -84,12 +84,7 @@ public class EntityKycPolicyService {
 
     @Transactional
     public Map<String, Object> setRequired(String entityType, boolean kycRequired, String updatedBy) {
-        CorporateEntityType type;
-        try {
-            type = CorporateEntityType.valueOf(entityType.trim().toUpperCase());
-        } catch (Exception ex) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Unknown entity type");
-        }
+        CorporateEntityType type = parseType(entityType);
         EntityKycPolicy row = policyRepository.findById(type.name()).orElseGet(EntityKycPolicy::new);
         row.setEntityType(type.name());
         row.setKycRequired(ConsolidatedKycRules.backOfficeKycOnly(type) || kycRequired);
@@ -100,6 +95,50 @@ public class EntityKycPolicyService {
                 .filter(m -> type.name().equals(m.get("entityType")))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    public String displayLabel(CorporateEntityType type) {
+        if (type == null) return "";
+        return policyRepository.findById(type.name())
+                .map(row -> labelOf(row, type))
+                .orElse(LABELS.getOrDefault(type.name(), type.name()));
+    }
+
+    @Transactional
+    public Map<String, Object> rename(String entityType, String displayLabel, String updatedBy) {
+        CorporateEntityType type = parseType(entityType);
+        String label = displayLabel == null ? "" : displayLabel.trim();
+        if (label.length() < 2 || label.length() > 120) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Entity name must be 2–120 characters");
+        }
+        EntityKycPolicy row = policyRepository.findById(type.name()).orElseGet(EntityKycPolicy::new);
+        row.setEntityType(type.name());
+        if (row.getUpdatedAt() == null) {
+            row.setKycRequired(true);
+        }
+        row.setDisplayLabel(label);
+        row.setUpdatedAt(Instant.now());
+        row.setUpdatedBy(updatedBy != null ? updatedBy : "BACKOFFICE");
+        policyRepository.save(row);
+        return list().stream()
+                .filter(m -> type.name().equals(m.get("entityType")))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private CorporateEntityType parseType(String entityType) {
+        try {
+            return CorporateEntityType.valueOf(entityType.trim().toUpperCase());
+        } catch (Exception ex) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Unknown entity type");
+        }
+    }
+
+    private static String labelOf(EntityKycPolicy row, CorporateEntityType type) {
+        if (row != null && row.getDisplayLabel() != null && !row.getDisplayLabel().isBlank()) {
+            return row.getDisplayLabel().trim();
+        }
+        return LABELS.getOrDefault(type.name(), type.name());
     }
 
     public boolean manualPackComplete(Long partyId) {

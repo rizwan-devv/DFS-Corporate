@@ -20,6 +20,9 @@ public class EntityKycPolicy {
     @Column(name = "updated_by", length = 200)
     private String updatedBy;
 
+    @Column(name = "display_label", length = 120)
+    private String displayLabel;
+
     public String getEntityType() { return entityType; }
     public void setEntityType(String entityType) { this.entityType = entityType; }
     public boolean isKycRequired() { return kycRequired; }
@@ -28,4 +31,6 @@ public class EntityKycPolicy {
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
     public String getUpdatedBy() { return updatedBy; }
     public void setUpdatedBy(String updatedBy) { this.updatedBy = updatedBy; }
+    public String getDisplayLabel() { return displayLabel; }
+    public void setDisplayLabel(String displayLabel) { this.displayLabel = displayLabel; }
 }

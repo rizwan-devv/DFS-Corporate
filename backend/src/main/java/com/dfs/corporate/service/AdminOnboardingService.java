@@ -47,6 +47,7 @@ public class AdminOnboardingService {
     private final PartyStatusSyncService partyStatusSyncService;
     private final SanctionsScreeningService sanctionsScreeningService;
     private final EntityKycPolicyService entityKycPolicyService;
+    private final EntityOnboardingConfigService entityOnboardingConfigService;
     private final SecureRandom random = new SecureRandom();
 
     public AdminOnboardingService(PartyRepository partyRepository,
@@ -64,7 +65,8 @@ public class AdminOnboardingService {
                                   MailService mailService,
                                   PartyStatusSyncService partyStatusSyncService,
                                   SanctionsScreeningService sanctionsScreeningService,
-                                  EntityKycPolicyService entityKycPolicyService) {
+                                  EntityKycPolicyService entityKycPolicyService,
+                                  EntityOnboardingConfigService entityOnboardingConfigService) {
         this.partyRepository = partyRepository;
         this.accountRepository = accountRepository;
         this.documentRepository = documentRepository;
@@ -81,6 +83,7 @@ public class AdminOnboardingService {
         this.partyStatusSyncService = partyStatusSyncService;
         this.sanctionsScreeningService = sanctionsScreeningService;
         this.entityKycPolicyService = entityKycPolicyService;
+        this.entityOnboardingConfigService = entityOnboardingConfigService;
     }
 
     public List<Map<String, Object>> brands() {
@@ -508,19 +511,24 @@ public class AdminOnboardingService {
                 .map(PartyResponse.DocumentItem::getDocumentCode)
                 .collect(Collectors.toSet());
         boolean unreg = Boolean.TRUE.equals(party.getPartnershipUnregistered());
-        java.util.Set<String> mandatory = ConsolidatedKycRules.mandatoryDocuments(
-                party.getPartyType(), party.getEntityType(), unreg);
-        java.util.LinkedHashSet<String> show = new java.util.LinkedHashSet<>();
-        show.addAll(mandatory);
-        show.addAll(ConsolidatedKycRules.oneOfCodes(party.getEntityType()));
-        show.addAll(ConsolidatedKycRules.optionalDocuments(party.getEntityType()));
         List<PartyResponse.RequiredItem> required = new java.util.ArrayList<>();
-        for (String code : show) {
-            required.add(new PartyResponse.RequiredItem(
-                    code,
-                    ConsolidatedKycRules.documentLabel(code),
-                    mandatory.contains(code),
-                    uploaded.contains(code)));
+        if (party.getPartyType() != PartyType.SUB_MERCHANT
+                && entityOnboardingConfigService.hasCatalog(party.getEntityType())) {
+            required.addAll(entityOnboardingConfigService.checklist(party.getEntityType(), unreg, uploaded));
+        } else {
+            java.util.Set<String> mandatory = ConsolidatedKycRules.mandatoryDocuments(
+                    party.getPartyType(), party.getEntityType(), unreg);
+            java.util.LinkedHashSet<String> show = new java.util.LinkedHashSet<>();
+            show.addAll(mandatory);
+            show.addAll(ConsolidatedKycRules.oneOfCodes(party.getEntityType()));
+            show.addAll(ConsolidatedKycRules.optionalDocuments(party.getEntityType()));
+            for (String code : show) {
+                required.add(new PartyResponse.RequiredItem(
+                        code,
+                        ConsolidatedKycRules.documentLabel(code),
+                        mandatory.contains(code),
+                        uploaded.contains(code)));
+            }
         }
         if (ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
             for (AssociatedPerson p : associatedPersonRepository.findByPartyIdOrderByIdAsc(party.getId())) {
