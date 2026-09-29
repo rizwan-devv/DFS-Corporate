@@ -28,6 +28,14 @@ type Invite = {
   inviteUrl?: string;
   authorizedToOperate?: boolean;
 };
+type CatalogDoc = {
+  id: number;
+  documentCode: string;
+  documentLabel: string;
+  mandatory: boolean;
+  requirement: string;
+  custom: boolean;
+};
 type Doc = {
   id: number;
   documentCode: string;
@@ -196,14 +204,9 @@ export function AdminPage() {
   }[]>([]);
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [docEntity, setDocEntity] = useState<string | null>(null);
-  const [catalogDocs, setCatalogDocs] = useState<{
-    id: number;
-    documentCode: string;
-    documentLabel: string;
-    mandatory: boolean;
-    requirement: string;
-    custom: boolean;
-  }[]>([]);
+  const [catalogDocs, setCatalogDocs] = useState<CatalogDoc[]>([]);
+  const [docCounts, setDocCounts] = useState<Record<string, number>>({});
+  const [editingDocId, setEditingDocId] = useState<number | null>(null);
   const [newDocLabel, setNewDocLabel] = useState('');
   const [newDocRequired, setNewDocRequired] = useState(true);
   const [virtualOrders, setVirtualOrders] = useState<{
@@ -269,6 +272,31 @@ export function AdminPage() {
       refresh().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load queue'));
     }
   }, [session, refresh]);
+
+  useEffect(() => {
+    if (!token || kycPolicies.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      kycPolicies.map(async (row) => {
+        const docs = await api<CatalogDoc[]>(`/api/admin/entity-documents/${row.entityType}`, { token });
+        return [row.entityType, docs.length] as const;
+      }),
+    )
+      .then((pairs) => {
+        if (!cancelled) setDocCounts(Object.fromEntries(pairs));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [token, kycPolicies]);
+
+  useEffect(() => {
+    if (!token || docEntity || kycPolicies.length === 0) return;
+    void openDocs(kycPolicies[0].entityType);
+    // Select the first entity once policies arrive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, kycPolicies, docEntity]);
 
   const filtered = useMemo(() => {
     if (!tatOnly) return queue;
@@ -568,27 +596,30 @@ export function AdminPage() {
 
   async function openDocs(entityType: string) {
     setError('');
+    setEditingDocId(null);
     setDocEntity(entityType);
     try {
-      const rows = await api<typeof catalogDocs>(`/api/admin/entity-documents/${entityType}`, {
+      const rows = await api<CatalogDoc[]>(`/api/admin/entity-documents/${entityType}`, {
         token: session!.token,
       });
       setCatalogDocs(rows);
+      setDocCounts((prev) => ({ ...prev, [entityType]: rows.length }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load documents');
     }
   }
 
-  async function saveDoc(row: (typeof catalogDocs)[number]) {
+  async function saveDoc(row: CatalogDoc) {
     setError('');
     setOk('');
     try {
-      const saved = await api<(typeof catalogDocs)[number]>(`/api/admin/entity-documents/${row.id}`, {
+      const saved = await api<CatalogDoc>(`/api/admin/entity-documents/${row.id}`, {
         method: 'PUT',
         token: session!.token,
         body: JSON.stringify({ documentLabel: row.documentLabel, mandatory: row.mandatory }),
       });
       setCatalogDocs((rows) => rows.map((r) => (r.id === saved.id ? saved : r)));
+      setEditingDocId(null);
       setOk('Document saved. Onboarding uses this list.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save document');
@@ -600,7 +631,7 @@ export function AdminPage() {
     setError('');
     setOk('');
     try {
-      const saved = await api<(typeof catalogDocs)[number]>('/api/admin/entity-documents', {
+      const saved = await api<CatalogDoc>('/api/admin/entity-documents', {
         method: 'POST',
         token: session!.token,
         body: JSON.stringify({
@@ -609,7 +640,11 @@ export function AdminPage() {
           mandatory: newDocRequired,
         }),
       });
-      setCatalogDocs((rows) => [...rows, saved]);
+      setCatalogDocs((rows) => {
+        const next = [...rows, saved];
+        setDocCounts((prev) => ({ ...prev, [docEntity]: next.length }));
+        return next;
+      });
       setNewDocLabel('');
       setNewDocRequired(true);
       setOk('Document added to onboarding for this entity.');
@@ -619,11 +654,17 @@ export function AdminPage() {
   }
 
   async function removeDoc(id: number) {
+    if (!docEntity) return;
     setError('');
     setOk('');
     try {
       await api(`/api/admin/entity-documents/${id}`, { method: 'DELETE', token: session!.token });
-      setCatalogDocs((rows) => rows.filter((r) => r.id !== id));
+      setCatalogDocs((rows) => {
+        const next = rows.filter((r) => r.id !== id);
+        setDocCounts((prev) => ({ ...prev, [docEntity]: next.length }));
+        return next;
+      });
+      setEditingDocId(null);
       setOk('Document removed from onboarding.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not remove document');
@@ -669,6 +710,63 @@ export function AdminPage() {
       selected.status === 'INCOMPLETE');
 
   const onReviewPage = reviewPartyId != null && !Number.isNaN(reviewPartyId);
+  const setupPolicy = kycPolicies.find((row) => row.entityType === docEntity) ?? null;
+  const setupName = setupPolicy ? (nameDrafts[setupPolicy.entityType] ?? setupPolicy.label) : '';
+  const setupNameDirty = !!setupPolicy && setupName.trim() !== setupPolicy.label;
+  const requiredDocs = catalogDocs.filter((doc) => doc.requirement === 'REQUIRED');
+  const optionalDocs = catalogDocs.filter((doc) => doc.requirement === 'OPTIONAL');
+  const oneOfDocs = catalogDocs.filter((doc) => doc.requirement === 'ONE_OF');
+
+  function renderCatalogDoc(doc: CatalogDoc) {
+    const editing = editingDocId === doc.id;
+    const pill =
+      doc.requirement === 'ONE_OF' ? 'One of group' : doc.mandatory ? 'Required' : 'Optional';
+    return (
+      <li key={doc.id} className={`entity-doc ${editing ? 'is-editing' : ''}`}>
+        {!editing ? (
+          <div className="entity-doc-main">
+            <div>
+              <strong>{doc.documentLabel}</strong>
+              {doc.custom && <span className="entity-doc-code">Added by back office</span>}
+            </div>
+            <span className={`entity-pill entity-pill--${doc.requirement === 'ONE_OF' ? 'one' : doc.mandatory ? 'req' : 'opt'}`}>{pill}</span>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setEditingDocId(doc.id)}>Edit</button>
+          </div>
+        ) : (
+          <div className="entity-doc-edit">
+            <input
+              value={doc.documentLabel}
+              onChange={(e) => setCatalogDocs((rows) => rows.map((r) => (
+                r.id === doc.id ? { ...r, documentLabel: e.target.value } : r
+              )))}
+              aria-label="Document name"
+            />
+            {doc.requirement === 'ONE_OF' ? (
+              <p className="muted">Applicants upload one document from this group. The name can change. The group stays.</p>
+            ) : (
+              <label className="ops-check">
+                <input
+                  type="checkbox"
+                  checked={doc.mandatory}
+                  onChange={(e) => setCatalogDocs((rows) => rows.map((r) => (
+                    r.id === doc.id ? { ...r, mandatory: e.target.checked, requirement: e.target.checked ? 'REQUIRED' : 'OPTIONAL' } : r
+                  )))}
+                />
+                Required before submit
+              </label>
+            )}
+            <div className="entity-doc-actions">
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => void saveDoc(doc)}>Save</button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={() => docEntity && void openDocs(docEntity)}>Cancel</button>
+              {doc.custom && (
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => void removeDoc(doc.id)}>Remove</button>
+              )}
+            </div>
+          </div>
+        )}
+      </li>
+    );
+  }
 
   return (
     <div className="ops-shell">
@@ -692,136 +790,143 @@ export function AdminPage() {
       {error && <div className="alert alert-error">{error}</div>}
       {ok && <div className="alert alert-ok">{ok}</div>}
 
-      <section className="ops-drawer-section" style={{ marginBottom: '1rem' }}>
-        <div className="ops-drawer-section-head">
-          <h3>Entity KYC settings</h3>
-          <p className="muted">
-            Rename the entity applicants see, and change the documents that entity must upload. Off: this entity type does not wait for identity KYC. On: one person on the company, or back office, must file KYC.
-          </p>
-        </div>
-        <div className="ops-table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Entity name</th>
-                <th>KYC required</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {kycPolicies.map((row) => (
-                <tr key={row.entityType}>
-                  <td>
-                    <input
-                      value={nameDrafts[row.entityType] ?? row.label}
-                      onChange={(e) => setNameDrafts((prev) => ({ ...prev, [row.entityType]: e.target.value }))}
-                      aria-label={`Name for ${row.entityType}`}
-                      style={{ minWidth: '16rem' }}
-                    />
-                    <div className="muted" style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>{row.entityType}</div>
-                  </td>
-                  <td>
-                    <label className="ops-check">
-                      <input
-                        type="checkbox"
-                        checked={row.kycRequired}
-                        disabled={row.backOfficeKycOnly}
-                        onChange={(e) => void setKycRequired(row.entityType, e.target.checked)}
-                      />
-                      {row.backOfficeKycOnly
-                        ? 'Required · back office only (KYC app off)'
-                        : row.kycRequired ? 'Required' : 'Not required'}
-                    </label>
-                  </td>
-                  <td>
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => void saveEntityName(row.entityType)}>Save name</button>
-                    {' '}
-                    <button className="btn btn-primary btn-sm" type="button" onClick={() => void openDocs(row.entityType)}>Documents</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {docEntity && (
-          <div style={{ marginTop: '1rem' }}>
-            <h3 style={{ marginBottom: '0.35rem' }}>
-              Documents · {kycPolicies.find((r) => r.entityType === docEntity)?.label || docEntity}
-            </h3>
-            <p className="muted">Edit a name or whether it is required. Add a document and applicants must upload it before they submit.</p>
-            <div className="ops-table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Document</th>
-                    <th>Required</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {catalogDocs.map((doc) => (
-                    <tr key={doc.id}>
-                      <td>
-                        <input
-                          value={doc.documentLabel}
-                          onChange={(e) => setCatalogDocs((rows) => rows.map((r) => (
-                            r.id === doc.id ? { ...r, documentLabel: e.target.value } : r
-                          )))}
-                          aria-label="Document name"
-                          style={{ minWidth: '22rem' }}
-                        />
-                      </td>
-                      <td>
-                        {doc.requirement === 'ONE_OF' ? (
-                          <span className="muted">One of this group</span>
-                        ) : (
-                          <label className="ops-check">
-                            <input
-                              type="checkbox"
-                              checked={doc.mandatory}
-                              onChange={(e) => setCatalogDocs((rows) => rows.map((r) => (
-                                r.id === doc.id ? { ...r, mandatory: e.target.checked } : r
-                              )))}
-                            />
-                            {doc.mandatory ? 'Required' : 'Optional'}
-                          </label>
-                        )}
-                      </td>
-                      <td>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => void saveDoc(doc)}>Save</button>
-                        {doc.custom && (
-                          <>
-                            {' '}
-                            <button className="btn btn-ghost btn-sm" type="button" onClick={() => void removeDoc(doc.id)}>Remove</button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="form-grid" style={{ marginTop: '0.75rem', maxWidth: '36rem' }}>
-              <div className="form-row">
-                <label>Add a document</label>
-                <input
-                  value={newDocLabel}
-                  onChange={(e) => setNewDocLabel(e.target.value)}
-                  placeholder="Document name shown on onboarding"
-                />
-              </div>
-              <label className="ops-check">
-                <input
-                  type="checkbox"
-                  checked={newDocRequired}
-                  onChange={(e) => setNewDocRequired(e.target.checked)}
-                />
-                Required before submit
-              </label>
-              <button className="btn btn-primary btn-sm" type="button" onClick={() => void addDoc()}>Add document</button>
-            </div>
+      <section className="entity-setup">
+        <div className="entity-setup-head">
+          <div>
+            <div className="ops-eyebrow">Onboarding setup</div>
+            <h2>Entity catalogue</h2>
+            <p className="muted">Choose an entity. The name and document list here are what the applicant sees.</p>
           </div>
-        )}
+        </div>
+        <div className="entity-setup-grid">
+          <div className="entity-rail" role="listbox" aria-label="Entity types">
+            {kycPolicies.map((row) => {
+              const active = row.entityType === docEntity;
+              const pill = row.backOfficeKycOnly ? 'Back office' : row.kycRequired ? 'KYC on' : 'KYC off';
+              return (
+                <button
+                  key={row.entityType}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  className={`entity-rail-item ${active ? 'is-active' : ''}`}
+                  onClick={() => void openDocs(row.entityType)}
+                >
+                  <span className="entity-rail-name">{nameDrafts[row.entityType] ?? row.label}</span>
+                  <span className="entity-rail-meta">
+                    <span className={`entity-pill ${row.backOfficeKycOnly ? 'entity-pill--office' : row.kycRequired ? 'entity-pill--req' : 'entity-pill--opt'}`}>{pill}</span>
+                    <span>{docCounts[row.entityType] ?? '—'} docs</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {setupPolicy && (
+            <div className="entity-detail">
+              <div className="entity-detail-top">
+                <div>
+                  <h3>{setupPolicy.label}</h3>
+                  <p className="entity-code">{setupPolicy.entityType}</p>
+                </div>
+              </div>
+
+              <label className="entity-field">
+                <span>Name applicants see</span>
+                <div className="entity-field-row">
+                  <input
+                    value={setupName}
+                    onChange={(e) => setNameDrafts((prev) => ({ ...prev, [setupPolicy.entityType]: e.target.value }))}
+                  />
+                  <button
+                    className="btn btn-primary btn-sm"
+                    type="button"
+                    disabled={!setupNameDirty}
+                    onClick={() => void saveEntityName(setupPolicy.entityType)}
+                  >
+                    Save name
+                  </button>
+                </div>
+              </label>
+
+              <div className="entity-kyc-card">
+                <div>
+                  <strong>Identity KYC</strong>
+                  <p className="muted">
+                    {setupPolicy.backOfficeKycOnly
+                      ? 'Back office files CNIC and the photo. The KYC app stays off for this entity.'
+                      : setupPolicy.kycRequired
+                        ? 'One person on the company, or back office, must complete KYC before approval.'
+                        : 'This entity can be approved without an identity KYC pack.'}
+                  </p>
+                </div>
+                {setupPolicy.backOfficeKycOnly ? (
+                  <span className="entity-pill entity-pill--office">Back office only</span>
+                ) : (
+                  <button
+                    type="button"
+                    className={`entity-switch ${setupPolicy.kycRequired ? 'is-on' : ''}`}
+                    aria-pressed={setupPolicy.kycRequired}
+                    onClick={() => void setKycRequired(setupPolicy.entityType, !setupPolicy.kycRequired)}
+                  >
+                    <span />
+                    {setupPolicy.kycRequired ? 'Required' : 'Not required'}
+                  </button>
+                )}
+              </div>
+
+              <div className="entity-docs-head">
+                <h3>Documents</h3>
+                <p className="muted">Required files block submit. A one-of group means the applicant uploads any one of those files.</p>
+              </div>
+
+              {requiredDocs.length > 0 && (
+                <div className="entity-doc-block">
+                  <h4>Required</h4>
+                  <ul className="entity-doc-list">{requiredDocs.map(renderCatalogDoc)}</ul>
+                </div>
+              )}
+              {oneOfDocs.length > 0 && (
+                <div className="entity-doc-block">
+                  <h4>Upload one of these</h4>
+                  <ul className="entity-doc-list">{oneOfDocs.map(renderCatalogDoc)}</ul>
+                </div>
+              )}
+              {optionalDocs.length > 0 && (
+                <div className="entity-doc-block">
+                  <h4>Optional</h4>
+                  <ul className="entity-doc-list">{optionalDocs.map(renderCatalogDoc)}</ul>
+                </div>
+              )}
+
+              <form
+                className="entity-add"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void addDoc();
+                }}
+              >
+                <label>
+                  <span>Add a document</span>
+                  <input
+                    value={newDocLabel}
+                    onChange={(e) => setNewDocLabel(e.target.value)}
+                    placeholder="Name shown on the application"
+                  />
+                </label>
+                <label className="ops-check">
+                  <input
+                    type="checkbox"
+                    checked={newDocRequired}
+                    onChange={(e) => setNewDocRequired(e.target.checked)}
+                  />
+                  Required
+                </label>
+                <button className="btn btn-primary btn-sm" type="submit">Add</button>
+              </form>
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="ops-drawer-section" style={{ marginBottom: '1rem' }}>
