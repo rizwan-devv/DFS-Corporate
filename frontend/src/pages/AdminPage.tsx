@@ -827,7 +827,7 @@ export function AdminPage() {
       <section className="ops-drawer-section" style={{ marginBottom: '1rem' }}>
         <div className="ops-drawer-section-head">
           <h3>Virtual card requests</h3>
-          <p className="muted">Approve here. This is a mock card and is not sent to CMS. Virtual cards cannot be printed.</p>
+          <p className="muted">New virtual cards are issued as soon as the company orders one. This list is only older requests still waiting. They cannot be printed.</p>
         </div>
         {virtualOrders.length === 0 ? (
           <p className="muted">No pending virtual card orders.</p>

@@ -30,10 +30,10 @@ const DEMO: UiCard[] = [
     holder: 'PayFast Corporate Merchant',
     last4: '4821',
     accountNo: '1002••••9012',
-    network: 'DFS Pay',
+    network: 'PayFast',
     status: 'Active',
-    product: 'Corporate Prepaid',
-    gradient: 'card-grad-1',
+    product: 'Physical',
+    gradient: 'card-payfast',
     expiry: '09/28',
     relationshipNum: '10029012',
   },
@@ -139,13 +139,6 @@ function mapCard(raw: Record<string, unknown>, index: number): UiCard {
   );
   const product =
     pick(raw, ['productName', 'productCode', 'product', 'cardType', 'cardTypeName', 'Product']) || 'Card';
-  const network =
-    pick(raw, ['network', 'scheme', 'brand', 'cardBrand']) ||
-    (product.toUpperCase().includes('MASTER')
-      ? 'Mastercard'
-      : product.toUpperCase().includes('VISA')
-        ? 'Visa'
-        : 'DFS Pay');
 
   const clearPan = isClearPan(pan) ? pan.replace(/\D/g, '') : undefined;
   const cvvRaw = pick(raw, ['cvv', 'cvv2', 'CVV']);
@@ -160,11 +153,11 @@ function mapCard(raw: Record<string, unknown>, index: number): UiCard {
       ]) || '—',
     last4,
     accountNo: account || '••••',
-    network,
+    network: 'PayFast',
     status,
     product,
     cardForm: pick(raw, ['cardForm']) || (product.toUpperCase().includes('VIRTUAL') ? 'VIRTUAL' : 'PHYSICAL'),
-    gradient: `card-grad-${(index % 3) + 1}`,
+    gradient: 'card-payfast',
     expiry,
     relationshipNum: pick(raw, ['relationshipNum', 'relationshipNumber', 'Relationship', 'accountNumber']) || account,
     clearPan,
@@ -489,8 +482,11 @@ export function CardsPage() {
               >
                 <div className="plastic-face plastic-front">
                   <div className="plastic-top">
-                    <span className="plastic-network">{card.network}</span>
-                    <span className="plastic-product">{card.product}</span>
+                    <span className="plastic-brand">
+                      <img src="/payfast-mark.svg" alt="" className="plastic-brand-mark" />
+                      PayFast
+                    </span>
+                    <span className="plastic-product">Physical</span>
                   </div>
                   <div className="plastic-chip" aria-hidden />
                   <div className="plastic-pan mono">{panLine}</div>

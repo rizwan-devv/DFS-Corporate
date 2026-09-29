@@ -38,7 +38,9 @@ public class VirtualCardService {
                 .filter(o -> "PENDING".equals(o.getStatus()) || "APPROVED".equals(o.getStatus()))
                 .findFirst()
                 .orElse(null);
-        if (current != null) {
+        if (current != null && "PENDING".equals(current.getStatus())) {
+            markApproved(current, "AUTO");
+        } else if (current != null) {
             issueIfMissing(current);
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -59,18 +61,16 @@ public class VirtualCardService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Name on card must be 2–26 characters");
         }
         if (orderRepository.existsByPartyIdAndStatusIn(party.getId(), List.of("PENDING", "APPROVED"))) {
-            throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "This account already has a virtual card or a request waiting for back office");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This account already has a virtual card");
         }
         VirtualCardOrder row = new VirtualCardOrder();
         row.setPublicId(UUID.randomUUID().toString());
         row.setPartyId(party.getId());
         row.setRelationshipNum(relationshipOf(party));
         row.setEmbossName(name);
-        row.setStatus("PENDING");
         row.setRequestedBy(principal.getUsername());
         row.setCreatedAt(Instant.now());
-        orderRepository.save(row);
+        markApproved(row, "AUTO");
         return toView(row, party);
     }
 
@@ -87,12 +87,7 @@ public class VirtualCardService {
         if (!"PENDING".equals(row.getStatus())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Only a pending request can be approved");
         }
-        issueNew(row);
-        row.setStatus("APPROVED");
-        row.setDecidedBy(officer != null ? officer : "BACKOFFICE");
-        row.setDecidedAt(Instant.now());
-        row.setDecisionNote("Mock PayFast virtual card. Not sent to CMS. Not printable.");
-        orderRepository.save(row);
+        markApproved(row, officer != null ? officer : "BACKOFFICE");
         return toView(row, partyRepository.findById(row.getPartyId()).orElse(null));
     }
 
@@ -109,6 +104,15 @@ public class VirtualCardService {
         row.setDecisionNote(note == null || note.isBlank() ? "Rejected by back office" : note.trim());
         orderRepository.save(row);
         return toView(row, partyRepository.findById(row.getPartyId()).orElse(null));
+    }
+
+    private void markApproved(VirtualCardOrder row, String officer) {
+        issueNew(row);
+        row.setStatus("APPROVED");
+        row.setDecidedBy(officer != null ? officer : "AUTO");
+        row.setDecidedAt(Instant.now());
+        row.setDecisionNote("Mock PayFast virtual card. Issued automatically. Not sent to CMS. Not printable.");
+        orderRepository.save(row);
     }
 
     private void issueNew(VirtualCardOrder row) {

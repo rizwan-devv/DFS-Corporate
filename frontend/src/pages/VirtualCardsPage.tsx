@@ -60,7 +60,7 @@ export function VirtualCardsPage() {
         token: session!.token,
         body: JSON.stringify({ embossName }),
       });
-      setOk('Request sent. Back office will approve this virtual card.');
+      setOk('Your PayFast virtual card is ready. It cannot be printed.');
       setEmbossName('');
       await load();
     } catch (err) {
@@ -78,7 +78,7 @@ export function VirtualCardsPage() {
       <PageHeader
         eyebrow="Cards · Virtual"
         title="Virtual card"
-        subtitle="Order here. Back office approves a PayFast virtual card. It is not printed."
+        subtitle="Order a PayFast virtual card. It is issued immediately and cannot be printed."
       />
 
       {error && <p className="api-banner">{error}</p>}
@@ -143,7 +143,7 @@ export function VirtualCardsPage() {
       {!approved && !pending && (
         <section className="glass-panel">
           <h2 className="panel-title">Order a virtual card</h2>
-          <p className="muted">Name on the card. Back office approves the request. Nothing is sent to CMS.</p>
+          <p className="muted">Name on the card. It is issued as soon as you submit. Nothing is sent to CMS, and it cannot be printed.</p>
           <form className="form-grid" onSubmit={(e) => void submit(e)}>
             <div className="form-row">
               <label>Name on card</label>
@@ -156,7 +156,7 @@ export function VirtualCardsPage() {
               />
             </div>
             <button className="btn btn-primary" type="submit" disabled={loading || !session}>
-              {loading ? 'Sending…' : 'Submit order'}
+              {loading ? 'Issuing…' : 'Get virtual card'}
             </button>
           </form>
         </section>
