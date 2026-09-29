@@ -742,6 +742,11 @@ public class AppKycService {
     }
 
     private AppKycSessionResponse startSession(PartnerAppUser user) {
+        Party owner = partyRepository.findById(user.getPartyId()).orElse(null);
+        if (owner != null && ConsolidatedKycRules.backOfficeKycOnly(owner.getEntityType())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "KYC app is disabled for Corporate. Back office completes CNIC and KYC.");
+        }
         if (user.getStatus() == PartnerAppKycStatus.BANK_VISIT_REQUIRED
                 || Boolean.TRUE.equals(user.getBankVisitRequired())) {
             throw new ApiException(HttpStatus.BAD_REQUEST,

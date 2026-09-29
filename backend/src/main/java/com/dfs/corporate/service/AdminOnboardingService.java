@@ -46,6 +46,7 @@ public class AdminOnboardingService {
     private final MailService mailService;
     private final PartyStatusSyncService partyStatusSyncService;
     private final SanctionsScreeningService sanctionsScreeningService;
+    private final EntityKycPolicyService entityKycPolicyService;
     private final SecureRandom random = new SecureRandom();
 
     public AdminOnboardingService(PartyRepository partyRepository,
@@ -62,7 +63,8 @@ public class AdminOnboardingService {
                                   PasswordEncoder passwordEncoder,
                                   MailService mailService,
                                   PartyStatusSyncService partyStatusSyncService,
-                                  SanctionsScreeningService sanctionsScreeningService) {
+                                  SanctionsScreeningService sanctionsScreeningService,
+                                  EntityKycPolicyService entityKycPolicyService) {
         this.partyRepository = partyRepository;
         this.accountRepository = accountRepository;
         this.documentRepository = documentRepository;
@@ -78,6 +80,7 @@ public class AdminOnboardingService {
         this.mailService = mailService;
         this.partyStatusSyncService = partyStatusSyncService;
         this.sanctionsScreeningService = sanctionsScreeningService;
+        this.entityKycPolicyService = entityKycPolicyService;
     }
 
     public List<Map<String, Object>> brands() {
@@ -482,7 +485,55 @@ public class AdminOnboardingService {
         } else {
             res.setTatOverdue(false);
         }
+        res.setRequiredDocuments(annexChecklist(party, res.getDocuments()));
+        boolean kycRequired = entityKycPolicyService.isKycRequired(party.getEntityType());
+        res.setKycRequired(kycRequired);
+        res.setKycSatisfied(!kycRequired || partyStatusSyncService.kycSatisfied(party.getId()));
         return res;
+    }
+
+    @Transactional
+    public PartyResponse uploadManualKyc(Long partyId, String documentCode, org.springframework.web.multipart.MultipartFile file,
+                                         AccountPrincipal admin) {
+        String who = admin != null ? admin.getUsername() : "BACKOFFICE";
+        entityKycPolicyService.storeManualKyc(partyId, documentCode, file, "Back office upload by " + who, true);
+        partyStatusSyncService.syncAfterDocumentChange(partyId);
+        return get(partyId);
+    }
+
+    /** Annex-C pack for the selected entity, so back office sees the same list the applicant uploaded against. */
+    private List<PartyResponse.RequiredItem> annexChecklist(Party party, List<PartyResponse.DocumentItem> docs) {
+        java.util.Set<String> uploaded = docs.stream()
+                .filter(d -> d.getStatus() != DocumentStatus.REJECTED)
+                .map(PartyResponse.DocumentItem::getDocumentCode)
+                .collect(Collectors.toSet());
+        boolean unreg = Boolean.TRUE.equals(party.getPartnershipUnregistered());
+        java.util.Set<String> mandatory = ConsolidatedKycRules.mandatoryDocuments(
+                party.getPartyType(), party.getEntityType(), unreg);
+        java.util.LinkedHashSet<String> show = new java.util.LinkedHashSet<>();
+        show.addAll(mandatory);
+        show.addAll(ConsolidatedKycRules.oneOfCodes(party.getEntityType()));
+        show.addAll(ConsolidatedKycRules.optionalDocuments(party.getEntityType()));
+        List<PartyResponse.RequiredItem> required = new java.util.ArrayList<>();
+        for (String code : show) {
+            required.add(new PartyResponse.RequiredItem(
+                    code,
+                    ConsolidatedKycRules.documentLabel(code),
+                    mandatory.contains(code),
+                    uploaded.contains(code)));
+        }
+        if (ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
+            for (AssociatedPerson p : associatedPersonRepository.findByPartyIdOrderByIdAsc(party.getId())) {
+                if (p.getRoleType() != AssociatedPersonRole.PARTNER) continue;
+                String front = ConsolidatedKycRules.partnerCnicFront(p.getId());
+                String back = ConsolidatedKycRules.partnerCnicBack(p.getId());
+                String agr = ConsolidatedKycRules.partnerAgreement(p.getId());
+                required.add(new PartyResponse.RequiredItem(front, "Partner CNIC front — " + p.getFullName(), true, uploaded.contains(front)));
+                required.add(new PartyResponse.RequiredItem(back, "Partner CNIC back — " + p.getFullName(), true, uploaded.contains(back)));
+                required.add(new PartyResponse.RequiredItem(agr, "Partner agreement — " + p.getFullName(), true, uploaded.contains(agr)));
+            }
+        }
+        return required;
     }
 
     private PartyStatus parseStatus(String status) {

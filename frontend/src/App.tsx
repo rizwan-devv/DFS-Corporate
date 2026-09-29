@@ -17,6 +17,7 @@ import { BalancePage } from './pages/BalancePage';
 import { StatementPage } from './pages/StatementPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { CardsPage } from './pages/CardsPage';
+import { VirtualCardsPage } from './pages/VirtualCardsPage';
 import { TransfersPage } from './pages/TransfersPage';
 import { FtTransferPage, IbftTransferPage } from './pages/transfers/AccountRailTransferPage';
 import { UbpTransferPage } from './pages/transfers/UbpTransferPage';
@@ -56,7 +57,9 @@ export default function App() {
               <Route path="/balance" element={<BalancePage />} />
               <Route path="/statement" element={<StatementPage />} />
               <Route path="/transactions" element={<TransactionsPage />} />
-              <Route path="/cards" element={<CardsPage />} />
+              <Route path="/cards" element={<Navigate to="/cards/virtual" replace />} />
+              <Route path="/cards/virtual" element={<VirtualCardsPage />} />
+              <Route path="/cards/physical" element={<CardsPage />} />
               <Route path="/transfers" element={<TransfersPage />} />
               <Route path="/transfers/ft" element={<FtTransferPage />} />
               <Route path="/transfers/ibft" element={<IbftTransferPage />} />

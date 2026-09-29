@@ -66,6 +66,9 @@ type Party = {
   partnerAppUsers?: AppUser[];
   associatedPersons?: Person[];
   documents?: Doc[];
+  requiredDocuments?: { documentCode: string; documentLabel: string; mandatory: boolean; uploaded: boolean }[];
+  kycRequired?: boolean;
+  kycSatisfied?: boolean;
   docsPending?: number;
   docsRejected?: number;
   docsReadyForApprove?: boolean;
@@ -185,8 +188,30 @@ export function AdminPage() {
   const [viewerDocId, setViewerDocId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [amlRefreshing, setAmlRefreshing] = useState(false);
+  const [kycPolicies, setKycPolicies] = useState<{
+    entityType: string;
+    label: string;
+    kycRequired: boolean;
+    backOfficeKycOnly?: boolean;
+  }[]>([]);
+  const [virtualOrders, setVirtualOrders] = useState<{
+    id: number;
+    businessName?: string;
+    embossName: string;
+    relationshipNum?: string;
+    status: string;
+  }[]>([]);
 
   const token = session?.token;
+
+  const loadKycPolicies = useCallback(async () => {
+    if (!token) return;
+      const data = await api<{ entityType: string; label: string; kycRequired: boolean; backOfficeKycOnly?: boolean }[]>(
+      '/api/admin/entity-kyc-policy',
+      { token },
+    );
+    setKycPolicies(data);
+  }, [token]);
 
   const loadBrands = useCallback(async () => {
     if (!token) return;
@@ -212,8 +237,13 @@ export function AdminPage() {
   useEffect(() => {
     if (session?.role === 'PLATFORM_ADMIN') {
       loadBrands().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load brands'));
+      loadKycPolicies().catch((err) => setError(err instanceof Error ? err.message : 'Failed to load KYC settings'));
+      api<{ id: number; businessName?: string; embossName: string; relationshipNum?: string; status: string }[]>(
+        '/api/admin/virtual-cards',
+        { token: session.token },
+      ).then(setVirtualOrders).catch(() => undefined);
     }
-  }, [session, loadBrands]);
+  }, [session, loadBrands, loadKycPolicies]);
 
   useEffect(() => {
     if (session?.role === 'PLATFORM_ADMIN') {
@@ -467,6 +497,58 @@ export function AdminPage() {
     }
   }
 
+  async function decideVirtual(id: number, approve: boolean) {
+    setError('');
+    setOk('');
+    try {
+      await api(`/api/admin/virtual-cards/${id}/${approve ? 'approve' : 'reject'}`, {
+        method: 'POST',
+        token: session!.token,
+        body: approve ? undefined : JSON.stringify({ note: 'Rejected by back office' }),
+      });
+      setVirtualOrders((rows) => rows.filter((r) => r.id !== id));
+      setOk(approve ? 'Virtual card approved (mock, not sent to CMS)' : 'Virtual card request rejected');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update virtual card');
+    }
+  }
+
+  async function setKycRequired(entityType: string, kycRequired: boolean) {
+    setError('');
+    setOk('');
+    try {
+      await api(`/api/admin/entity-kyc-policy/${entityType}`, {
+        method: 'PUT',
+        token: session!.token,
+        body: JSON.stringify({ kycRequired }),
+      });
+      setKycPolicies((rows) => rows.map((r) => (r.entityType === entityType ? { ...r, kycRequired } : r)));
+      setOk(`${entityType}: KYC ${kycRequired ? 'required' : 'not required'}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save KYC setting');
+    }
+  }
+
+  async function uploadManualKyc(code: string, file: File) {
+    if (!selected) return;
+    setError('');
+    setOk('');
+    const fd = new FormData();
+    fd.append('documentCode', code);
+    fd.append('file', file);
+    try {
+      const data = await api<Party>(`/api/admin/parties/${selected.id}/manual-kyc`, {
+        method: 'POST',
+        token: session!.token,
+        body: fd,
+      });
+      setSelected(data);
+      setOk(`${code} saved on the case`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'KYC upload failed');
+    }
+  }
+
   async function reviewDoc(docId: number, approveDoc: boolean) {
     const path = approveDoc
       ? `/api/admin/documents/${docId}/approve`
@@ -508,6 +590,85 @@ export function AdminPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
       {ok && <div className="alert alert-ok">{ok}</div>}
+
+      <section className="ops-drawer-section" style={{ marginBottom: '1rem' }}>
+        <div className="ops-drawer-section-head">
+          <h3>Entity KYC settings</h3>
+          <p className="muted">
+            Off: this entity type does not wait for identity KYC. On: one person on the company, or back office, must file KYC. Not every partner.
+          </p>
+        </div>
+        <div className="ops-table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Entity type</th>
+                <th>KYC required</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kycPolicies.map((row) => (
+                <tr key={row.entityType}>
+                  <td>
+                    <strong>{row.label}</strong>
+                    <div className="muted" style={{ fontSize: '0.78rem' }}>{row.entityType}</div>
+                  </td>
+                  <td>
+                    <label className="ops-check">
+                      <input
+                        type="checkbox"
+                        checked={row.kycRequired}
+                        disabled={row.backOfficeKycOnly}
+                        onChange={(e) => void setKycRequired(row.entityType, e.target.checked)}
+                      />
+                      {row.backOfficeKycOnly
+                        ? 'Required · back office only (KYC app off)'
+                        : row.kycRequired ? 'Required' : 'Not required'}
+                    </label>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="ops-drawer-section" style={{ marginBottom: '1rem' }}>
+        <div className="ops-drawer-section-head">
+          <h3>Virtual card requests</h3>
+          <p className="muted">Approve here. This is a mock card and is not sent to CMS. Virtual cards cannot be printed.</p>
+        </div>
+        {virtualOrders.length === 0 ? (
+          <p className="muted">No pending virtual card orders.</p>
+        ) : (
+          <div className="ops-table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Name on card</th>
+                  <th>Relationship</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {virtualOrders.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.businessName || row.id}</td>
+                    <td>{row.embossName}</td>
+                    <td className="mono">{row.relationshipNum || '—'}</td>
+                    <td>
+                      <button className="btn btn-primary btn-sm" type="button" onClick={() => void decideVirtual(row.id, true)}>Approve</button>
+                      {' '}
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => void decideVirtual(row.id, false)}>Reject</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="ops-toolbar">
         <div className="ops-brand-switcher" role="tablist" aria-label="Brand">
@@ -689,6 +850,46 @@ export function AdminPage() {
             </div>
           </div>
 
+          <section className="ops-drawer-section">
+            <div className="ops-drawer-section-head">
+              <h3>Identity KYC</h3>
+              <p className="muted">
+                {selected.entityType === 'FOREIGN_BRANCH'
+                  ? 'Corporate: upload CNIC front, CNIC back, and photo here. The KYC app is disabled for this entity.'
+                  : selected.kycRequired
+                  ? 'Required for this entity. One completed app KYC, or these three files from any person or back office, is enough.'
+                  : 'Turned off for this entity type. The case does not wait on KYC.'}
+                {selected.kycSatisfied ? ' KYC is satisfied.' : selected.kycRequired ? ' KYC is still open.' : ''}
+              </p>
+            </div>
+            {selected.kycRequired && (
+              <div className="form-grid">
+                {[
+                  ['MANUAL_KYC_ID_FRONT', 'CNIC — front'],
+                  ['MANUAL_KYC_ID_BACK', 'CNIC — back'],
+                  ['MANUAL_KYC_PHOTO', 'Photo'],
+                ].map(([code, label]) => {
+                  const onFile = (selected.documents || []).find((d) => d.documentCode === code && d.status !== 'REJECTED');
+                  return (
+                    <div className="doc-row" key={code}>
+                      <div>
+                        <strong>{label}</strong>
+                        <div className="muted">{onFile ? `On file · ${onFile.originalName}` : 'Not uploaded'}</div>
+                      </div>
+                      <input
+                        type="file"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void uploadManualKyc(code, f);
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           {(selected.partnerKycTotal || 0) > 0 && (
             <section className="ops-drawer-section">
               <div className="ops-drawer-section-head">
@@ -804,6 +1005,46 @@ export function AdminPage() {
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+          </section>
+
+          <section className="ops-drawer-section">
+            <div className="ops-drawer-section-head">
+              <h3>Annex-C documents for this entity</h3>
+              <p className="muted">
+                Checklist follows {selected.entityType || 'the selected entity'}. Uploaded files are in the table below.
+              </p>
+            </div>
+            {(selected.requiredDocuments || []).length === 0 ? (
+              <p className="muted">No Annex-C checklist for this case yet.</p>
+            ) : (
+              <div className="ops-table-wrap">
+                <table className="table ops-doc-table">
+                  <thead>
+                    <tr>
+                      <th>Required paper</th>
+                      <th>Rule</th>
+                      <th>On file</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(selected.requiredDocuments || []).map((doc) => (
+                      <tr key={doc.documentCode}>
+                        <td>
+                          <strong>{doc.documentLabel}</strong>
+                          <div className="muted" style={{ fontSize: '0.78rem' }}>{doc.documentCode}</div>
+                        </td>
+                        <td className="muted">{doc.mandatory ? 'Required' : 'One of / if available'}</td>
+                        <td>
+                          <span className={`status ${doc.uploaded ? 'status-ACTIVE' : 'status-PENDING_APPROVAL'}`}>
+                            {doc.uploaded ? 'Uploaded' : 'Missing'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </section>

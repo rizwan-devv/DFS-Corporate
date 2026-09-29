@@ -45,6 +45,10 @@ public class AuthController {
                     case SMALL_BUSINESS -> "Small business / freelance profession";
                     case PARTNERSHIP -> "Partnership";
                     case LLP -> "Limited Liability Partnership (LLP)";
+                    case LIMITED_COMPANY -> "Limited company / corporation";
+                    case FOREIGN_BRANCH -> "Corporate";
+                    case TRUST_SOCIETY -> "Trust, club, society or association";
+                    case NGO_NPO -> "INGO / NGO / NPO / charity";
                 }))
                 .toList();
     }

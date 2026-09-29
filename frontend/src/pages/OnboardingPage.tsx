@@ -43,6 +43,8 @@ type Party = {
   associatedPersons?: Assoc[];
   partnerAppUsers?: AppUser[];
   partnerKycTotal?: number;
+  kycRequired?: boolean;
+  kycSatisfied?: boolean;
   partnerKycCompleted?: number;
   rejectionReason?: string;
   discrepancyNote?: string;
@@ -80,6 +82,17 @@ type Party = {
   identityVerificationStatus?: string;
   onboardingStep?: number;
 };
+
+const ENTITY_OPTIONS: Option[] = [
+  { code: 'SOLE_PROPRIETORSHIP', label: 'Sole Proprietorship' },
+  { code: 'SMALL_BUSINESS', label: 'Small business / freelance profession' },
+  { code: 'PARTNERSHIP', label: 'Partnership' },
+  { code: 'LLP', label: 'Limited Liability Partnership (LLP)' },
+  { code: 'LIMITED_COMPANY', label: 'Limited company / corporation' },
+  { code: 'FOREIGN_BRANCH', label: 'Corporate' },
+  { code: 'TRUST_SOCIETY', label: 'Trust, club, society or association' },
+  { code: 'NGO_NPO', label: 'INGO / NGO / NPO / charity' },
+];
 
 function needsPartnerRoster(entityType?: string) {
   return entityType === 'PARTNERSHIP' || entityType === 'LLP';
@@ -320,7 +333,7 @@ export function OnboardingPage() {
                 <input required value={entity.businessName} onChange={(e) => setEntity({ ...entity, businessName: e.target.value })} /></div>
               <div className="form-row"><label>Contact / onboarder name</label>
                 <input required value={entity.fullName} onChange={(e) => setEntity({ ...entity, fullName: e.target.value })} /></div>
-              <div className="form-row"><label>Entity type (Annex-C 1–4)</label>
+              <div className="form-row"><label>Entity type (Annex-C)</label>
                 <select value={entity.entityType} onChange={(e) => {
                   const next = e.target.value;
                   setEntity({
@@ -329,16 +342,17 @@ export function OnboardingPage() {
                     applicantIsPartner: isOwnerEntity(next) ? true : entity.applicantIsPartner,
                   });
                 }}>
-                  {(entityTypes.length ? entityTypes : [
-                    { code: 'SOLE_PROPRIETORSHIP', label: 'Sole Proprietorship' },
-                  ]).map((t) => (
+                  {(entityTypes.length ? entityTypes : ENTITY_OPTIONS).map((t) => (
                     <option key={t.code} value={t.code}>{t.label}</option>
                   ))}
                 </select></div>
               {isOwnerEntity(entity.entityType) ? (
                 <p className="muted">
-                  Sole prop / small business: <strong>you are the owner</strong>. After submit you get the mobile KYC
-                  invite (phone below). No separate authorized person.
+                  {entity.entityType === 'FOREIGN_BRANCH'
+                    ? <>Corporate: the KYC app is not used. Back office uploads CNIC and the rest of KYC after you submit the Annex-C documents.</>
+                    : entity.entityType === 'SOLE_PROPRIETORSHIP' || entity.entityType === 'SMALL_BUSINESS'
+                    ? <>You are the <strong>owner</strong>. After submit you get the mobile KYC invite (phone below).</>
+                    : <>You are the <strong>applicant</strong> who opens this account. After submit you get the mobile KYC invite. Upload identity copies of directors, signatories, trustees, or other required persons with the Annex-C documents.</>}
                 </p>
               ) : (
                 <label className="form-check">
@@ -430,9 +444,16 @@ export function OnboardingPage() {
 
           {editable && step >= 3 && step < 5 && (
             <div className="section-block" id="documents">
-              <h3>Documents {partnerMode ? '(firm + partner CNIC/agreement)' : '(Annex-C)'}</h3>
+              <h3>Documents {partnerMode ? '(firm + partner CNIC/agreement)' : '(Annex-C for this entity)'}</h3>
               <p className="muted">
-                Upload whatever you have now and come back later. Submit is only enabled when every required file is attached.
+                This list is the Annex-C pack for the entity type you selected. Back office sees the same documents.
+                {(entity.entityType === 'LIMITED_COMPANY' || entity.entityType === 'NGO_NPO') && (
+                  <> Form 1 and Form 9: upload one — Form 1 if the company is new, Form 9 if it is already incorporated.</>
+                )}
+                {(entity.entityType === 'SOLE_PROPRIETORSHIP' || entity.entityType === 'SMALL_BUSINESS') && (
+                  <> Upload at least one of the option documents (NTN, membership, letterhead, or proof of funds).</>
+                )}
+                {' '}Submit is only enabled when every required file is attached.
                 {mandatoryDocs.length > 0 && (
                   <>
                     {' '}Required: <strong>{mandatoryUploaded}/{mandatoryDocs.length}</strong> uploaded.
@@ -484,7 +505,15 @@ export function OnboardingPage() {
               {party.status === 'INCOMPLETE' && (
                 <> — one or more documents need re-upload (your full application was <strong>not</strong> rejected).</>
               )}
-              {party.status === 'SUBMITTED' && <> — waiting for partners to finish <strong>mobile app KYC</strong>.</>}
+              {party.status === 'SUBMITTED' && party.entityType === 'FOREIGN_BRANCH' && !party.kycSatisfied && (
+                <> — Corporate KYC is with back office (CNIC and photo). The KYC app is not used.</>
+              )}
+              {party.status === 'SUBMITTED' && party.entityType !== 'FOREIGN_BRANCH' && party.kycRequired && !party.kycSatisfied && (
+                <> — identity KYC is still open. One person on this company can finish it in the app, or upload the ID pack below.</>
+              )}
+              {party.status === 'SUBMITTED' && !party.kycRequired && (
+                <> — KYC is not required for this entity type. Waiting on document checks.</>
+              )}
               {party.status === 'PENDING_APPROVAL' && <> — ready for backoffice final review (5 working-day TAT).</>}
               <br />Tracking <strong>{party.trackingId}</strong>
               {party.decisionDueAt && <> · Decision due by {new Date(party.decisionDueAt).toLocaleDateString()}</>}
@@ -509,6 +538,46 @@ export function OnboardingPage() {
                   </ul>
                 </>
               )}
+            </div>
+          )}
+
+          {party?.entityType === 'FOREIGN_BRANCH' && !party.kycSatisfied && party.status !== 'ACTIVE' && (
+            <section className="glass-panel" style={{ marginTop: '1.25rem' }}>
+              <h3>KYC is with back office</h3>
+              <p className="muted">
+                Corporate does not use the KYC app. Back office uploads the CNIC (front and back) and photo on this case.
+              </p>
+            </section>
+          )}
+
+          {party?.kycRequired && party.entityType !== 'FOREIGN_BRANCH' && !party.kycSatisfied && party.status !== 'ACTIVE' && (
+            <div className="section-block" style={{ marginTop: '1.25rem' }}>
+              <h3>Upload identity KYC</h3>
+              <p className="muted">
+                Any person on this company can file these three files. That covers KYC for the entity — the other partners do not each have to use the app.
+              </p>
+              {[
+                ['MANUAL_KYC_ID_FRONT', 'Identity document — front'],
+                ['MANUAL_KYC_ID_BACK', 'Identity document — back'],
+                ['MANUAL_KYC_PHOTO', 'Photo'],
+              ].map(([code, label]) => {
+                const onFile = (party.documents || []).find((d) => d.documentCode === code && d.status !== 'REJECTED');
+                return (
+                  <div className="doc-row" key={code}>
+                    <div>
+                      <strong>{label}</strong>
+                      <div className="muted">{onFile ? `On file · ${onFile.originalName}` : 'Not uploaded'}</div>
+                    </div>
+                    <input
+                      type="file"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void upload(code, f);
+                      }}
+                    />
+                  </div>
+                );
+              })}
             </div>
           )}
 

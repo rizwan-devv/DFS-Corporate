@@ -18,8 +18,12 @@ const parties = [
 const entities = [
   { icon: '👤', title: 'Sole Proprietorship', desc: 'Single-owner business with letterhead / NTN alternatives.' },
   { icon: '💼', title: 'Small Business', desc: 'Freelance or small registered concerns.' },
-  { icon: '🤝', title: 'Partnership', desc: 'Multi-partner firms with per-partner KYC invite links.' },
-  { icon: '📋', title: 'LLP', desc: 'SECP-registered LLP with partner invite workflow.' },
+  { icon: '🤝', title: 'Partnership', desc: 'Multi-partner firms with per-partner KYC.' },
+  { icon: '📋', title: 'LLP', desc: 'SECP-registered LLP with partner KYC.' },
+  { icon: '🏛️', title: 'Limited Company', desc: 'Board resolution, memorandum, Form-A, and director identity.' },
+  { icon: '🌐', title: 'Corporate', desc: 'Branch or liaison office. KYC (CNIC and photo) is completed by back office. The KYC app is not used.' },
+  { icon: '⚖️', title: 'Trust / Society', desc: 'Trusts, clubs, societies, and associations.' },
+  { icon: '🎗️', title: 'NGO / NPO', desc: 'INGOs, NGOs, NPOs, and charities.' },
 ];
 
 export function HomePage() {
@@ -103,7 +107,7 @@ export function HomePage() {
         <div className="container">
           <h2>Supported entity types</h2>
           <p className="section-lead">
-            Annex-C categories 1–4 — sole prop, small business, partnership, and LLP.
+            All eight Annex-C categories. The document pack follows the entity type you select.
           </p>
           <div className="grid-4">
             {entities.map((e) => (

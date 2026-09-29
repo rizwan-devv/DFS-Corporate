@@ -1,7 +1,6 @@
 package com.dfs.corporate.service;
 
 import com.dfs.corporate.domain.AccountProvisionStatus;
-import com.dfs.corporate.domain.PartnerAppKycStatus;
 import com.dfs.corporate.domain.PartnerAppUser;
 import com.dfs.corporate.domain.Party;
 import com.dfs.corporate.domain.PartyStatus;
@@ -25,17 +24,20 @@ public class AccountProvisioningService {
     private final DfsAccountClient dfsAccountClient;
     private final SanctionsScreeningService sanctionsScreeningService;
     private final DfsWalletIdentityService walletIdentityService;
+    private final PartyStatusSyncService partyStatusSyncService;
 
     public AccountProvisioningService(PartyRepository partyRepository,
                                       PartnerAppUserRepository appUserRepository,
                                       DfsAccountClient dfsAccountClient,
                                       SanctionsScreeningService sanctionsScreeningService,
-                                      DfsWalletIdentityService walletIdentityService) {
+                                      DfsWalletIdentityService walletIdentityService,
+                                      PartyStatusSyncService partyStatusSyncService) {
         this.partyRepository = partyRepository;
         this.appUserRepository = appUserRepository;
         this.dfsAccountClient = dfsAccountClient;
         this.sanctionsScreeningService = sanctionsScreeningService;
         this.walletIdentityService = walletIdentityService;
+        this.partyStatusSyncService = partyStatusSyncService;
     }
 
     @Transactional
@@ -59,7 +61,7 @@ public class AccountProvisioningService {
     public Party provisionAfterKycComplete(Long partyId) {
         Party party = partyRepository.findById(partyId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Party not found"));
-        if (!allKycCompleted(partyId)) {
+        if (!partyStatusSyncService.kycSatisfied(partyId)) {
             return party;
         }
         if (party.getStatus() == PartyStatus.SUBMITTED) {
@@ -81,16 +83,11 @@ public class AccountProvisioningService {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Retry allowed when party is PENDING_APPROVAL or ACTIVE");
         }
-        if (!allKycCompleted(partyId)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "All partner KYCs must be complete before retry");
+        if (!partyStatusSyncService.kycSatisfied(partyId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Identity KYC is still required — one person or back office must complete it first");
         }
         return runAttempt(party);
-    }
-
-    private boolean allKycCompleted(Long partyId) {
-        List<PartnerAppUser> users = appUserRepository.findByPartyIdOrderByIdAsc(partyId);
-        if (users.isEmpty()) return true;
-        return users.stream().allMatch(u -> u.getStatus() == PartnerAppKycStatus.KYC_COMPLETED);
     }
 
     private Party runAttempt(Party party) {

@@ -328,6 +328,13 @@ public class PartyResponse {
     public void setPartnerKycTotal(int partnerKycTotal) { this.partnerKycTotal = partnerKycTotal; }
     public int getPartnerKycCompleted() { return partnerKycCompleted; }
     public void setPartnerKycCompleted(int partnerKycCompleted) { this.partnerKycCompleted = partnerKycCompleted; }
+    private Boolean kycRequired;
+    private Boolean kycSatisfied;
+
+    public Boolean getKycRequired() { return kycRequired; }
+    public void setKycRequired(Boolean kycRequired) { this.kycRequired = kycRequired; }
+    public Boolean getKycSatisfied() { return kycSatisfied; }
+    public void setKycSatisfied(Boolean kycSatisfied) { this.kycSatisfied = kycSatisfied; }
     public boolean isCanSubmit() { return canSubmit; }
     public void setCanSubmit(boolean canSubmit) { this.canSubmit = canSubmit; }
     public long getTatWorkingDays() { return tatWorkingDays; }

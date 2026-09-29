@@ -31,6 +31,7 @@ public class PartnerAppUserService {
     private final AccountProvisioningService accountProvisioningService;
     private final PartyStatusSyncService partyStatusSyncService;
     private final PartyCmsIdentitySync partyCmsIdentitySync;
+    private final EntityKycPolicyService entityKycPolicyService;
     private final String mobileAppBaseUrl;
     private final SecureRandom random = new SecureRandom();
 
@@ -41,6 +42,7 @@ public class PartnerAppUserService {
                                  @Lazy AccountProvisioningService accountProvisioningService,
                                  PartyStatusSyncService partyStatusSyncService,
                                  PartyCmsIdentitySync partyCmsIdentitySync,
+                                 EntityKycPolicyService entityKycPolicyService,
                                  @Value("${app.mobile-app-base-url:https://app.dfscorporate.local/kyc}") String mobileAppBaseUrl) {
         this.appUserRepository = appUserRepository;
         this.associatedPersonRepository = associatedPersonRepository;
@@ -49,6 +51,7 @@ public class PartnerAppUserService {
         this.accountProvisioningService = accountProvisioningService;
         this.partyStatusSyncService = partyStatusSyncService;
         this.partyCmsIdentitySync = partyCmsIdentitySync;
+        this.entityKycPolicyService = entityKycPolicyService;
         this.mobileAppBaseUrl = mobileAppBaseUrl.endsWith("/")
                 ? mobileAppBaseUrl.substring(0, mobileAppBaseUrl.length() - 1)
                 : mobileAppBaseUrl;
@@ -62,6 +65,10 @@ public class PartnerAppUserService {
 
     @Transactional
     public List<PartnerAppUserResponse> provisionOnSubmit(Party party) {
+        if (!entityKycPolicyService.isKycRequired(party.getEntityType())
+                || ConsolidatedKycRules.backOfficeKycOnly(party.getEntityType())) {
+            return List.of();
+        }
         List<AssociatedPerson> persons = associatedPersonRepository.findByPartyIdOrderByIdAsc(party.getId());
         List<PartnerAppUser> created = new ArrayList<>();
 

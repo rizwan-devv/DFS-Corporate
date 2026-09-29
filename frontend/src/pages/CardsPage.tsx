@@ -12,6 +12,7 @@ type UiCard = {
   network: string;
   status: string;
   product: string;
+  cardForm?: string;
   gradient: string;
   expiry: string;
   relationshipNum?: string;
@@ -162,6 +163,7 @@ function mapCard(raw: Record<string, unknown>, index: number): UiCard {
     network,
     status,
     product,
+    cardForm: pick(raw, ['cardForm']) || (product.toUpperCase().includes('VIRTUAL') ? 'VIRTUAL' : 'PHYSICAL'),
     gradient: `card-grad-${(index % 3) + 1}`,
     expiry,
     relationshipNum: pick(raw, ['relationshipNum', 'relationshipNumber', 'Relationship', 'accountNumber']) || account,
@@ -244,7 +246,9 @@ export function CardsPage() {
       });
       setScopeKeys(Array.isArray(res.scopeKeys) ? res.scopeKeys.map(String) : []);
       setLoadMode(res.mode || status.mode || '');
-      const items = extractItems(res).map(mapCard);
+      const items = extractItems(res)
+        .map(mapCard)
+        .filter((c) => c.cardForm !== 'VIRTUAL');
       if (items.length === 0) {
         setCards([]);
         setSource('empty');
@@ -252,7 +256,7 @@ export function CardsPage() {
           res.message ||
             (!status.appConfigured
               ? 'Set DFS_CMS_APP_API_KEY / USERNAME / PASSWORD (same as AgentApp) for /card/inquiry.'
-              : 'No card for this account yet. When AgentApp orders a card and CMS activates it for your CNIC, it appears here.'),
+              : 'No physical card yet. Physical cards are ordered and approved in CMS. This page shows the card after CMS activates it for your relationship.'),
         );
       } else {
         setCards(items);
@@ -425,9 +429,9 @@ export function CardsPage() {
   return (
     <div className="portal-page">
       <PageHeader
-        eyebrow="Cards · CMS App"
-        title="Card details"
-        subtitle="Your card loads automatically when it is active in AgentApp/CMS for your KYC CNIC."
+        eyebrow="Cards · Physical"
+        title="Physical card"
+        subtitle="Ordered and approved in CMS. This page shows the card after CMS activates it. You can print it."
         actions={
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void load()} disabled={loading}>
             {loading ? 'Refreshing…' : 'Refresh'}
@@ -438,7 +442,7 @@ export function CardsPage() {
       <FinanceSlideshow
         slides={[
           { accent: 'Auto', title: 'Your card only', body: 'Same inquiry as AgentApp, scoped to your CNIC / relationship from KYC.' },
-          { accent: 'Agent', title: 'Order → approve', body: 'When AgentApp orders a card and CMS activates it, it appears here.' },
+          { accent: 'CMS', title: 'Order and approve in CMS', body: 'Physical cards are created in CMS. They show here after activation. Print is only for this card.' },
           {
             accent: 'Live',
             title: appConfigured ? 'CMS App ready' : cmsEnabled ? 'App creds missing' : 'CMS off',
@@ -470,8 +474,7 @@ export function CardsPage() {
         <section className="glass-panel animate-in">
           <h2 className="panel-title">No card for this login</h2>
           <p className="muted">
-            Cards appear automatically after AgentApp order and CMS activation for your KYC CNIC
-            (CMS Relationship #). Nothing to enter here.
+            Physical cards are ordered and approved in CMS. When CMS activates one for your relationship number, it appears here and can be printed.
           </p>
         </section>
       ) : (
@@ -572,6 +575,19 @@ export function CardsPage() {
               )}
 
               <div className="card-detail-actions" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    document.body.classList.add('print-physical-card');
+                    window.print();
+                    window.addEventListener('afterprint', () => {
+                      document.body.classList.remove('print-physical-card');
+                    }, { once: true });
+                  }}
+                >
+                  Print card
+                </button>
                 <input
                   className="input"
                   type="password"

@@ -440,6 +440,11 @@ public class CmsCardService {
         n.put("relationshipNum", relationship != null ? relationship : "");
         n.put("holderName", holder);
         n.put("productName", product);
+        String formHint = firstNonBlank(
+                text(c, "cardForm"), text(c, "formFactor"), text(c, "cardMedium"),
+                text(c, "cardType"), text(c, "cardTypeName"), product);
+        boolean virtual = formHint != null && formHint.toUpperCase(Locale.ROOT).contains("VIRTUAL");
+        n.put("cardForm", virtual ? "VIRTUAL" : "PHYSICAL");
         n.put("network", network);
         n.put("status", status);
         n.put("cardStatusCode", statusRaw != null ? statusRaw : "");

@@ -5182,6 +5182,19 @@ html[data-theme="payfast"] body {
 }
 
 @media print {
+  .virtual-card-page,
+  .virtual-card-page * {
+    display: none !important;
+  }
+  body.print-physical-card .plastic-card,
+  body.print-physical-card .plastic-card * {
+    visibility: visible !important;
+  }
+  body.print-physical-card .plastic-card {
+    position: absolute;
+    left: 1.5rem;
+    top: 1.5rem;
+  }
   body * { visibility: hidden !important; }
   .receipt-overlay,
   .receipt-overlay * { visibility: visible !important; }

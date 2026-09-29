@@ -41,6 +41,7 @@ public class OnboardingService {
     private final PasswordEncoder passwordEncoder;
     private final MailService mailService;
     private final PortalUserService portalUserService;
+    private final EntityKycPolicyService entityKycPolicyService;
     private final SecureRandom random = new SecureRandom();
 
     public OnboardingService(PartyRepository partyRepository,
@@ -53,7 +54,8 @@ public class OnboardingService {
                              PartyStatusSyncService partyStatusSyncService,
                              PasswordEncoder passwordEncoder,
                              MailService mailService,
-                             PortalUserService portalUserService) {
+                             PortalUserService portalUserService,
+                             EntityKycPolicyService entityKycPolicyService) {
         this.partyRepository = partyRepository;
         this.documentRepository = documentRepository;
         this.requiredDocumentRepository = requiredDocumentRepository;
@@ -65,6 +67,7 @@ public class OnboardingService {
         this.passwordEncoder = passwordEncoder;
         this.mailService = mailService;
         this.portalUserService = portalUserService;
+        this.entityKycPolicyService = entityKycPolicyService;
     }
 
     public PartyResponse me(AccountPrincipal principal) {
@@ -188,6 +191,13 @@ public class OnboardingService {
     public PartyResponse uploadDocument(AccountPrincipal principal, String documentCode, MultipartFile file) {
         Party party = getParty(principal);
         String code = documentCode.toUpperCase();
+        boolean manualKyc = ConsolidatedKycRules.isManualKycCode(code);
+        if (manualKyc) {
+            entityKycPolicyService.storeManualKyc(
+                    party.getId(), code, file, "Uploaded on portal by " + principal.getUsername(), false);
+            partyStatusSyncService.syncAfterDocumentChange(party.getId());
+            return enrich(partyRepository.findById(party.getId()).orElse(party));
+        }
         assertCanUploadDocument(party, code);
         List<RequiredDocument> catalog = requiredDocumentRepository.findByPartyTypeOrderByIdAsc(party.getPartyType());
         boolean known = catalog.stream().anyMatch(r -> r.getDocumentCode().equalsIgnoreCase(documentCode));
@@ -378,19 +388,9 @@ public class OnboardingService {
             }
         }
 
-        if (party.getEntityType() == CorporateEntityType.SOLE_PROPRIETORSHIP) {
-            boolean anyAlt = ConsolidatedKycRules.solePropAlternatives().stream().anyMatch(uploaded::contains);
-            if (!anyAlt) {
-                throw new ApiException(HttpStatus.BAD_REQUEST,
-                        "Sole prop: upload at least one of NTN, trade body, letterhead declaration, or account requisition (Annex-C)");
-            }
-        }
-        if (party.getEntityType() == CorporateEntityType.SMALL_BUSINESS) {
-            boolean anyAlt = ConsolidatedKycRules.smallBusinessAlternatives().stream().anyMatch(uploaded::contains);
-            if (!anyAlt) {
-                throw new ApiException(HttpStatus.BAD_REQUEST,
-                        "Small business: upload at least one of registration cert, NTN, trade body, or proof of funds (Annex-C)");
-            }
+        String oneOfGap = ConsolidatedKycRules.oneOfGap(party.getEntityType(), uploaded);
+        if (oneOfGap != null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, oneOfGap);
         }
     }
 
@@ -413,6 +413,9 @@ public class OnboardingService {
         res.setPartnerKycCompleted((int) appUsers.stream()
                 .filter(u -> u.getStatus() == PartnerAppKycStatus.KYC_COMPLETED)
                 .count());
+        boolean kycRequired = entityKycPolicyService.isKycRequired(party.getEntityType());
+        res.setKycRequired(kycRequired);
+        res.setKycSatisfied(!kycRequired || partyStatusSyncService.kycSatisfied(party.getId()));
 
         // Dynamic required docs for partner CNIC/agreement slots
         List<AssociatedPerson> persons = associatedPersonRepository.findByPartyIdOrderByIdAsc(party.getId());
@@ -424,17 +427,23 @@ public class OnboardingService {
         Set<String> mandatory = ConsolidatedKycRules.mandatoryDocuments(party.getPartyType(), party.getEntityType(), unreg);
 
         List<RequiredDocument> catalog = requiredDocumentRepository.findByPartyTypeOrderByIdAsc(party.getPartyType());
-        Set<String> alt = party.getEntityType() == CorporateEntityType.SOLE_PROPRIETORSHIP
-                ? ConsolidatedKycRules.solePropAlternatives()
-                : (party.getEntityType() == CorporateEntityType.SMALL_BUSINESS
-                ? ConsolidatedKycRules.smallBusinessAlternatives() : Set.of());
-        List<PartyResponse.RequiredItem> required = new java.util.ArrayList<>(catalog.stream()
-                .filter(r -> mandatory.contains(r.getDocumentCode()) || alt.contains(r.getDocumentCode()))
-                .map(r -> new PartyResponse.RequiredItem(
-                        r.getDocumentCode(), r.getDocumentLabel(),
-                        mandatory.contains(r.getDocumentCode()) || alt.contains(r.getDocumentCode()),
-                        uploadedCodes.contains(r.getDocumentCode())))
-                .toList());
+        java.util.Map<String, String> labels = new java.util.HashMap<>();
+        for (RequiredDocument r : catalog) {
+            labels.put(r.getDocumentCode(), r.getDocumentLabel());
+        }
+        Set<String> oneOf = ConsolidatedKycRules.oneOfCodes(party.getEntityType());
+        Set<String> optional = ConsolidatedKycRules.optionalDocuments(party.getEntityType());
+        java.util.LinkedHashSet<String> show = new java.util.LinkedHashSet<>();
+        show.addAll(mandatory);
+        show.addAll(oneOf);
+        show.addAll(optional);
+        List<PartyResponse.RequiredItem> required = new java.util.ArrayList<>();
+        for (String code : show) {
+            String label = labels.getOrDefault(code, ConsolidatedKycRules.documentLabel(code));
+            boolean hardRequired = mandatory.contains(code);
+            required.add(new PartyResponse.RequiredItem(
+                    code, label, hardRequired, uploadedCodes.contains(code)));
+        }
         if (ConsolidatedKycRules.needsPartnerRoster(party.getEntityType())) {
             for (AssociatedPerson p : persons) {
                 if (p.getRoleType() != AssociatedPersonRole.PARTNER) {

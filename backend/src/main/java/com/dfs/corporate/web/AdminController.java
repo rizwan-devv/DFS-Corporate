@@ -3,6 +3,8 @@ package com.dfs.corporate.web;
 import com.dfs.corporate.security.AccountPrincipal;
 import com.dfs.corporate.service.AdminOnboardingService;
 import com.dfs.corporate.service.AmlWatchlistImportService;
+import com.dfs.corporate.service.EntityKycPolicyService;
+import com.dfs.corporate.service.VirtualCardService;
 import com.dfs.corporate.web.dto.PartnerAppUserResponse;
 import com.dfs.corporate.web.dto.PartnerInviteResponse;
 import com.dfs.corporate.web.dto.PartyResponse;
@@ -14,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.List;
@@ -25,11 +28,59 @@ public class AdminController {
 
     private final AdminOnboardingService adminOnboardingService;
     private final AmlWatchlistImportService amlWatchlistImportService;
+    private final EntityKycPolicyService entityKycPolicyService;
+    private final VirtualCardService virtualCardService;
 
     public AdminController(AdminOnboardingService adminOnboardingService,
-                           AmlWatchlistImportService amlWatchlistImportService) {
+                           AmlWatchlistImportService amlWatchlistImportService,
+                           EntityKycPolicyService entityKycPolicyService,
+                           VirtualCardService virtualCardService) {
         this.adminOnboardingService = adminOnboardingService;
         this.amlWatchlistImportService = amlWatchlistImportService;
+        this.entityKycPolicyService = entityKycPolicyService;
+        this.virtualCardService = virtualCardService;
+    }
+
+    @GetMapping("/virtual-cards")
+    public List<Map<String, Object>> pendingVirtualCards() {
+        return virtualCardService.pending();
+    }
+
+    @PostMapping("/virtual-cards/{id}/approve")
+    public Map<String, Object> approveVirtualCard(@PathVariable Long id,
+                                                  @AuthenticationPrincipal AccountPrincipal admin) {
+        return virtualCardService.approve(id, admin != null ? admin.getUsername() : "BACKOFFICE");
+    }
+
+    @PostMapping("/virtual-cards/{id}/reject")
+    public Map<String, Object> rejectVirtualCard(@PathVariable Long id,
+                                                 @RequestBody(required = false) Map<String, String> body,
+                                                 @AuthenticationPrincipal AccountPrincipal admin) {
+        String note = body != null ? body.get("note") : null;
+        return virtualCardService.reject(id, note, admin != null ? admin.getUsername() : "BACKOFFICE");
+    }
+
+    @GetMapping("/entity-kyc-policy")
+    public List<Map<String, Object>> entityKycPolicy() {
+        return entityKycPolicyService.list();
+    }
+
+    @PutMapping("/entity-kyc-policy/{entityType}")
+    public Map<String, Object> setEntityKycPolicy(@PathVariable String entityType,
+                                                  @RequestBody Map<String, Object> body,
+                                                  @AuthenticationPrincipal AccountPrincipal admin) {
+        boolean required = Boolean.TRUE.equals(body.get("kycRequired"))
+                || "true".equalsIgnoreCase(String.valueOf(body.get("kycRequired")));
+        String who = admin != null ? admin.getUsername() : "BACKOFFICE";
+        return entityKycPolicyService.setRequired(entityType, required, who);
+    }
+
+    @PostMapping(value = "/parties/{id}/manual-kyc", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public PartyResponse uploadManualKyc(@PathVariable Long id,
+                                         @RequestParam("documentCode") String documentCode,
+                                         @RequestParam("file") MultipartFile file,
+                                         @AuthenticationPrincipal AccountPrincipal admin) {
+        return adminOnboardingService.uploadManualKyc(id, documentCode, file, admin);
     }
 
     @GetMapping("/brands")

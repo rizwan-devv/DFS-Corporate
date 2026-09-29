@@ -1,0 +1,31 @@
+-- Annex-C entity types 5–8 document catalog.
+-- Entity type itself is a VARCHAR on parties, so no column change.
+
+INSERT INTO required_documents (party_type, document_code, document_label, mandatory) VALUES
+('MERCHANT', 'LC_DIRECTOR_ID', 'Identity documents of all directors and authorized signatories', TRUE),
+('MERCHANT', 'LC_BOARD_RESOLUTION', 'Board resolution to open the account and name who may operate it', TRUE),
+('MERCHANT', 'LC_MOA_AOA', 'Memorandum and Articles of Association', TRUE),
+('MERCHANT', 'LC_FORM_A', 'Latest Form-A (annual return)', TRUE),
+('MERCHANT', 'LC_FORM_1', 'Form 1 — newly incorporated company (upload this or Form 9)', FALSE),
+('MERCHANT', 'LC_FORM_9', 'Form 9 — already incorporated company (upload this or Form 1)', FALSE),
+('MERCHANT', 'FB_OFFICIAL_ID', 'Identity document of the senior official and authorized signatories', TRUE),
+('MERCHANT', 'FB_BOI_PERMISSION', 'Permission letter from the Board of Investment', TRUE),
+('MERCHANT', 'FB_DIRECTOR_LIST', 'List of directors on letterhead or the prescribed format', TRUE),
+('MERCHANT', 'FB_FORM_2', 'Form 2 — registration of documents of a foreign company', TRUE),
+('MERCHANT', 'FB_FORM_5', 'Form 5 — registration of alterations of a foreign company', TRUE),
+('MERCHANT', 'FB_PRINCIPAL_LETTER', 'Letter from the principal officer authorizing who may open and operate the account', TRUE),
+('MERCHANT', 'TS_GOVERNING_ID', 'Identity documents of the governing body (board, trustees, or executive committee)', TRUE),
+('MERCHANT', 'TS_SIGNATORY_ID', 'Identity documents of all authorized signatories', TRUE),
+('MERCHANT', 'TS_TRUST_PARTIES_ID', 'Identity documents of settlor, trustee(s), protector (if any), and beneficiaries', TRUE),
+('MERCHANT', 'TS_CONTROL_DECLARATION', 'Declaration on ultimate control, purpose, and source of funds', TRUE),
+('MERCHANT', 'TS_REG_OR_INSTRUMENT', 'Certificate of registration or instrument of trust', TRUE),
+('MERCHANT', 'TS_BYLAWS', 'By-laws / rules and regulations', TRUE),
+('MERCHANT', 'TS_RESOLUTION', 'Resolution authorizing the person(s) to open and operate the account', TRUE),
+('MERCHANT', 'NGO_GOVERNING_ID', 'Identity documents of the ultimate governing body', TRUE),
+('MERCHANT', 'NGO_SIGNATORY_ID', 'Identity documents of all authorized signatories', TRUE),
+('MERCHANT', 'NGO_REGISTRATION', 'Registration, certificate of incorporation, or licence (SECP or other authority)', TRUE),
+('MERCHANT', 'NGO_MOA_AOA', 'Memorandum and Articles of Association', TRUE),
+('MERCHANT', 'NGO_FORM_1', 'Form 1 — newly incorporated (upload this or Form 9)', FALSE),
+('MERCHANT', 'NGO_FORM_9', 'Form 9 — already incorporated (upload this or Form 1)', FALSE),
+('MERCHANT', 'NGO_RESOLUTION', 'Resolution of the governing body authorizing who may operate the account', TRUE),
+('MERCHANT', 'NGO_ANNUAL_ACCOUNTS', 'Annual accounts or financial statements (if available)', FALSE);

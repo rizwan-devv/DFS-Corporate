@@ -20,6 +20,8 @@ const DESIGN_PORTAL_PATHS = new Set([
   '/statement',
   '/transactions',
   '/cards',
+  '/cards/virtual',
+  '/cards/physical',
   '/transfers',
   '/beneficiaries',
   '/invites',
@@ -99,9 +101,13 @@ export function Layout() {
                     <span className="portal-link-icon">⇄</span>
                     Commission %
                   </NavLink>
-                  <NavLink to="/cards" className="portal-link">
+                  <NavLink to="/cards/virtual" className="portal-link">
                     <span className="portal-link-icon">▭</span>
-                    Cards
+                    Virtual card
+                  </NavLink>
+                  <NavLink to="/cards/physical" className="portal-link">
+                    <span className="portal-link-icon">▭</span>
+                    Physical card
                   </NavLink>
                   <TransfersNavGroup />
                 </>
@@ -140,9 +146,13 @@ export function Layout() {
                         <span className="portal-link-icon">⇄</span>
                         Commission %
                       </NavLink>
-                      <NavLink to="/cards" className="portal-link">
+                      <NavLink to="/cards/virtual" className="portal-link">
                         <span className="portal-link-icon">▭</span>
-                        Cards
+                        Virtual card
+                      </NavLink>
+                      <NavLink to="/cards/physical" className="portal-link">
+                        <span className="portal-link-icon">▭</span>
+                        Physical card
                       </NavLink>
                       <TransfersNavGroup />
                     </>
