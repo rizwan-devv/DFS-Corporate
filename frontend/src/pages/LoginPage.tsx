@@ -2,10 +2,11 @@ import { type FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
-import { BRAND } from '../lib/brand';
+import { useBrand } from '../lib/useBrand';
 
 export function LoginPage() {
   const { setSession } = useAuth();
+  const brand = useBrand();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -63,8 +64,8 @@ export function LoginPage() {
           <div className="auth-brand">
             <div className="brand-mark" aria-hidden><span /></div>
             <div>
-              <div className="brand-text">{BRAND.short}</div>
-              <div className="portal-brand-sub">{BRAND.tagline}</div>
+              <div className="brand-text">{brand.short}</div>
+              <div className="portal-brand-sub">{brand.tagline}</div>
             </div>
           </div>
           <div className="badge">SECURE ACCESS</div>

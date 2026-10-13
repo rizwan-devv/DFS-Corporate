@@ -3,7 +3,7 @@ import {
   formatReceiptWhen,
   type PaymentReceiptModel,
 } from '../lib/paymentReceipt';
-import { BRAND } from '../lib/brand';
+import { useBrand } from '../lib/useBrand';
 
 type Props = {
   receipt: PaymentReceiptModel;
@@ -11,6 +11,7 @@ type Props = {
 };
 
 export function PaymentReceipt({ receipt, onClose }: Props) {
+  const brand = useBrand();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -32,7 +33,7 @@ export function PaymentReceipt({ receipt, onClose }: Props) {
           <div className="receipt-brand">
             <span className="receipt-brand-mark" aria-hidden />
             <div>
-              <p className="receipt-eyebrow">{BRAND.short}</p>
+              <p className="receipt-eyebrow">{brand.short}</p>
               <h2 id="receipt-title" className="receipt-title">Payment receipt</h2>
             </div>
           </div>
@@ -109,7 +110,7 @@ export function PaymentReceipt({ receipt, onClose }: Props) {
         )}
 
         <footer className="receipt-foot">
-          <p className="receipt-foot-note">{BRAND.receiptFooter}</p>
+          <p className="receipt-foot-note">{brand.receiptFooter}</p>
           <div className="receipt-actions">
             <button type="button" className="btn btn-ghost btn-sm" onClick={printReceipt}>Print</button>
             <button type="button" className="btn btn-primary btn-sm" onClick={onClose}>Done</button>

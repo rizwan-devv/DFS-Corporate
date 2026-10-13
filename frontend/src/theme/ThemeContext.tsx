@@ -1,5 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { THEME_ORDER, isLightScheme, migrateTheme, type ThemeMode } from './themeModes';
+import { brandForTheme } from '../lib/brand';
+import {
+  THEME_ORDER,
+  colorThemeAttr,
+  isLightScheme,
+  migrateTheme,
+  type ThemeMode,
+} from './themeModes';
 
 type ThemeCtx = {
   theme: ThemeMode;
@@ -17,15 +24,16 @@ function load(): ThemeMode {
   } catch {
     /* ignore */
   }
-  return 'payfast';
+  return 'light';
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeMode>(() => load());
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-theme', colorThemeAttr(theme));
     document.documentElement.style.colorScheme = isLightScheme(theme) ? 'light' : 'dark';
+    document.title = brandForTheme(theme).name;
     try {
       localStorage.setItem(KEY, theme);
     } catch {

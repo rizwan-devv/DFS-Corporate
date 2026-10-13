@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
 import { TransfersNavGroup } from './TransfersNavGroup';
-import { BRAND } from '../lib/brand';
+import { useBrand } from '../lib/useBrand';
 
 const PUBLIC_PATHS = new Set([
   '/',
@@ -43,6 +43,7 @@ function isDesignPortalPath(pathname: string) {
 export function Layout() {
   const { session, logout } = useAuth();
   const location = useLocation();
+  const brand = useBrand();
   const opsMode = location.pathname.startsWith('/admin') && session?.role === 'PLATFORM_ADMIN';
   const isMerchant = !!session && session.role !== 'PLATFORM_ADMIN';
   const isAdmin = session?.role === 'PLATFORM_ADMIN';
@@ -80,8 +81,8 @@ export function Layout() {
                 <span />
               </div>
               <div className="portal-brand-text">
-                <span className="brand-text">{opsMode ? BRAND.backoffice : BRAND.short}</span>
-                <span className="portal-brand-sub">{designPreview ? 'Design Preview' : BRAND.tagline}</span>
+                <span className="brand-text">{opsMode ? brand.backoffice : brand.short}</span>
+                <span className="portal-brand-sub">{designPreview ? 'Design Preview' : brand.tagline}</span>
               </div>
             </Link>
 
@@ -248,8 +249,8 @@ export function Layout() {
                   <span />
                 </div>
                 <div className="portal-brand-text">
-                  <span className="brand-text">{BRAND.short}</span>
-                  <span className="portal-brand-sub">{BRAND.tagline}</span>
+                  <span className="brand-text">{brand.short}</span>
+                  <span className="portal-brand-sub">{brand.tagline}</span>
                 </div>
               </Link>
               <nav className="nav-links" aria-label="Main">

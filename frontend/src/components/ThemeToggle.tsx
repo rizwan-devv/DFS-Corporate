@@ -9,12 +9,20 @@ function Icon({ mode }: { mode: ThemeMode }) {
       </svg>
     );
   }
+  if (mode === 'demo') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <rect x="3" y="5" width="18" height="14" rx="3" />
+        <path d="M3 10h18" />
+        <circle cx="8" cy="15" r="1.4" fill="currentColor" stroke="none" />
+        <path d="M12 14.5h6" strokeLinecap="round" />
+      </svg>
+    );
+  }
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="3" y="5" width="18" height="14" rx="3" stroke="currentColor" strokeWidth="2" />
-      <path d="M3 10h18" stroke="currentColor" strokeWidth="2" />
-      <circle cx="8" cy="15" r="1.4" fill="currentColor" />
-      <path d="M12 14.5h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" strokeLinecap="round" />
     </svg>
   );
 }

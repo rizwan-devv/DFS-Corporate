@@ -22,8 +22,8 @@ const slides = [
     accent: 'Finance',
   },
   {
-    title: 'Payfast & dark blue',
-    body: 'Brand-forward Payfast light shell with navy and growth green, plus a focused dark blue mode.',
+    title: 'Light, dark & demo',
+    body: 'Light and dark shells for day-to-day use, plus a Demo mode that shows TEST branding for client recordings.',
     accent: 'Design',
   },
   {
