@@ -633,6 +633,50 @@ h2 {
   width: min(480px, 100%);
 }
 
+.ack-summary {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+}
+
+.ack-summary > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.ack-summary dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ack-summary dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ack-actions {
+  display: grid;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.ack-agree {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.ack-agree input {
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+}
+
 .form-grid {
   display: grid;
   gap: 1rem;
