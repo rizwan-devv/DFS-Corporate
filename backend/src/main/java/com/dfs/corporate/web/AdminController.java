@@ -145,12 +145,6 @@ public class AdminController {
         return adminOnboardingService.get(id);
     }
 
-    @PostMapping("/parties/{id}/send-acknowledgment")
-    public Map<String, Object> sendAcknowledgment(@PathVariable Long id,
-                                                  @AuthenticationPrincipal AccountPrincipal admin) {
-        return adminOnboardingService.sendAcknowledgment(id, admin);
-    }
-
     @PostMapping("/parties/{id}/approve")
     public Map<String, Object> approve(@PathVariable Long id, @AuthenticationPrincipal AccountPrincipal admin) {
         return adminOnboardingService.approve(id, admin);

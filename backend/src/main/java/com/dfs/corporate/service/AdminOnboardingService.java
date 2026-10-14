@@ -48,7 +48,6 @@ public class AdminOnboardingService {
     private final SanctionsScreeningService sanctionsScreeningService;
     private final EntityKycPolicyService entityKycPolicyService;
     private final EntityOnboardingConfigService entityOnboardingConfigService;
-    private final CustomerAcknowledgmentService customerAcknowledgmentService;
     private final SecureRandom random = new SecureRandom();
 
     public AdminOnboardingService(PartyRepository partyRepository,
@@ -67,8 +66,7 @@ public class AdminOnboardingService {
                                   PartyStatusSyncService partyStatusSyncService,
                                   SanctionsScreeningService sanctionsScreeningService,
                                   EntityKycPolicyService entityKycPolicyService,
-                                  EntityOnboardingConfigService entityOnboardingConfigService,
-                                  CustomerAcknowledgmentService customerAcknowledgmentService) {
+                                  EntityOnboardingConfigService entityOnboardingConfigService) {
         this.partyRepository = partyRepository;
         this.accountRepository = accountRepository;
         this.documentRepository = documentRepository;
@@ -86,7 +84,6 @@ public class AdminOnboardingService {
         this.sanctionsScreeningService = sanctionsScreeningService;
         this.entityKycPolicyService = entityKycPolicyService;
         this.entityOnboardingConfigService = entityOnboardingConfigService;
-        this.customerAcknowledgmentService = customerAcknowledgmentService;
     }
 
     public List<Map<String, Object>> brands() {
@@ -134,13 +131,6 @@ public class AdminOnboardingService {
     }
 
     @Transactional
-    public Map<String, Object> sendAcknowledgment(Long id, AccountPrincipal admin) {
-        Map<String, Object> result = customerAcknowledgmentService.sendAcknowledgment(id, admin);
-        result.put("party", get(id));
-        return result;
-    }
-
-    @Transactional
     public Map<String, Object> approve(Long id, AccountPrincipal admin) {
         Party party = partyRepository.findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Party not found"));
@@ -171,7 +161,6 @@ public class AdminOnboardingService {
         if (docs.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Cannot approve: no documents uploaded");
         }
-        customerAcknowledgmentService.assertAcknowledged(party);
         if (party.getSanctionsStatus() == ScreeningStatus.HIT
                 || party.getSanctionsStatus() != ScreeningStatus.CLEAR) {
             sanctionsScreeningService.assertClearForAccountOpen(party);
@@ -503,7 +492,6 @@ public class AdminOnboardingService {
         boolean kycRequired = entityKycPolicyService.isKycRequired(party.getEntityType());
         res.setKycRequired(kycRequired);
         res.setKycSatisfied(!kycRequired || partyStatusSyncService.kycSatisfied(party.getId()));
-        customerAcknowledgmentService.applyToResponse(party, res);
         return res;
     }
 

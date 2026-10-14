@@ -10,7 +10,6 @@ import java.util.Optional;
 public interface PartyRepository extends JpaRepository<Party, Long> {
     Optional<Party> findByPublicId(String publicId);
     Optional<Party> findByEmailIgnoreCase(String email);
-    Optional<Party> findByAcknowledgmentToken(String acknowledgmentToken);
     boolean existsByEmailIgnoreCase(String email);
     List<Party> findByStatusOrderByCreatedAtDesc(PartyStatus status);
     List<Party> findByPartyTypeAndStatusOrderByCreatedAtDesc(PartyType partyType, PartyStatus status);

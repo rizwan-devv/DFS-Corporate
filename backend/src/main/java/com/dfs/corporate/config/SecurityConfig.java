@@ -55,7 +55,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/public/app-kyc/**").permitAll()
                         .requestMatchers("/api/public/franchise-invite/**").permitAll()
                         .requestMatchers("/api/public/employee-onboard/**").permitAll()
-                        .requestMatchers("/api/public/acknowledgment/**").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/party-types", "/api/party-types/**",
                                 "/api/entity-types", "/api/id-document-types").permitAll()

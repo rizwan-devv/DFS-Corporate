@@ -72,11 +72,6 @@ public class PartyResponse {
     private int docsPending;
     private int docsRejected;
     private boolean docsReadyForApprove;
-    private Instant acknowledgmentSentAt;
-    private Instant acknowledgmentExpiresAt;
-    private Instant acknowledgedAt;
-    private boolean customerAcknowledged;
-    private boolean acknowledgmentPending;
     private List<DocumentItem> documents;
     private List<RequiredItem> requiredDocuments;
     private List<AssociatedPersonItem> associatedPersons;
@@ -124,13 +119,6 @@ public class PartyResponse {
         r.purposeOfAccount = p.getPurposeOfAccount();
         r.intendedRelationship = p.getIntendedRelationship();
         r.termsAccepted = p.getTermsAccepted();
-        r.acknowledgmentSentAt = p.getAcknowledgmentSentAt();
-        r.acknowledgmentExpiresAt = p.getAcknowledgmentExpiresAt();
-        r.acknowledgedAt = p.getAcknowledgedAt();
-        r.customerAcknowledged = p.getAcknowledgedAt() != null;
-        r.acknowledgmentPending = p.getAcknowledgedAt() == null
-                && p.getAcknowledgmentSentAt() != null
-                && p.getStatus() == PartyStatus.PENDING_APPROVAL;
         r.clientIp = p.getClientIp();
         r.geoLocation = p.getGeoLocation();
         r.sanctionsStatus = p.getSanctionsStatus();
@@ -326,16 +314,6 @@ public class PartyResponse {
     public void setDocsRejected(int docsRejected) { this.docsRejected = docsRejected; }
     public boolean isDocsReadyForApprove() { return docsReadyForApprove; }
     public void setDocsReadyForApprove(boolean docsReadyForApprove) { this.docsReadyForApprove = docsReadyForApprove; }
-    public Instant getAcknowledgmentSentAt() { return acknowledgmentSentAt; }
-    public void setAcknowledgmentSentAt(Instant acknowledgmentSentAt) { this.acknowledgmentSentAt = acknowledgmentSentAt; }
-    public Instant getAcknowledgmentExpiresAt() { return acknowledgmentExpiresAt; }
-    public void setAcknowledgmentExpiresAt(Instant acknowledgmentExpiresAt) { this.acknowledgmentExpiresAt = acknowledgmentExpiresAt; }
-    public Instant getAcknowledgedAt() { return acknowledgedAt; }
-    public void setAcknowledgedAt(Instant acknowledgedAt) { this.acknowledgedAt = acknowledgedAt; }
-    public boolean isCustomerAcknowledged() { return customerAcknowledged; }
-    public void setCustomerAcknowledged(boolean customerAcknowledged) { this.customerAcknowledged = customerAcknowledged; }
-    public boolean isAcknowledgmentPending() { return acknowledgmentPending; }
-    public void setAcknowledgmentPending(boolean acknowledgmentPending) { this.acknowledgmentPending = acknowledgmentPending; }
     public List<DocumentItem> getDocuments() { return documents; }
     public void setDocuments(List<DocumentItem> documents) { this.documents = documents; }
     public List<RequiredItem> getRequiredDocuments() { return requiredDocuments; }

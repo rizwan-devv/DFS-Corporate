@@ -31,7 +31,6 @@ const DESIGN_PORTAL_PATHS = new Set([
 function isPublicPath(pathname: string) {
   if (PUBLIC_PATHS.has(pathname)) return true;
   if (pathname.startsWith('/partner-kyc/')) return true;
-  if (pathname.startsWith('/acknowledge/')) return true;
   return false;
 }
 

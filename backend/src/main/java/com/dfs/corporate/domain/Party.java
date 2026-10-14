@@ -80,22 +80,6 @@ public class Party {
     @Column(name = "terms_accepted_at")
     private Instant termsAcceptedAt;
 
-    /** Secure one-time link token emailed before final approve. */
-    @Column(name = "acknowledgment_token", length = 64, unique = true)
-    private String acknowledgmentToken;
-
-    @Column(name = "acknowledgment_sent_at")
-    private Instant acknowledgmentSentAt;
-
-    @Column(name = "acknowledgment_expires_at")
-    private Instant acknowledgmentExpiresAt;
-
-    @Column(name = "acknowledged_at")
-    private Instant acknowledgedAt;
-
-    @Column(name = "acknowledgment_ip", length = 64)
-    private String acknowledgmentIp;
-
     @Column(name = "kyc_tier", length = 32)
     private String kycTier = "ENTITY_CONSOLIDATED";
 
@@ -350,16 +334,6 @@ public class Party {
     public void setTermsAccepted(Boolean termsAccepted) { this.termsAccepted = termsAccepted; }
     public Instant getTermsAcceptedAt() { return termsAcceptedAt; }
     public void setTermsAcceptedAt(Instant termsAcceptedAt) { this.termsAcceptedAt = termsAcceptedAt; }
-    public String getAcknowledgmentToken() { return acknowledgmentToken; }
-    public void setAcknowledgmentToken(String acknowledgmentToken) { this.acknowledgmentToken = acknowledgmentToken; }
-    public Instant getAcknowledgmentSentAt() { return acknowledgmentSentAt; }
-    public void setAcknowledgmentSentAt(Instant acknowledgmentSentAt) { this.acknowledgmentSentAt = acknowledgmentSentAt; }
-    public Instant getAcknowledgmentExpiresAt() { return acknowledgmentExpiresAt; }
-    public void setAcknowledgmentExpiresAt(Instant acknowledgmentExpiresAt) { this.acknowledgmentExpiresAt = acknowledgmentExpiresAt; }
-    public Instant getAcknowledgedAt() { return acknowledgedAt; }
-    public void setAcknowledgedAt(Instant acknowledgedAt) { this.acknowledgedAt = acknowledgedAt; }
-    public String getAcknowledgmentIp() { return acknowledgmentIp; }
-    public void setAcknowledgmentIp(String acknowledgmentIp) { this.acknowledgmentIp = acknowledgmentIp; }
     public String getKycTier() { return kycTier; }
     public void setKycTier(String kycTier) { this.kycTier = kycTier; }
     public String getIncorporationNumber() { return incorporationNumber; }
